@@ -2,14 +2,14 @@
 
 #include "ll/api/mod/NativeMod.h"
 
-namespace my_mod {
+namespace CT {
 
-class MyMod {
+class Entry {
 
 public:
-    static MyMod& getInstance();
+    static Entry& getInstance();
 
-    MyMod() : mSelf(*ll::mod::NativeMod::current()) {}
+    Entry() : mSelf(*ll::mod::NativeMod::current()) {}
 
     [[nodiscard]] ll::mod::NativeMod& getSelf() const { return mSelf; }
 

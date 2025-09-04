@@ -12,6 +12,7 @@ else
 end
 
 add_requires("levibuildscript")
+add_requires("sqlite3")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -23,12 +24,12 @@ option("target_type")
     set_values("server", "client")
 option_end()
 
-target("my-mod") -- Change this to your mod name.
+target("ChestTrading") -- Change this to your mod name.
     add_rules("@levibuildscript/linkrule")
     add_rules("@levibuildscript/modpacker")
     add_cxflags( "/EHa", "/utf-8", "/W4", "/w44265", "/w44289", "/w44296", "/w45263", "/w44738", "/w45204")
     add_defines("NOMINMAX", "UNICODE")
-    add_packages("levilamina")
+    add_packages("levilamina","sqlite3")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
     set_languages("c++20")
