@@ -29,33 +29,50 @@ void registerEventListener() {
             if (block->getTypeName() != "minecraft:chest") {
                 return; // 只处理箱子
             }
-            auto [locked, owner_uuid] = isChestLocked(pos, static_cast<int>(dimId));
-            auto* blockActor           = region.getBlockEntity(pos);
-            auto pairedChestBlockActor = static_cast<class ChestBlockActor*>(blockActor)->mLargeChestPaired;
+            auto [currentChestLocked, currentChestOwnerUuid] = isChestLocked(pos, static_cast<int>(dimId));
+            auto* blockActor = region.getBlockEntity(pos);
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+             auto pairedChestBlockActor =
+                static_cast<class ChestBlockActor*>(blockActor)->mLargeChestPaired;
+
+            bool finalLocked = currentChestLocked;
+            std::string finalOwnerUuid = currentChestOwnerUuid;
+            std::string pairedChestOwnerUuid = ""; // 初始化配对箱子主人UUID
+
             // 如果是双箱子，并且另一个箱子存在
             if (pairedChestBlockActor) {
-                auto pairedChestPos = pairedChestBlockActor->mLargeChestPairedPosition; // 另一个箱子坐标
-                auto [isPairedChestLocked, pairedChestOwnerUuid] = isChestLocked(pairedChestPos, static_cast<int>(dimId));
+                auto pairedChestPos = chest->mLargeChestPairedPosition; // 另一个箱子坐标
+                auto [isPairedChestLocked, tempPairedChestOwnerUuid] = isChestLocked(pairedChestPos, static_cast<int>(dimId));
+                pairedChestOwnerUuid = tempPairedChestOwnerUuid; // 存储配对箱子主人UUID
 
-                // 如果当前箱子未锁定，但配对箱子已锁定，则以配对箱子的锁定状态为准
-                if (!locked && isPairedChestLocked) {
-                    locked = true;
-                    owner_uuid = pairedChestOwnerUuid;
+                // 只要其中一个箱子被锁定，整个大箱子就被视为锁定
+                if (isPairedChestLocked) {
+                    finalLocked = true;
+                    // 如果当前箱子未锁定，则以配对箱子的主人为准
+                    if (!currentChestLocked) {
+                        finalOwnerUuid = pairedChestOwnerUuid;
+                    }
+                    // 如果两个都锁定，finalOwnerUuid 保持 currentChestOwnerUuid，
+                    // 但在后续权限检查时需要同时考虑两个主人
                 }
-                // 如果当前箱子已锁定，但配对箱子未锁定，则以当前箱子的锁定状态为准 (保持不变)
-                // 如果两个都锁定，或者两个都未锁定，则保持原样
             }
             
-            if (locked) {
+            if (finalLocked) {
                 // 箱子已被锁定
-                if (owner_uuid != player_uuid) {
+                bool isOwner = (finalOwnerUuid == player_uuid);
+                if (pairedChestBlockActor && !isOwner && !pairedChestOwnerUuid.empty()) {
+                    // 如果是双箱子，且当前玩家不是第一个箱子的主人，检查是否是第二个箱子的主人
+                    isOwner = (pairedChestOwnerUuid == player_uuid);
+                }
+
+                if (!isOwner) {
                     // 玩家不是箱子主人
                     ev.cancel();
                     player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人！");
                     logger.info(
                         "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}",
                         player_uuid,
-                        owner_uuid,
+                        finalOwnerUuid,
                         pos.x,
                         pos.y,
                         pos.z,
