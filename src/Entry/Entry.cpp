@@ -28,7 +28,7 @@ bool Entry::enable() {
         getSelf().getLogger().info("Successfully opened database: " + db_path);
         // 创建 items 表（如果不存在）
         std::string create_items_table_sql = "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER);";
-        if (db.execute_unsafe(create_items_table_sql)) {
+        if (db.execute(create_items_table_sql)) {
             getSelf().getLogger().info("Successfully created table: items");
         } else {
             getSelf().getLogger().error("Failed to create table: items");
@@ -44,7 +44,7 @@ bool Entry::enable() {
             "pos_z INTEGER NOT NULL,"
             "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z)"
             ");";
-        if (db.execute_unsafe(create_locked_chests_table_sql)) {
+        if (db.execute(create_locked_chests_table_sql)) {
             getSelf().getLogger().info("Successfully created table: locked_chests");
         } else {
             getSelf().getLogger().error("Failed to create table: locked_chests");
