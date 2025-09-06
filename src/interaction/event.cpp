@@ -82,7 +82,7 @@ void registerEventListener() {
                 }
                 // 玩家是箱子主人
                 if (isHoldingStick) {
-                    showChestLockForm(player, pos, static_cast<int>(dimId));
+                    showChestLockForm(player, pos, static_cast<int>(dimId), finalLocked, finalOwnerUuid, region);
                     ev.cancel();
                     logger.info(
                         "玩家 {} (主人) 手持木棍尝试操作已锁定箱子 ({}, {}, {}) in dim {}",
@@ -99,7 +99,7 @@ void registerEventListener() {
             else {
                 // 箱子未被锁定
                 if (isHoldingStick) {
-                    showChestLockForm(player, pos, static_cast<int>(dimId));
+                    showChestLockForm(player, pos, static_cast<int>(dimId), finalLocked, finalOwnerUuid, region);
                     ev.cancel();
                     logger.info(
                         "玩家 {} 手持木棍尝试操作未锁定箱子 ({}, {}, {}) in dim {}",

@@ -6,26 +6,57 @@
 #include "LockForm.h"
 
 namespace CT {
-void showChestLockForm(Player& player, BlockPos pos, int dimId) {
-    ll::form::SimpleForm fm("上锁箱子", "你确定要上锁这个箱子吗？");
+void showChestLockForm(Player& player, BlockPos pos, int dimId, bool isLocked, const std::string& ownerUuid, BlockSource& region) {
+    ll::form::SimpleForm fm;
+    std::string player_uuid = player.getUuid().asString();
 
-    fm.appendButton("确定", [pos, dimId](Player& p) {
-        logger.info(
-            "玩家 {} 选择上锁位于维度 {} 的 ({}, {}, {}) 的箱子。",
-            p.getUuid().asString(),
-            dimId,
-            pos.x,
-            pos.y,
-            pos.z
-        );
-        if (lockChest(p.getUuid().asString(), pos, dimId)) {
-            logger.info("箱子信息已存入数据库。");
-        } else {
-            logger.error("箱子信息存入数据库失败。");
-        }
+    if (isLocked) {
+        // 箱子已锁定，提供解锁选项
+        fm.setTitle("解锁箱子");
+        fm.setContent("这个箱子已经被你锁定了，你确定要解锁它吗？");
+        fm.appendButton("确定解锁", [pos, dimId, player_uuid, &region](Player& p) {
+            logger.info(
+                "玩家 {} 选择解锁位于维度 {} 的 ({}, {}, {}) 的箱子。",
+                player_uuid,
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z
+            );
+            if (unlockChest(pos, dimId, region)) {
+                logger.info("箱子信息已从数据库中移除。");
+                p.sendMessage("§a箱子已成功解锁！");
+            } else {
+                logger.error("箱子信息从数据库中移除失败。");
+                p.sendMessage("§c箱子解锁失败！");
+            }
+        });
+    } else {
+        // 箱子未锁定，提供上锁选项
+        fm.setTitle("上锁箱子");
+        fm.setContent("你确定要上锁这个箱子吗？");
+        fm.appendButton("确定上锁", [pos, dimId, player_uuid, &region](Player& p) {
+            logger.info(
+                "玩家 {} 选择上锁位于维度 {} 的 ({}, {}, {}) 的箱子。",
+                player_uuid,
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z
+            );
+            if (lockChest(player_uuid, pos, dimId, region)) {
+                logger.info("箱子信息已存入数据库。");
+                p.sendMessage("§a箱子已成功上锁！");
+            } else {
+                logger.error("箱子信息存入数据库失败。");
+                p.sendMessage("§c箱子上锁失败！");
+            }
+        });
+    }
+
+    fm.appendButton("取消", [player_uuid](Player& p) {
+        logger.info("玩家 {} 取消了操作。", player_uuid);
     });
-
-    fm.appendButton("取消", [](Player& p) { logger.info("玩家 {} 取消了上锁操作。", p.getUuid().asString()); });
 
     fm.sendTo(player);
 }

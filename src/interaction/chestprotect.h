@@ -12,6 +12,9 @@ namespace CT {
 std::pair<bool, std::string> isChestLocked(BlockPos pos, int dimId);
 
 // 上锁箱子
-bool lockChest(const std::string& player_uuid, BlockPos pos, int dimId);
+bool lockChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region);
+
+// 解锁箱子
+bool unlockChest(BlockPos pos, int dimId, BlockSource& region);
 
 } // namespace CT
