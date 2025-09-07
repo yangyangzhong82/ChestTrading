@@ -13,6 +13,18 @@
 #include "mc/world/level/block/Block.h"
 #include "mc\world\level\block\actor\ChestBlockActor.h"
 
+#include "mc/deps/ecs/gamerefs_entity/EntityContext.h"
+#include "mc/deps/game_refs/WeakRef.h"
+#include "mc/world/actor/Actor.h"
+#include "mc/world/events/ActorEventCoordinator.h"
+#include "mc/world/events/ActorGameplayEvent.h"
+#include "mc/world/events/ActorGriefingBlockEvent.h"
+
+#include "mc/world/actor/Hopper.h"
+#include "mc/world/level/block/HopperBlock.h"
+#include "mc/world/level/block/actor/PistonBlockActor.h"
+#include "mc\world\actor\boss\WitherBoss.h"
+
 namespace CT {
 
 
@@ -122,39 +134,278 @@ void registerEventListener() {
 }
 
 
-std::unordered_set<::BlockPos>* affectedBlocks = nullptr;
-BlockSource*                    region         = nullptr;
-LL_AUTO_TYPE_INSTANCE_HOOK(Test1, ll::memory::HookPriority::Normal, Explosion, &Explosion::explode, bool) {
-    affectedBlocks = &mAffectedBlocks.get();
-    region         = &mRegion;
-    auto res       = origin();
-    affectedBlocks = nullptr;
-    return res;
+
+
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    hook3,
+    ll::memory::HookPriority::Normal,
+    ChestBlockActor,
+    &ChestBlockActor::_tryToPairWith,
+    void,
+     ::BlockSource& region,
+    ::BlockPos const&   position
+) {
+   auto currentChestPos = this->mPosition;
+   auto otherChestPos = position; // 尝试配对的另一个箱子的位置
+   auto dim = static_cast<int>(region.getDimensionId());
+
+   logger.info(
+       "hook3: _tryToPairWith called for currentChest ({}, {}, {}) and otherChest ({}, {}, {}) in dim {}",
+       currentChestPos->x, currentChestPos->y, currentChestPos->z,
+       otherChestPos.x, otherChestPos.y, otherChestPos.z,
+       dim
+   );
+
+   // 检查当前箱子是否被锁定
+   auto [currentChestLocked, currentChestOwnerUuid] = isChestLocked(currentChestPos, dim);
+   // 检查尝试配对的另一个箱子是否被锁定
+   auto [otherChestLocked, otherChestOwnerUuid] = isChestLocked(otherChestPos, dim);
+
+   logger.info(
+       "hook3: currentChestLocked: {}, otherChestLocked: {}",
+       currentChestLocked,
+       otherChestLocked
+   );
+
+   if (currentChestLocked || otherChestLocked) {
+       // 如果当前箱子或尝试配对的箱子中任何一个被锁定，则禁止其变成大箱子，直接返回
+       logger.info(
+           "尝试将锁定的箱子 ({}, {}, {}) 或 ({}, {}, {}) in dim {} 变成大箱子被阻止。",
+           currentChestPos->x, currentChestPos->y, currentChestPos->z,
+           otherChestPos.x, otherChestPos.y, otherChestPos.z,
+           dim
+       );
+       return;
+   }
+
+   // 如果两个箱子都未被锁定，则执行原始逻辑
+   origin(region,position);
 }
 
 LL_AUTO_TYPE_INSTANCE_HOOK(
-    Test2,
+    ActorDestroyBlockHook,
     ll::memory::HookPriority::Normal,
-    ExplosionStartedEvent,
-    &ExplosionStartedEvent::$dtor,
-    void
+    ::ActorEventCoordinator,
+    &::ActorEventCoordinator::sendEvent,
+    ::CoordinatorResult,
+    ::EventRef<::ActorGameplayEvent<::CoordinatorResult>> const& event
 ) {
-    std::unordered_set<BlockPos> replaced;
-    for (const auto& pos : *affectedBlocks) {
-        // 检查方块是否是箱子
-        bool isBlockChest      = (region->getBlock(pos).getTypeName() == "minecraft:chest");
-        bool isExtraBlockChest = (region->getExtraBlock(pos).getTypeName() == "minecraft:chest");
+    try {
+        const ActorGriefingBlockEvent* griefingEvent = nullptr;
+        event.get().visit([&](auto&& arg) {
+            using CurrentEventType = std::decay_t<decltype(arg.value())>;
+            if constexpr (std::is_same_v<CurrentEventType, ActorGriefingBlockEvent>) {
+                griefingEvent = &arg.value();
+            }
+        });
 
-        if (isBlockChest || isExtraBlockChest) {
-            // 如果是箱子，则检查它是否被锁定
-            auto [locked, ownerUuid] = isChestLocked(pos, static_cast<int>(region->getDimensionId()));
-            if (locked) {
-                // 如果是上锁的箱子，则跳过它，不将其添加到被替换的方块列表中，从而保护它不被摧毁
-                continue;
+        if (griefingEvent) {
+            // 获取 ActorContext 的 WeakRef
+            WeakRef<::EntityContext> actorContextWeakRef = griefingEvent->mActorContext;
+            // 锁定 WeakRef 获取 StackRefResult
+            StackRefResult<::EntityContext> actorContextResult = actorContextWeakRef.lock();
+
+            if (actorContextResult->isValid()) {
+                // 获取 EntityContext 引用
+                ::EntityContext& entityContext = actorContextResult.value();
+                // 使用 Actor::tryGetFromEntity 获取 Actor 指针
+                ::Actor* actor = Actor::tryGetFromEntity(entityContext, false);
+
+                if (actor) {
+
+                    auto dim                           = static_cast<int>(actor->getDimensionId());
+                    auto pos = griefingEvent->mPos;
+                    auto& region = actor->getDimensionBlockSource(); // 获取 BlockSource
+
+                    // 获取方块
+                    auto block = griefingEvent->mBlock;
+                    if (block->getTypeName() == "minecraft:chest") {
+                        // 检查是否是上锁的箱子
+                    auto [locked, ownerUuid] = isChestLocked(*pos, dim);
+                        if (locked) {
+                            logger.info(
+                                "生物 {} 尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                                actor->getTypeName(),
+                                pos->x,
+                                pos->y,
+                                pos->z,
+                                static_cast<int>(dim)
+                            );
+                            return CoordinatorResult::Cancel; // 阻止破坏
+                        }
+                    }
+                    // 如果不是箱子，或者箱子未被锁定，则执行原始逻辑
+                    return origin(event);
+                }
             }
         }
-        // 如果不是箱子，或者箱子未被锁定，则将其添加到被替换的方块列表中，使其可以被爆炸摧毁
-        replaced.emplace(pos);
+        return origin(event);
+    }  catch (...) {
+        logger.warn("ActorDestroyBlockHook 发生未知异常！");
+        return origin(event);
     }
+}
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    ActorDestroyBlockHook2,
+    ll::memory::HookPriority::Normal,
+    ::WitherBoss,
+    &::WitherBoss::_destroyBlocks,
+    void,
+    ::Level&                       level,
+    ::AABB const&                  bb,
+    ::BlockSource&                 region,
+    int                            range,
+    ::WitherBoss::WitherAttackType attackType
+) {
+    logger.info("触发WitherBoss::_destroyBlocks hook");
+    int dimId = static_cast<int>(region.getDimensionId());
+
+    // 遍历 AABB 范围内的所有方块
+    for (int x = static_cast<int>(bb.min.x); x <= static_cast<int>(bb.max.x); ++x) {
+        for (int y = static_cast<int>(bb.min.y); y <= static_cast<int>(bb.max.y); ++y) {
+            for (int z = static_cast<int>(bb.min.z); z <= static_cast<int>(bb.max.z); ++z) {
+                BlockPos currentPos(x, y, z);
+                // 检查方块是否存在且是箱子
+                if (region.hasBlock(currentPos)) {
+                    auto& block = region.getBlock(currentPos);
+                    if (block.getTypeName() == "minecraft:chest") {
+                        // 检查是否是上锁的箱子
+                        auto [locked, ownerUuid] = CT::isChestLocked(currentPos, dimId);
+                        if (locked) {
+                            logger.info(
+                                "凋灵尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
+                                currentPos.x,
+                                currentPos.y,
+                                currentPos.z,
+                                dimId
+                            );
+                            return; // 阻止原始 _destroyBlocks 的执行
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 如果没有发现上锁的箱子，则执行原始逻辑
+    origin(level, bb, region, range, attackType);
+}
+
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    PistonPushHook,
+    HookPriority::Normal,
+    PistonBlockActor,
+    &PistonBlockActor::_attachedBlockWalker,
+    bool,
+    BlockSource&    region,
+    BlockPos const& curPos,
+    uchar           curBranchFacing,
+    uchar           pistonMoveFacing
+){
+    // 检查被推动的方块是否存在且是箱子 (curPos即为被推动方块的坐标)
+    if (region.hasBlock(curPos)) {
+        auto& block = region.getBlock(curPos);
+        if (block.getTypeName() == "minecraft:chest") {
+            int dimId = static_cast<int>(region.getDimensionId());
+            auto [locked, ownerUuid] = CT::isChestLocked(curPos, dimId);
+            if (locked) {
+                logger.info(
+                    "活塞尝试推动上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                    curPos.x,
+                    curPos.y,
+                    curPos.z,
+                    dimId
+                );
+                return false; // 阻止活塞推动
+            }
+        }
+    }
+
+    // 如果不是箱子，或者箱子未被锁定，则执行原始逻辑
+    return origin(region, curPos, curBranchFacing, pistonMoveFacing);
+}
+
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    HopperPullInHook,
+    HookPriority::Normal,
+    Hopper,
+    &Hopper::_tryPullInItemsFromAboveContainer,
+    bool,
+    BlockSource& region,
+    Container&   toContainer,
+    Vec3 const&  pos
+) {
+    if(this->mIsEntity){
+        return origin(region, toContainer, pos);
+    }
+    BlockPos chestPos(static_cast<int>(pos.x), static_cast<int>(pos.y) + 1, static_cast<int>(pos.z)); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
+    int dimId = static_cast<int>(region.getDimensionId());
+
+    auto [locked, ownerUuid] = CT::isChestLocked(chestPos, dimId);
+    if (locked) {
+        logger.info(
+            "漏斗尝试从上锁的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
+            chestPos.x,
+            chestPos.y,
+            chestPos.z,
+            dimId
+        );
+        return false; // 阻止吸取
+    }
+    return origin(region, toContainer, pos); // 未锁定，执行原始逻辑
+}
+
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    HopperPushOutHook,
+    HookPriority::Normal,
+    Hopper,
+    &Hopper::_pushOutItems,
+    bool,
+    BlockSource& region,
+    Container&   fromContainer,
+    Vec3 const&  position,
+    int          attachedFace
+) {
+    if (this->mIsEntity) {
+        return origin(region, fromContainer, position, attachedFace);
+    }
+    logger.info("朝向:{}",attachedFace);
+    BlockPos chestPos = BlockPos(static_cast<int>(position.x), static_cast<int>(position.y), static_cast<int>(position.z));
+    switch (attachedFace) {
+        case 2: // Z-1
+            chestPos.z -= 1;
+            break;
+        case 4: // X-1
+            chestPos.x -= 1;
+            break;
+        case 3: // Z+1
+            chestPos.z += 1;
+            break;
+        case 5: // X+1
+            chestPos.x += 1;
+            break;
+        case 0: // 垂直，向下
+            chestPos.y -= 1;
+            break;
+        default:
+            // 对于其他朝向（例如向上），我们假设漏斗不会向这些方向推送物品到箱子，或者保持原位
+            // 也可以选择在这里记录一个警告或者直接返回false
+            logger.warn("HopperPushOutHook: 未知的 attachedFace 值: {}", attachedFace);
+            return origin(region, fromContainer, position, attachedFace);
+    }
+    int dimId = static_cast<int>(region.getDimensionId());
+
+    auto [locked, ownerUuid] = CT::isChestLocked(chestPos, dimId);
+    if (locked) {
+        logger.info(
+            "漏斗尝试向上锁的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
+            chestPos.x,
+            chestPos.y,
+            chestPos.z,
+            dimId
+        );
+        return false; // 阻止推送
+    }
+    return origin(region, fromContainer, position, attachedFace); // 未锁定，执行原始逻辑
 }
 }
