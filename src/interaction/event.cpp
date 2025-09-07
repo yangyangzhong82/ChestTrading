@@ -24,6 +24,7 @@
 #include "mc/world/level/block/HopperBlock.h"
 #include "mc/world/level/block/actor/PistonBlockActor.h"
 #include "mc\world\actor\boss\WitherBoss.h"
+#include "ll\api\event\player\PlayerDestroyBlockEvent.h"
 
 namespace CT {
 
@@ -128,6 +129,32 @@ void registerEventListener() {
                     return;
                 }
                 // 未锁定且没有手持木棍，允许打开箱子
+            }
+        }
+    );
+    ll::event::EventBus::getInstance().emplaceListener<ll::event::PlayerDestroyBlockEvent>(
+        [](ll::event::PlayerDestroyBlockEvent& event) {
+            auto& player = event.self();
+            auto  dimId  = static_cast<int>(player.getDimensionId());
+            auto  pos    = event.pos();
+            auto& region = player.getDimensionBlockSource();
+            auto& block = region.getBlock(pos);
+
+            if (block.getTypeName() == "minecraft:chest") {
+                auto [locked, ownerUuid] = CT::isChestLocked(pos, dimId);
+                if (locked) {
+                    event.cancel();
+                    player.sendMessage("§c这个上锁的箱子不能被破坏！");
+                    logger.info(
+                        "玩家 {} 尝试破坏被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                        player.getUuid().asString(),
+                        ownerUuid,
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        dimId
+                    );
+                }
             }
         }
     );
