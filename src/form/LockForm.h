@@ -4,6 +4,7 @@
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h" // 引入 BlockSource
 #include <string> // 引入 string
+#include "shareForm.h" // 引入 shareForm
 
 namespace CT {
 

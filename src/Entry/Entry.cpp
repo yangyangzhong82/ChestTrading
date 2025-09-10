@@ -49,6 +49,22 @@ bool Entry::enable() {
         } else {
             getSelf().getLogger().error("Failed to create table: locked_chests");
         }
+
+        // 创建 shared_chests 表（如果不存在）
+        std::string create_shared_chests_table_sql =
+            "CREATE TABLE IF NOT EXISTS shared_chests ("
+            "player_uuid TEXT NOT NULL,"
+            "dim_id INTEGER NOT NULL,"
+            "pos_x INTEGER NOT NULL,"
+            "pos_y INTEGER NOT NULL,"
+            "pos_z INTEGER NOT NULL,"
+            "PRIMARY KEY (player_uuid, dim_id, pos_x, pos_y, pos_z)"
+            ");";
+        if (db.execute(create_shared_chests_table_sql)) {
+            getSelf().getLogger().info("Successfully created table: shared_chests");
+        } else {
+            getSelf().getLogger().error("Failed to create table: shared_chests");
+        }
     } else {
         getSelf().getLogger().error("Failed to open database: " + db_path);
         return false; // 数据库打开失败，模组启用失败

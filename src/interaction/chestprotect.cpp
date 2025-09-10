@@ -88,4 +88,62 @@ bool unlockChest(BlockPos pos, int dimId, BlockSource& region) {
     return success;
 }
 
+bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId) {
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    bool success = db.execute(
+        "INSERT OR REPLACE INTO shared_chests (player_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?);",
+        shared_player_uuid,
+        static_cast<int>(dimId),
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    if (success) {
+        // 检查是否是双箱子，如果是，也为配对的箱子添加分享玩家
+        // 注意：这里需要获取 BlockSource，但当前函数签名中没有。
+        // 考虑到这个函数可能在没有 BlockSource 的情况下被调用，
+        // 暂时不处理双箱子，或者在调用处传入 BlockSource。
+        // 为了简化，这里假设只处理单个箱子。
+        // 如果需要处理双箱子，需要修改函数签名或在调用处获取 BlockSource。
+    }
+    return success;
+}
+
+bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId) {
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    bool success = db.execute(
+        "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        shared_player_uuid,
+        static_cast<int>(dimId),
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    if (success) {
+        // 同上，如果需要处理双箱子，需要修改函数签名或在调用处获取 BlockSource。
+    }
+    return success;
+}
+
+std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    std::vector<std::vector<std::string>> results = db.query(
+        "SELECT player_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        static_cast<int>(dimId),
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    std::vector<std::string> sharedPlayers;
+    for (const auto& row : results) {
+        if (!row.empty()) {
+            sharedPlayers.push_back(row[0]);
+        }
+    }
+    return sharedPlayers;
+}
+
 } // namespace CT

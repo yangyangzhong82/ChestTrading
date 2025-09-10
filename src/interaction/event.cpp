@@ -81,36 +81,65 @@ void registerEventListener() {
                 isOwner = (pairedChestOwnerUuid == player_uuid);
             }
 
-            if (!isOwner) {
-                // 玩家不是箱子主人
-                ev.cancel();
-                player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人！");
-                logger.info(
-                    "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}",
-                    player_uuid,
-                    finalOwnerUuid,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    static_cast<int>(dimId)
-                );
-                return;
+            if (isOwner) {
+                // 玩家是箱子主人
+                if (isHoldingStick) {
+                    showChestLockForm(player, pos, static_cast<int>(dimId), finalLocked, finalOwnerUuid, region);
+                    ev.cancel();
+                    logger.info(
+                        "玩家 {} (主人) 手持木棍尝试操作已锁定箱子 ({}, {}, {}) in dim {}",
+                        player_uuid,
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        static_cast<int>(dimId)
+                    );
+                    return;
+                }
+                // 主人没有手持木棍，允许打开箱子
+            } else {
+                // 玩家不是箱子主人，检查是否是分享玩家
+                std::vector<std::string> sharedPlayers = getSharedPlayers(pos, static_cast<int>(dimId));
+                bool isSharedPlayer = false;
+                for (const std::string& sharedPlayerUuid : sharedPlayers) {
+                    if (sharedPlayerUuid == player_uuid) {
+                        isSharedPlayer = true;
+                        break;
+                    }
+                }
+
+                if (isSharedPlayer) {
+                    // 玩家是分享玩家，允许打开箱子，但不能通过木棍操作表单
+                    if (isHoldingStick) {
+                        ev.cancel(); // 阻止打开表单
+                        player.sendMessage("§e你已被分享此箱子，但只有主人才能使用木棍管理箱子。");
+                        logger.info(
+                            "玩家 {} (分享玩家) 手持木棍尝试操作已锁定箱子 ({}, {}, {}) in dim {}，已阻止表单显示。",
+                            player_uuid,
+                            pos.x,
+                            pos.y,
+                            pos.z,
+                            static_cast<int>(dimId)
+                        );
+                        return;
+                    }
+                    // 分享玩家没有手持木棍，允许打开箱子
+                } else {
+                    // 玩家既不是箱子主人也不是分享玩家
+                    ev.cancel();
+                    player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
+                    logger.info(
+                        "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                        player_uuid,
+                        finalOwnerUuid,
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        static_cast<int>(dimId)
+                    );
+                    return;
+                }
             }
-            // 玩家是箱子主人
-            if (isHoldingStick) {
-                showChestLockForm(player, pos, static_cast<int>(dimId), finalLocked, finalOwnerUuid, region);
-                ev.cancel();
-                logger.info(
-                    "玩家 {} (主人) 手持木棍尝试操作已锁定箱子 ({}, {}, {}) in dim {}",
-                    player_uuid,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    static_cast<int>(dimId)
-                );
-                return;
-            }
-            // 主人没有手持木棍，允许打开箱子
         } else {
             // 箱子未被锁定
             if (isHoldingStick) {
@@ -166,18 +195,6 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     bool,
     ::AABB bb
 ) {
-    // 获取末影龙所在的维度ID
-    // 注意：EnderDragon::_checkWalls 是一个成员函数，可以通过 this->getDimensionId() 获取维度ID
-    // 但这里没有直接的 BlockSource 引用，需要通过 Level 获取
-    // 假设我们能从当前上下文获取到 Level 或 BlockSource
-    // 暂时先假设 dimId 可以通过某种方式获取，或者在 isChestLocked 中处理
-    // 实际上，_checkWalls 内部会调用 BlockSource::getBlocksWithinAABB，所以我们可以在这里获取 BlockSource
-    // 但是，hook 的参数中没有 BlockSource，所以我们需要找到一种方式来获取它。
-    // 考虑到 _checkWalls 的目的是检查墙壁，它通常会与 BlockSource 交互。
-    // 查阅 LeviLamina 的 EnderDragon.h 文件，发现 _checkWalls 并没有直接的 BlockSource 参数。
-    // 它的实现可能在内部获取 BlockSource。
-    // 为了安全起见，我们先尝试获取当前 Actor 的 BlockSource。
-    // this 指向 EnderDragon 实例
     auto& region = this->getDimensionBlockSource();
     int dimId = static_cast<int>(this->getDimensionId());
 

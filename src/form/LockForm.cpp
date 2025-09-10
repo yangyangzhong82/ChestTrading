@@ -11,26 +11,44 @@ void showChestLockForm(Player& player, BlockPos pos, int dimId, bool isLocked, c
     std::string player_uuid = player.getUuid().asString();
 
     if (isLocked) {
-        // 箱子已锁定，提供解锁选项
-        fm.setTitle("解锁箱子");
-        fm.setContent("这个箱子已经被你锁定了，你确定要解锁它吗？");
-        fm.appendButton("确定解锁", [pos, dimId, player_uuid, &region](Player& p) {
-            logger.info(
-                "玩家 {} 选择解锁位于维度 {} 的 ({}, {}, {}) 的箱子。",
-                player_uuid,
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z
-            );
-            if (unlockChest(pos, dimId, region)) {
-                logger.info("箱子信息已从数据库中移除。");
-                p.sendMessage("§a箱子已成功解锁！");
-            } else {
-                logger.error("箱子信息从数据库中移除失败。");
-                p.sendMessage("§c箱子解锁失败！");
-            }
-        });
+        // 箱子已锁定
+        if (ownerUuid == player_uuid) {
+            // 当前玩家是主人，提供解锁和分享选项
+            fm.setTitle("解锁箱子");
+            fm.setContent("这个箱子已经被你锁定了，你确定要解锁它吗？");
+            fm.appendButton("确定解锁", [pos, dimId, player_uuid, &region](Player& p) {
+                logger.info(
+                    "玩家 {} 选择解锁位于维度 {} 的 ({}, {}, {}) 的箱子。",
+                    player_uuid,
+                    dimId,
+                    pos.x,
+                    pos.y,
+                    pos.z
+                );
+                if (unlockChest(pos, dimId, region)) {
+                    logger.info("箱子信息已从数据库中移除。");
+                    p.sendMessage("§a箱子已成功解锁！");
+                } else {
+                    logger.error("箱子信息从数据库中移除失败。");
+                    p.sendMessage("§c箱子解锁失败！");
+                }
+            });
+            fm.appendButton("分享箱子", [pos, dimId, ownerUuid, &region](Player& p) {
+                logger.info(
+                    "玩家 {} 选择分享位于维度 {} 的 ({}, {}, {}) 的箱子。",
+                    ownerUuid,
+                    dimId,
+                    pos.x,
+                    pos.y,
+                    pos.z
+                );
+                showShareForm(p, pos, dimId, ownerUuid, region);
+            });
+        } else {
+            // 当前玩家不是主人，不提供解锁和分享选项
+            fm.setTitle("箱子已锁定");
+            fm.setContent("这个箱子已经被其他玩家锁定了，你无法操作。");
+        }
     } else {
         // 箱子未锁定，提供上锁选项
         fm.setTitle("上锁箱子");
