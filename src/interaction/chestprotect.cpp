@@ -10,47 +10,50 @@ namespace CT {
 
 
 
-std::pair<bool, std::string> isChestLocked(BlockPos pos, int dimId) {
+std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId) {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
-        "SELECT player_uuid FROM locked_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        static_cast<int>(dimId),
+        "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId,
         pos.x,
         pos.y,
         pos.z
     );
 
-    if (!results.empty()) {
-        return {true, results[0][0]}; // 箱子被锁定，返回主人UUID
+    if (!results.empty() && results[0].size() >= 2) {
+        std::string playerUuid = results[0][0];
+        ChestType   chestType  = static_cast<ChestType>(std::stoi(results[0][1]));
+        return {true, playerUuid, chestType}; // 箱子已设置
     }
-    return {false, ""}; // 箱子未被锁定
+    return {false, "", ChestType::Locked}; // 箱子未设置，返回默认值
 }
 
-bool lockChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region) {
+bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region, ChestType type) {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
     bool success = db.execute(
-        "INSERT OR REPLACE INTO locked_chests (player_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?);",
+        "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, ?, ?, ?);",
         player_uuid,
-        static_cast<int>(dimId),
+        dimId,
         pos.x,
         pos.y,
-        pos.z
+        pos.z,
+        static_cast<int>(type)
     );
 
     if (success) {
         auto* blockActor = region.getBlockEntity(pos);
-        if (blockActor) { // 检查 blockActor 是否存在
-            auto chest = static_cast<class ChestBlockActor*>(blockActor); // 假设它是 ChestBlockActor
-            if (chest->mLargeChestPaired) { // 检查是否是双箱子
-                // 如果是双箱子，也锁定配对的箱子
+        if (blockActor) {
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+            if (chest->mLargeChestPaired) {
                 BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
                 db.execute(
-                    "INSERT OR REPLACE INTO locked_chests (player_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?);",
+                    "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, ?, ?, ?);",
                     player_uuid,
-                    static_cast<int>(dimId),
+                    dimId,
                     pairedChestPos.x,
                     pairedChestPos.y,
-                    pairedChestPos.z
+                    pairedChestPos.z,
+                    static_cast<int>(type)
                 );
             }
         }
@@ -58,11 +61,11 @@ bool lockChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSou
     return success;
 }
 
-bool unlockChest(BlockPos pos, int dimId, BlockSource& region) {
+bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
     bool success = db.execute(
-        "DELETE FROM locked_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        static_cast<int>(dimId),
+        "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId,
         pos.x,
         pos.y,
         pos.z
@@ -70,14 +73,13 @@ bool unlockChest(BlockPos pos, int dimId, BlockSource& region) {
 
     if (success) {
         auto* blockActor = region.getBlockEntity(pos);
-        if (blockActor) { // 检查 blockActor 是否存在
-            auto chest = static_cast<class ChestBlockActor*>(blockActor); // 假设它是 ChestBlockActor
-            if (chest->mLargeChestPaired) { // 检查是否是双箱子
-                // 如果是双箱子，也解锁配对的箱子
+        if (blockActor) {
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+            if (chest->mLargeChestPaired) {
                 BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
                 db.execute(
-                    "DELETE FROM locked_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                    static_cast<int>(dimId),
+                    "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                    dimId,
                     pairedChestPos.x,
                     pairedChestPos.y,
                     pairedChestPos.z

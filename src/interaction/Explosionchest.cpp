@@ -31,7 +31,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
         if (isBlockChest || isExtraBlockChest) {
             // 如果是箱子，则检查它是否被锁定
-            auto [locked, ownerUuid] = isChestLocked(pos, static_cast<int>(region->getDimensionId()));
+            auto [locked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(region->getDimensionId()));
             if (locked) {
                 // 如果是上锁的箱子，则跳过它，不将其添加到被替换的方块列表中，从而保护它不被摧毁
                 continue;
