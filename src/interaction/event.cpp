@@ -46,23 +46,7 @@ void registerEventListener() {
             return; // 只处理箱子
         }
 
-        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId));
-        auto* blockActor                      = region.getBlockEntity(pos);
-        auto  chest                           = static_cast<class ChestBlockActor*>(blockActor);
-
-        // 检查是否是双箱子
-        if (chest && chest->mLargeChestPaired) {
-            auto pairedChestPos = chest->mLargeChestPairedPosition;
-            auto [isPairedChestLocked, pairedOwnerUuid, pairedChestType] =
-                getChestDetails(pairedChestPos, static_cast<int>(dimId));
-
-            // 逻辑合并：只要有一个箱子被锁定，就认为整个大箱子都被锁定
-            if (isPairedChestLocked && !isLocked) {
-                isLocked  = true;
-                ownerUuid = pairedOwnerUuid;
-                chestType = pairedChestType;
-            }
-        }
+        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
 
         if (isLocked) {
             // 箱子已被锁定
@@ -148,7 +132,7 @@ void registerEventListener() {
             auto& block  = region.getBlock(pos);
 
             if (block.getTypeName() == "minecraft:chest") {
-                auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId);
+                auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
                 if (locked) {
                     event.cancel();
                     player.sendMessage("§c这个上锁的箱子不能被破坏！");
@@ -189,7 +173,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                     auto& block = region.getBlock(currentPos);
                     if (block.getTypeName() == "minecraft:chest") {
                         // 检查是否是上锁的箱子
-                        auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId);
+                        auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId, region);
                         if (locked) {
                             logger.info(
                                 "末影龙尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
@@ -234,9 +218,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     );
 
     // 检查当前箱子是否被锁定
-    auto [currentChestLocked, currentChestOwnerUuid, currentChestType] = getChestDetails(currentChestPos, dim);
+    auto [currentChestLocked, currentChestOwnerUuid, currentChestType] = getChestDetails(currentChestPos, dim, region);
     // 检查尝试配对的另一个箱子是否被锁定
-    auto [otherChestLocked, otherChestOwnerUuid, otherChestType] = getChestDetails(otherChestPos, dim);
+    auto [otherChestLocked, otherChestOwnerUuid, otherChestType] = getChestDetails(otherChestPos, dim, region);
 
     logger.info("hook3: currentChestLocked: {}, otherChestLocked: {}", currentChestLocked, otherChestLocked);
 
@@ -298,7 +282,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                     auto block = griefingEvent->mBlock;
                     if (block->getTypeName() == "minecraft:chest") {
                         // 检查是否是上锁的箱子
-                        auto [locked, ownerUuid, chestType] = getChestDetails(*pos, dim);
+                        auto [locked, ownerUuid, chestType] = getChestDetails(*pos, dim, region);
                         if (locked) {
                             logger.info(
                                 "生物 {} 尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
@@ -347,7 +331,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                     auto& block = region.getBlock(currentPos);
                     if (block.getTypeName() == "minecraft:chest") {
                         // 检查是否是上锁的箱子
-                        auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId);
+                        auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId, region);
                         if (locked) {
                             logger.info(
                                 "凋灵尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
@@ -384,7 +368,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         auto& block = region.getBlock(curPos);
         if (block.getTypeName() == "minecraft:chest") {
             int dimId                                = static_cast<int>(region.getDimensionId());
-            auto [locked, ownerUuid, chestType] = CT::getChestDetails(curPos, dimId);
+            auto [locked, ownerUuid, chestType] = CT::getChestDetails(curPos, dimId, region);
             if (locked) {
                 logger.info(
                     "活塞尝试推动上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",

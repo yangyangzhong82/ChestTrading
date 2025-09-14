@@ -1,14 +1,61 @@
 #include "interaction/chestprotect.h"
+#include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "ll/api/form/SimpleForm.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
-#include "mc/world/level/BlockSource.h" // 引入 BlockSource
+#include "mc/world/level/BlockSource.h"                 // 引入 BlockSource
 #include "mc/world/level/block/actor/ChestBlockActor.h" // 引入 ChestBlockActor
+
 
 namespace CT {
 
 
+std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
+    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
+    std::vector<std::vector<std::string>> results = db.query(
+        "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    bool        isLocked  = false;
+    std::string ownerUuid = "";
+    ChestType   chestType = ChestType::Locked;
+
+    if (!results.empty() && results[0].size() >= 2) {
+        isLocked  = true;
+        ownerUuid = results[0][0];
+        chestType = static_cast<ChestType>(std::stoi(results[0][1]));
+    }
+
+    // 检查是否是双箱子
+    auto* blockActor = region.getBlockEntity(pos);
+    if (blockActor) {
+        auto chest = static_cast<class ChestBlockActor*>(blockActor);
+        if (chest->mLargeChestPaired) {
+            BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
+            std::vector<std::vector<std::string>> pairedResults = db.query(
+                "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                dimId,
+                pairedChestPos.x,
+                pairedChestPos.y,
+                pairedChestPos.z
+            );
+
+            if (!pairedResults.empty() && pairedResults[0].size() >= 2) {
+                // 如果配对箱子被锁定，并且当前箱子未被锁定，则更新为配对箱子的锁定信息
+                if (!isLocked) {
+                    isLocked  = true;
+                    ownerUuid = pairedResults[0][0];
+                    chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
+                }
+            }
+        }
+    }
+    return {isLocked, ownerUuid, chestType};
+}
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId) {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
@@ -29,8 +76,8 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 }
 
 bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region, ChestType type) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    bool success = db.execute(
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    bool            success = db.execute(
         "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, ?, ?, ?);",
         player_uuid,
         dimId,
@@ -47,7 +94,8 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
             if (chest->mLargeChestPaired) {
                 BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
                 db.execute(
-                    "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, ?, ?, ?);",
+                    "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, "
+                    "?, ?, ?);",
                     player_uuid,
                     dimId,
                     pairedChestPos.x,
@@ -62,8 +110,8 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
 }
 
 bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    bool success = db.execute(
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    bool            success = db.execute(
         "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
         pos.x,
@@ -91,8 +139,8 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
 }
 
 bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    bool success = db.execute(
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    bool            success = db.execute(
         "INSERT OR REPLACE INTO shared_chests (player_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?);",
         shared_player_uuid,
         static_cast<int>(dimId),
@@ -113,8 +161,8 @@ bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_pl
 }
 
 bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    bool success = db.execute(
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    bool            success = db.execute(
         "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         shared_player_uuid,
         static_cast<int>(dimId),
@@ -130,7 +178,7 @@ bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int
 }
 
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         static_cast<int>(dimId),

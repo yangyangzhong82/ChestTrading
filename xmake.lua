@@ -13,6 +13,7 @@ end
 
 add_requires("levibuildscript")
 add_requires("sqlite3")
+add_requires("legacymoney")
 
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -29,7 +30,7 @@ target("ChestTrading") -- Change this to your mod name.
     add_rules("@levibuildscript/modpacker")
     add_cxflags( "/EHa", "/utf-8", "/W4", "/w44265", "/w44289", "/w44296", "/w45263", "/w44738", "/w45204")
     add_defines("NOMINMAX", "UNICODE")
-    add_packages("levilamina","sqlite3")
+    add_packages("levilamina","sqlite3","legacymoney")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
     set_languages("c++20")

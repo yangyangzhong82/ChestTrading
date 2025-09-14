@@ -29,7 +29,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
     int dimId = static_cast<int>(region.getDimensionId());
 
-    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId);
+    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
     if (locked) {
         logger.info(
             "漏斗尝试从上锁的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
@@ -84,7 +84,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     }
     int dimId = static_cast<int>(region.getDimensionId());
 
-    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId);
+    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
     if (locked) {
         logger.info(
             "漏斗尝试向上锁的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",

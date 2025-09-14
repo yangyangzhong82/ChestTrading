@@ -17,6 +17,7 @@ enum class ChestType {
 
 
 // 检查箱子状态，返回是否锁定、主人UUID和箱子类型
+std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region);
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId);
 
 // 设置箱子（上锁、设置商店等）
