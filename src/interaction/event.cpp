@@ -91,18 +91,46 @@ void registerEventListener() {
                     // 分享玩家没有手持木棍，允许打开箱子
                 } else {
                     // 玩家既不是箱子主人也不是分享玩家
-                    ev.cancel();
-                    player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
-                    logger.info(
-                        "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
-                        player_uuid,
-                        ownerUuid,
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        static_cast<int>(dimId)
-                    );
-                    return;
+                    if (chestType == ChestType::Shop) {
+                        // 如果是商店箱子，显示物品详情
+                        showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                        ev.cancel();
+                        logger.info(
+                            "玩家 {} 尝试打开商店箱子 ({}, {}, {}) in dim {}，已显示物品详情。",
+                            player_uuid,
+                            pos.x,
+                            pos.y,
+                            pos.z,
+                            static_cast<int>(dimId)
+                        );
+                        return;
+                    } else if (chestType == ChestType::Public) {
+                        // 如果是公共箱子，允许任何玩家打开
+                        logger.info(
+                            "玩家 {} 尝试打开公共箱子 ({}, {}, {}) in dim {}，已允许。",
+                            player_uuid,
+                            pos.x,
+                            pos.y,
+                            pos.z,
+                            static_cast<int>(dimId)
+                        );
+                        // 不取消事件，允许打开
+                    }
+                    else {
+                        // 其他类型的锁定箱子，阻止打开
+                        ev.cancel();
+                        player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
+                        logger.info(
+                            "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                            player_uuid,
+                            ownerUuid,
+                            pos.x,
+                            pos.y,
+                            pos.z,
+                            static_cast<int>(dimId)
+                        );
+                        return;
+                    }
                 }
             }
         } else {

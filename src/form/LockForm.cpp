@@ -1,9 +1,11 @@
+#include "LockForm.h"
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "interaction/chestprotect.h"
 #include "ll/api/form/SimpleForm.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "LockForm.h"
+#include "mc/world/level/block/actor/ChestBlockActor.h" // 引入 ChestBlockActor
+#include "mc\world\item\Item.h"
 
 namespace CT {
 
@@ -33,6 +35,9 @@ void showChestLockForm(
                 break;
             case ChestType::Shop:
                 typeStr = "商店";
+                break;
+            case ChestType::Public:
+                typeStr = "公共箱子";
                 break;
             }
             fm.setTitle("箱子管理");
@@ -83,10 +88,59 @@ void showChestLockForm(
                 p.sendMessage("§c设置商店失败！");
             }
         });
+
+        fm.appendButton("设为公共箱子", [pos, dimId, player_uuid, &region](Player& p) {
+            if (setChest(player_uuid, pos, dimId, region, ChestType::Public)) {
+                p.sendMessage("§a箱子已成功设为公共箱子！");
+            } else {
+                p.sendMessage("§c设置公共箱子失败！");
+            }
+        });
     }
 
     fm.appendButton("取消", [player_uuid](Player& p) { logger.info("玩家 {} 取消了操作。", player_uuid); });
 
     fm.sendTo(player);
 }
+
+void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::SimpleForm fm;
+    fm.setTitle("商店箱子物品详情");
+
+    auto* blockActor = region.getBlockEntity(pos);
+    if (!blockActor) {
+        player.sendMessage("§c无法获取箱子数据。");
+        logger.error("无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+        return;
+    }
+
+    auto chest = static_cast<class ChestBlockActor*>(blockActor);
+    if (!chest) {
+        player.sendMessage("§c无法获取箱子数据。");
+        logger.error("无法将 BlockActor 转换为 ChestBlockActor 在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+        return;
+    }
+
+    std::string content = "箱子内物品：\n";
+    bool        isEmpty = true;
+    for (int i = 0; i < chest->getContainerSize(); ++i) {
+        const auto& item = chest->getItem(i);
+        if (!item.isNull()) { // 使用 isNull() 检查物品是否为空
+            isEmpty = false;
+            content += "- " + std::string(item.mItem->mTextureAtlasFile) + " x" + std::to_string(item.mCount)
+                     + "\n"; // 使用 mCount 获取物品数量
+            // 可以根据需要添加更多物品信息，例如附魔、自定义名称等
+        }
+    }
+
+    if (isEmpty) {
+        content += "箱子是空的。\n";
+    }
+
+    fm.setContent(content);
+    fm.appendButton("关闭", [](Player& p) {}); // 添加一个关闭按钮
+
+    fm.sendTo(player);
+}
+
 } // namespace CT

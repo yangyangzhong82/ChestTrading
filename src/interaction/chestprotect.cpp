@@ -32,7 +32,7 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 
     // 检查是否是双箱子
     auto* blockActor = region.getBlockEntity(pos);
-    if (blockActor) {
+    if (blockActor && blockActor->mType == BlockActorType::Chest) { // 检查 blockActor 是否为 ChestBlockActor
         auto chest = static_cast<class ChestBlockActor*>(blockActor);
         if (chest->mLargeChestPaired) {
             BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
@@ -58,7 +58,7 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 }
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId) {
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,

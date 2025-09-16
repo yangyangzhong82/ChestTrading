@@ -12,7 +12,8 @@ namespace CT {
 enum class ChestType {
     Locked      = 0, // 普通锁
     RecycleShop = 1, // 回收商店
-    Shop        = 2  // 商店
+    Shop        = 2, // 商店
+    Public      = 3  // 公共箱子
 };
 
 

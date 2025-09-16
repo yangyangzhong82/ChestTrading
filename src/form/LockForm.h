@@ -18,4 +18,7 @@ void showChestLockForm(
     ChestType          chestType,
     BlockSource&       region
 );
+
+void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+
 }

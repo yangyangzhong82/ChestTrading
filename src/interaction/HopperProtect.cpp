@@ -8,7 +8,7 @@
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/HopperBlock.h"
 
-namespace CT{
+namespace CT {
 LL_AUTO_TYPE_INSTANCE_HOOK(
     HopperPullInHook,
     HookPriority::Normal,
@@ -97,4 +97,4 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     }
     return origin(region, fromContainer, position, attachedFace); // 未锁定，执行原始逻辑
 }
-}
+} // namespace CT
