@@ -28,8 +28,15 @@
 #include "mc\world\actor\monster\EnderDragon.h"
 
 #include "mc\world\actor\provider\SynchedActorDataAccess.h"
+#include <chrono> // 引入 chrono
+#include <map>    // 引入 map
+
 namespace CT {
 
+// 定义一个全局map来存储每个玩家的上次交互时间
+std::map<std::string, std::chrono::steady_clock::time_point> lastInteractionTime;
+// 定义防抖间隔，例如500毫秒
+const std::chrono::milliseconds DEBOUNCE_INTERVAL(500);
 
 void registerEventListener() {
     auto& eventBus = ll::event::EventBus::getInstance();
@@ -43,6 +50,17 @@ void registerEventListener() {
         bool        isHoldingStick = (item.getTypeName() == "minecraft:stick");
         std::string player_uuid    = player.getUuid().asString();
         auto&       region         = player.getDimensionBlockSource();
+
+        // 防抖处理
+        auto currentTime = std::chrono::steady_clock::now();
+        if (lastInteractionTime.count(player_uuid) &&
+            std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid]) <
+                DEBOUNCE_INTERVAL) {
+            ev.cancel(); // 在防抖间隔内，取消事件
+            return;
+        }
+        lastInteractionTime[player_uuid] = currentTime; // 更新上次交互时间
+
         if (block->getTypeName() != "minecraft:chest") {
             return; // 只处理箱子
         }
