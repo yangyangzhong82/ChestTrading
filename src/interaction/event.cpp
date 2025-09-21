@@ -46,112 +46,72 @@ void registerEventListener() {
         if (block->getTypeName() != "minecraft:chest") {
             return; // 只处理箱子
         }
-        if (!SynchedActorDataAccess::getActorFlag(player.getEntityContext(), ActorFlags::Sneaking)) {
-            return; // 只处理潜行状态下的交互
-        }
 
         auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
 
         if (isLocked) {
             // 箱子已被锁定
             bool isOwner = (ownerUuid == player_uuid);
+            std::vector<std::string> sharedPlayers = getSharedPlayers(pos, static_cast<int>(dimId));
+            bool isSharedPlayer = false;
+            for (const std::string& sharedPlayerUuid : sharedPlayers) {
+                if (sharedPlayerUuid == player_uuid) {
+                    isSharedPlayer = true;
+                    break;
+                }
+            }
 
             if (isOwner) {
                 // 玩家是箱子主人
                 if (isHoldingStick) {
                     showChestLockForm(player, pos, static_cast<int>(dimId), isLocked, ownerUuid, chestType, region);
-                    ev.cancel();
+                    ev.cancel(); // 阻止默认打开箱子行为
                     return;
-                }
-                // 主人没有手持木棍，根据箱子类型决定行为
-                // （当前版本，主人可以打开所有类型的箱子）
-
-            } else {
-                // 玩家不是箱子主人，检查是否是分享玩家
-                std::vector<std::string> sharedPlayers  = getSharedPlayers(pos, static_cast<int>(dimId));
-                bool                     isSharedPlayer = false;
-                for (const std::string& sharedPlayerUuid : sharedPlayers) {
-                    if (sharedPlayerUuid == player_uuid) {
-                        isSharedPlayer = true;
-                        break;
-                    }
-                }
-
-                if (isSharedPlayer) {
-                    // 玩家是分享玩家，允许打开箱子，但不能通过木棍操作表单
-                    if (isHoldingStick) {
-                        ev.cancel(); // 阻止打开表单
-                        player.sendMessage("§e你已被分享此箱子，但只有主人才能使用木棍管理箱子。");
-                        logger.info(
-                            "玩家 {} (分享玩家) 手持木棍尝试操作已锁定箱子 ({}, {}, {}) in dim {}，已阻止表单显示。",
-                            player_uuid,
-                            pos.x,
-                            pos.y,
-                            pos.z,
-                            static_cast<int>(dimId)
-                        );
-                        return;
-                    }
-                    // 分享玩家没有手持木棍，允许打开箱子
                 } else {
-                    // 玩家既不是箱子主人也不是分享玩家
+                    // 主人未手持木棍，直接打开箱子
+                    return; // 不取消事件，允许打开
+                }
+            } else if (isSharedPlayer) {
+                // 玩家是分享玩家
+                if (isHoldingStick) {
+                    player.sendMessage("§e你已被分享此箱子，但只有主人才能使用木棍管理箱子。");
+                } else {
+                    // 分享玩家未手持木棍
                     if (chestType == ChestType::Shop) {
-                        // 如果是商店箱子，显示物品详情
                         showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
-                        ev.cancel();
-                        logger.info(
-                            "玩家 {} 尝试打开商店箱子 ({}, {}, {}) in dim {}，已显示物品详情。",
-                            player_uuid,
-                            pos.x,
-                            pos.y,
-                            pos.z,
-                            static_cast<int>(dimId)
-                        );
-                        return;
                     } else if (chestType == ChestType::Public) {
-                        // 如果是公共箱子，允许任何玩家打开
-                        logger.info(
-                            "玩家 {} 尝试打开公共箱子 ({}, {}, {}) in dim {}，已允许。",
-                            player_uuid,
-                            pos.x,
-                            pos.y,
-                            pos.z,
-                            static_cast<int>(dimId)
-                        );
-                        // 不取消事件，允许打开
+                        // 公共箱子，分享玩家可以直接打开
+                        return; // 不取消事件，允许打开
                     } else {
-                        // 其他类型的锁定箱子，阻止打开
-                        ev.cancel();
-                        player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
-                        logger.info(
-                            "玩家 {} 尝试打开被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
-                            player_uuid,
-                            ownerUuid,
-                            pos.x,
-                            pos.y,
-                            pos.z,
-                            static_cast<int>(dimId)
-                        );
-                        return;
+                        // 其他类型的箱子，分享玩家弹出提示信息，阻止打开
+                        player.sendMessage("§e你已被分享此箱子，但无法直接打开，请联系主人。");
                     }
                 }
+                ev.cancel(); // 阻止默认打开箱子行为
+                return;
+            } else {
+                // 玩家既不是箱子主人也不是分享玩家
+                if (chestType == ChestType::Shop) {
+                    showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                } else if (chestType == ChestType::Public) {
+                    // 公共箱子，允许任何玩家打开
+                    return; // 不取消事件，允许打开
+                } else {
+                    // 其他类型的锁定箱子，阻止打开
+                    player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
+                }
+                ev.cancel(); // 阻止默认打开箱子行为
+                return;
             }
         } else {
             // 箱子未被锁定
-            if (isHoldingStick) {
+            if (SynchedActorDataAccess::getActorFlag(player.getEntityContext(), ActorFlags::Sneaking) && isHoldingStick) {
                 showChestLockForm(player, pos, static_cast<int>(dimId), isLocked, ownerUuid, chestType, region);
-                ev.cancel();
-                logger.info(
-                    "玩家 {} 手持木棍尝试操作未锁定箱子 ({}, {}, {}) in dim {}",
-                    player_uuid,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    static_cast<int>(dimId)
-                );
+                ev.cancel(); // 阻止默认打开箱子行为
                 return;
             }
-            // 未锁定且没有手持木棍，允许打开箱子
+            // 未锁定且没有手持木棍或未潜行，允许打开箱子
+            return;
         }
     });
     ll::event::EventBus::getInstance().emplaceListener<ll::event::PlayerDestroyBlockEvent>(
@@ -167,7 +127,7 @@ void registerEventListener() {
                 if (locked) {
                     event.cancel();
                     player.sendMessage("§c这个上锁的箱子不能被破坏！");
-                    logger.info(
+                    logger.debug(
                         "玩家 {} 尝试破坏被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
                         player.getUuid().asString(),
                         ownerUuid,

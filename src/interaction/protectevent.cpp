@@ -40,7 +40,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                         // 检查是否是上锁的箱子
                         auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId, region);
                         if (locked) {
-                            logger.info(
+                            logger.debug(
                                 "末影龙尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
                                 currentPos.x,
                                 currentPos.y,
@@ -71,7 +71,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     auto otherChestPos   = position; // 尝试配对的另一个箱子的位置
     auto dim             = static_cast<int>(region.getDimensionId());
 
-    logger.info(
+    logger.debug(
         "hook3: _tryToPairWith called for currentChest ({}, {}, {}) and otherChest ({}, {}, {}) in dim {}",
         currentChestPos->x,
         currentChestPos->y,
@@ -87,11 +87,11 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     // 检查尝试配对的另一个箱子是否被锁定
     auto [otherChestLocked, otherChestOwnerUuid, otherChestType] = getChestDetails(otherChestPos, dim, region);
 
-    logger.info("hook3: currentChestLocked: {}, otherChestLocked: {}", currentChestLocked, otherChestLocked);
+    logger.debug("hook3: currentChestLocked: {}, otherChestLocked: {}", currentChestLocked, otherChestLocked);
 
     if (currentChestLocked || otherChestLocked) {
         // 如果当前箱子或尝试配对的箱子中任何一个被锁定，则禁止其变成大箱子，直接返回
-        logger.info(
+        logger.debug(
             "尝试将锁定的箱子 ({}, {}, {}) 或 ({}, {}, {}) in dim {} 变成大箱子被阻止。",
             currentChestPos->x,
             currentChestPos->y,
@@ -149,7 +149,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                         // 检查是否是上锁的箱子
                         auto [locked, ownerUuid, chestType] = getChestDetails(*pos, dim, region);
                         if (locked) {
-                            logger.info(
+                            logger.debug(
                                 "生物 {} 尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
                                 actor->getTypeName(),
                                 pos->x,
@@ -183,7 +183,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     int                            range,
     ::WitherBoss::WitherAttackType attackType
 ) {
-    logger.info("触发WitherBoss::_destroyBlocks hook");
+    logger.debug("触发WitherBoss::_destroyBlocks hook");
     int dimId = static_cast<int>(region.getDimensionId());
 
     // 遍历 AABB 范围内的所有方块
@@ -198,7 +198,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                         // 检查是否是上锁的箱子
                         auto [locked, ownerUuid, chestType] = CT::getChestDetails(currentPos, dimId, region);
                         if (locked) {
-                            logger.info(
+                            logger.debug(
                                 "凋灵尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
                                 currentPos.x,
                                 currentPos.y,
@@ -235,7 +235,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             int dimId                           = static_cast<int>(region.getDimensionId());
             auto [locked, ownerUuid, chestType] = CT::getChestDetails(curPos, dimId, region);
             if (locked) {
-                logger.info(
+                logger.debug(
                     "活塞尝试推动上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
                     curPos.x,
                     curPos.y,

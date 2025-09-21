@@ -46,7 +46,7 @@ void FloatingTextManager::addOrUpdateFloatingText(
         mFloatingTexts.emplace(key, ChestFloatingText(pos, dimId, ownerUuid, text));
         mFloatingTexts.at(key).debugText = newText;
         newText->draw(); // 绘制给所有客户端
-        logger.info("已为箱子 ({}, {}, {}) in dim {} 创建悬浮字: {}", pos.x, pos.y, pos.z, dimId, text);
+        logger.debug("已为箱子 ({}, {}, {}) in dim {} 创建悬浮字: {}", pos.x, pos.y, pos.z, dimId, text);
     }
 }
 
@@ -59,7 +59,7 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
             ft.debugText->remove(); // 从所有客户端移除
         }
         mFloatingTexts.erase(key);
-        logger.info("已移除箱子 ({}, {}, {}) in dim {} 的悬浮字。", pos.x, pos.y, pos.z, dimId);
+        logger.debug("已移除箱子 ({}, {}, {}) in dim {} 的悬浮字。", pos.x, pos.y, pos.z, dimId);
     }
 }
 
@@ -121,7 +121,7 @@ void FloatingTextManager::removeAllFloatingTexts() {
 // 从数据库加载所有已锁定的箱子并创建悬浮字
 void FloatingTextManager::loadAllLockedChests() {
     if (mIsLoaded) {
-        logger.info("悬浮字已加载，跳过重复加载。");
+        logger.debug("悬浮字已加载，跳过重复加载。");
         return;
     }
 
@@ -168,7 +168,7 @@ void FloatingTextManager::loadAllLockedChests() {
         }
     }
     mIsLoaded = true; // 设置加载标志为 true
-    logger.info("已从数据库加载 {} 个已锁定箱子的悬浮字。", mFloatingTexts.size());
+    logger.debug("已从数据库加载 {} 个已锁定箱子的悬浮字。", mFloatingTexts.size());
 }
 
 
@@ -182,7 +182,7 @@ void registerPlayerConnectionListener() {
             }
             // 玩家加入时，绘制所有悬浮字给该玩家
             FloatingTextManager::getInstance().drawAllFloatingTexts(player);
-            logger.info("玩家 {} 加入游戏，已为其绘制所有悬浮字。", player.getRealName());
+            logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字。", player.getRealName());
         }
     );
 }
@@ -205,14 +205,14 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
     // 移除该玩家的所有悬浮字
     FloatingTextManager::getInstance().removeAllFloatingTexts(player);
-    logger.info("玩家 {} 切换维度，已移除其所有悬浮字。", player.getRealName());
+    logger.debug("玩家 {} 切换维度，已移除其所有悬浮字。", player.getRealName());
 
     // 执行原始的维度切换逻辑
     origin(player, std::move(changeRequest));
 
     // 重新绘制新维度的悬浮字给该玩家
     FloatingTextManager::getInstance().drawAllFloatingTexts(player);
-    logger.info("玩家 {} 切换维度完成，已为其绘制新维度的悬浮字。", player.getRealName());
+    logger.debug("玩家 {} 切换维度完成，已为其绘制新维度的悬浮字。", player.getRealName());
 }
 
 } // namespace CT

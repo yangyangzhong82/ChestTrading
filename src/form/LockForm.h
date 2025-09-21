@@ -20,5 +20,6 @@ void showChestLockForm(
 );
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showItemDetailsForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
 
 }

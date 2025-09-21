@@ -121,24 +121,38 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         return;
     }
 
-    std::string content = "箱子内物品：\n";
-    bool        isEmpty = true;
+    bool isEmpty = true;
     for (int i = 0; i < chest->getContainerSize(); ++i) {
         const auto& item = chest->getItem(i);
-        if (!item.isNull()) { // 使用 isNull() 检查物品是否为空
-            isEmpty = false;
-            content += "- " + std::string(item.mItem->mNamespace) + " x" + std::to_string(item.mCount)
-                     + "\n"; // 使用 mCount 获取物品数量
-            // 可以根据需要添加更多物品信息，例如附魔、自定义名称等
+        if (!item.isNull()) {
+            isEmpty                = false;
+            std::string buttonText = std::string(item.getName()) + " x" + std::to_string(item.mCount);
+            fm.appendButton(buttonText, [&player, pos, dimId, &region, item](Player& p) {
+                showItemDetailsForm(p, item, pos, dimId, region);
+            });
         }
     }
 
     if (isEmpty) {
-        content += "箱子是空的。\n";
+        fm.setContent("箱子是空的。\n");
     }
 
+    fm.appendButton("关闭", [](Player& p) {});
+    fm.sendTo(player);
+}
+
+void showItemDetailsForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::SimpleForm fm;
+    fm.setTitle("物品详情");
+
+    std::string content  = "物品名称: " + std::string(item.getTypeName()) + "\n";
+    content             += "数量: " + std::to_string(item.mCount) + "\n";
+    // TODO: 添加更多物品详细信息，例如附魔、自定义名称等
+
     fm.setContent(content);
-    fm.appendButton("关闭", [](Player& p) {}); // 添加一个关闭按钮
+    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+        showShopChestItemsForm(p, pos, dimId, region);
+    });
 
     fm.sendTo(player);
 }

@@ -245,7 +245,7 @@ void showAddShareForm(
                         // 添加分享玩家
                         if (addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId)) {
                             p.sendMessage("§a成功添加玩家 " + onlinePlayerName + " 到分享列表！");
-                            logger.info(
+                            logger.debug(
                                 "玩家 {} 成功将箱子 ({}, {}, {}) in dim {} 分享给玩家 {} ({}).",
                                 ownerUuid,
                                 pos.x,
@@ -327,7 +327,7 @@ void showRemoveShareForm(
             ll::form::FormCancelReason        reason
         ) {
             if (!res) {
-                logger.info("玩家 {} 取消了移除分享玩家。", p.getUuid().asString());
+                logger.debug("玩家 {} 取消了移除分享玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region, currentPage); // 返回主菜单
                 return;
             }

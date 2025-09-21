@@ -31,7 +31,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
     auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
     if (locked) {
-        logger.info(
+        logger.debug(
             "漏斗尝试从上锁的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
             chestPos.x,
             chestPos.y,
@@ -57,7 +57,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     if (this->mIsEntity) {
         return origin(region, fromContainer, position, attachedFace);
     }
-    logger.info("朝向:{}", attachedFace);
+    logger.debug("朝向:{}", attachedFace);
     BlockPos chestPos =
         BlockPos(static_cast<int>(position.x), static_cast<int>(position.y), static_cast<int>(position.z));
     switch (attachedFace) {
