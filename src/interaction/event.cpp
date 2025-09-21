@@ -27,6 +27,7 @@
 #include "mc\world\actor\boss\WitherBoss.h"
 #include "mc\world\actor\monster\EnderDragon.h"
 
+#include "mc\world\actor\provider\SynchedActorDataAccess.h"
 namespace CT {
 
 
@@ -44,6 +45,9 @@ void registerEventListener() {
         auto&       region         = player.getDimensionBlockSource();
         if (block->getTypeName() != "minecraft:chest") {
             return; // 只处理箱子
+        }
+        if (!SynchedActorDataAccess::getActorFlag(player.getEntityContext(), ActorFlags::Sneaking)) {
+            return; // 只处理潜行状态下的交互
         }
 
         auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
@@ -64,8 +68,8 @@ void registerEventListener() {
 
             } else {
                 // 玩家不是箱子主人，检查是否是分享玩家
-                std::vector<std::string> sharedPlayers = getSharedPlayers(pos, static_cast<int>(dimId));
-                bool isSharedPlayer = false;
+                std::vector<std::string> sharedPlayers  = getSharedPlayers(pos, static_cast<int>(dimId));
+                bool                     isSharedPlayer = false;
                 for (const std::string& sharedPlayerUuid : sharedPlayers) {
                     if (sharedPlayerUuid == player_uuid) {
                         isSharedPlayer = true;
@@ -115,8 +119,7 @@ void registerEventListener() {
                             static_cast<int>(dimId)
                         );
                         // 不取消事件，允许打开
-                    }
-                    else {
+                    } else {
                         // 其他类型的锁定箱子，阻止打开
                         ev.cancel();
                         player.sendMessage("§c这个箱子已经被锁定了，你不是它的主人，也没有被分享！");
@@ -189,7 +192,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ::AABB bb
 ) {
     auto& region = this->getDimensionBlockSource();
-    int dimId = static_cast<int>(this->getDimensionId());
+    int   dimId  = static_cast<int>(this->getDimensionId());
 
     // 遍历 AABB 范围内的所有方块
     for (int x = static_cast<int>(bb.min.x); x <= static_cast<int>(bb.max.x); ++x) {
@@ -395,7 +398,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     if (region.hasBlock(curPos)) {
         auto& block = region.getBlock(curPos);
         if (block.getTypeName() == "minecraft:chest") {
-            int dimId                                = static_cast<int>(region.getDimensionId());
+            int dimId                           = static_cast<int>(region.getDimensionId());
             auto [locked, ownerUuid, chestType] = CT::getChestDetails(curPos, dimId, region);
             if (locked) {
                 logger.info(
@@ -413,8 +416,6 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     // 如果不是箱子，或者箱子未被锁定，则执行原始逻辑
     return origin(region, curPos, curBranchFacing, pistonMoveFacing);
 }
-
-
 
 
 } // namespace CT

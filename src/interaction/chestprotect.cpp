@@ -1,6 +1,7 @@
 #include "interaction/chestprotect.h"
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "ll/api/form/SimpleForm.h"
+#include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
 #include "logger.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/level/BlockSource.h"                 // 引入 BlockSource
@@ -88,6 +89,34 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
     );
 
     if (success) {
+        // 根据箱子类型生成悬浮字文本
+        std::string text;
+        std::string ownerName = player_uuid; // 默认使用 UUID
+        auto        playerInfo =
+            ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(player_uuid));
+        if (playerInfo) {
+            ownerName = playerInfo->name;
+        }
+
+        switch (type) {
+        case ChestType::Locked:
+            text = "§e[上锁箱子]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::RecycleShop:
+            text = "§a[回收商店]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::Shop:
+            text = "§b[商店箱子]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::Public:
+            text = "§d[公共箱子]§r 拥有者: " + ownerName;
+            break;
+        default:
+            text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
+            break;
+        }
+        FloatingTextManager::getInstance().addOrUpdateFloatingText(pos, dimId, player_uuid, text);
+
         auto* blockActor = region.getBlockEntity(pos);
         if (blockActor) {
             auto chest = static_cast<class ChestBlockActor*>(blockActor);
@@ -103,6 +132,7 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
                     pairedChestPos.z,
                     static_cast<int>(type)
                 );
+                FloatingTextManager::getInstance().addOrUpdateFloatingText(pairedChestPos, dimId, player_uuid, text);
             }
         }
     }
@@ -120,6 +150,8 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     );
 
     if (success) {
+        FloatingTextManager::getInstance().removeFloatingText(pos, dimId);
+
         auto* blockActor = region.getBlockEntity(pos);
         if (blockActor) {
             auto chest = static_cast<class ChestBlockActor*>(blockActor);
@@ -132,6 +164,7 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
                     pairedChestPos.y,
                     pairedChestPos.z
                 );
+                FloatingTextManager::getInstance().removeFloatingText(pairedChestPos, dimId);
             }
         }
     }

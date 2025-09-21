@@ -1,11 +1,12 @@
 #pragma once
 
+#include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include <string>
+#include <tuple>
 #include <utility> // For std::pair
 #include <vector>  // For std::vector
-#include <tuple>
 
 namespace CT {
 

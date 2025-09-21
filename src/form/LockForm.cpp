@@ -127,7 +127,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         const auto& item = chest->getItem(i);
         if (!item.isNull()) { // 使用 isNull() 检查物品是否为空
             isEmpty = false;
-            content += "- " + std::string(item.mItem->mTextureAtlasFile) + " x" + std::to_string(item.mCount)
+            content += "- " + std::string(item.mItem->mNamespace) + " x" + std::to_string(item.mCount)
                      + "\n"; // 使用 mCount 获取物品数量
             // 可以根据需要添加更多物品信息，例如附魔、自定义名称等
         }

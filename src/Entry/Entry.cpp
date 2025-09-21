@@ -1,10 +1,11 @@
 #include "Entry/Entry.h"
 
+#include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
+#include "db/Sqlite3Wrapper.h"
+#include "interaction/event.h"
 #include "ll/api/Config.h"
 #include "ll/api/mod/RegisterHelper.h"
-#include "db/Sqlite3Wrapper.h"
 
-#include "interaction/event.h"
 namespace CT {
 
 Entry& Entry::getInstance() {
@@ -23,31 +24,35 @@ bool Entry::enable() {
     // Code for enabling the mod goes here.
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
     registerEventListener();
+    registerPlayerConnectionListener(); // 注册玩家连接事件
+
     std::string db_path = "ChestTrading.db"; // 数据库文件路径
     if (db.open(db_path)) {
         getSelf().getLogger().info("Successfully opened database: " + db_path);
         // 创建 items 表（如果不存在）
-        std::string create_items_table_sql = "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER);";
+        std::string create_items_table_sql =
+            "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER);";
         if (db.execute(create_items_table_sql)) {
             getSelf().getLogger().info("Successfully created table: items");
         } else {
             getSelf().getLogger().error("Failed to create table: items");
         }
-        
-        // 创建 locked_chests 表（如果不存在）
-        std::string create_locked_chests_table_sql = 
-            "CREATE TABLE IF NOT EXISTS locked_chests ("
+
+        // 创建 chests 表（如果不存在）
+        std::string create_chests_table_sql =
+            "CREATE TABLE IF NOT EXISTS chests ("
             "player_uuid TEXT NOT NULL,"
             "dim_id INTEGER NOT NULL,"
             "pos_x INTEGER NOT NULL,"
             "pos_y INTEGER NOT NULL,"
             "pos_z INTEGER NOT NULL,"
+            "type INTEGER NOT NULL DEFAULT 0," // 添加 type 字段，默认为 0 (Locked)
             "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z)"
             ");";
-        if (db.execute(create_locked_chests_table_sql)) {
-            getSelf().getLogger().info("Successfully created table: locked_chests");
+        if (db.execute(create_chests_table_sql)) {
+            getSelf().getLogger().info("Successfully created table: chests");
         } else {
-            getSelf().getLogger().error("Failed to create table: locked_chests");
+            getSelf().getLogger().error("Failed to create table: chests");
         }
 
         // 创建 shared_chests 表（如果不存在）
@@ -65,6 +70,9 @@ bool Entry::enable() {
         } else {
             getSelf().getLogger().error("Failed to create table: shared_chests");
         }
+
+        // 悬浮字将在第一个玩家加入时加载
+
     } else {
         getSelf().getLogger().error("Failed to open database: " + db_path);
         return false; // 数据库打开失败，模组启用失败
@@ -76,7 +84,8 @@ bool Entry::disable() {
     getSelf().getLogger().debug("Disabling...");
     // Code for disabling the mod goes here.
     Sqlite3Wrapper::getInstance().close(); // 关闭数据库
-    getSelf().getLogger().info("Database closed.");
+    FloatingTextManager::getInstance().removeAllFloatingTexts(); // 移除所有悬浮字
+    getSelf().getLogger().info("Database closed and all floating texts removed.");
     return true;
 }
 
