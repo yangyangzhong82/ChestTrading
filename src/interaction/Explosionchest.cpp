@@ -9,10 +9,17 @@ namespace CT {
 
 std::unordered_set<::BlockPos>* affectedBlocks = nullptr;
 BlockSource*                    region         = nullptr;
-LL_AUTO_TYPE_INSTANCE_HOOK(Test1, ll::memory::HookPriority::Normal, Explosion, &Explosion::explode, bool) {
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    Test1,
+    ll::memory::HookPriority::Normal,
+    Explosion,
+    &Explosion::explode,
+    bool,
+    ::IRandom& random
+) {
     affectedBlocks = &mAffectedBlocks.get();
     region         = &mRegion;
-    auto res       = origin();
+    auto res       = origin(random);
     affectedBlocks = nullptr;
     return res;
 }

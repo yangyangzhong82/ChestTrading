@@ -1,4 +1,5 @@
 #include "LockForm.h"
+#include "Utils/ItemTextureManager.h" // 引入 ItemTextureManager
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "interaction/chestprotect.h"
 #include "ll/api/form/SimpleForm.h"
@@ -127,9 +128,22 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         if (!item.isNull()) {
             isEmpty                = false;
             std::string buttonText = std::string(item.getName()) + " x" + std::to_string(item.mCount);
-            fm.appendButton(buttonText, [&player, pos, dimId, &region, item](Player& p) {
-                showItemDetailsForm(p, item, pos, dimId, region);
-            });
+            std::string itemName   = item.getTypeName(); // 获取物品类型名称
+            // 移除 "minecraft:" 前缀
+            if (itemName.rfind("minecraft:", 0) == 0) {
+                itemName = itemName.substr(10);
+            }
+            std::string texturePath = ItemTextureManager::getInstance().getTexture(itemName);
+
+            if (!texturePath.empty()) {
+                fm.appendButton(buttonText, texturePath, "path", [&player, pos, dimId, &region, item](Player& p) {
+                    showItemDetailsForm(p, item, pos, dimId, region);
+                });
+            } else {
+                fm.appendButton(buttonText, [&player, pos, dimId, &region, item](Player& p) {
+                    showItemDetailsForm(p, item, pos, dimId, region);
+                });
+            }
         }
     }
 
