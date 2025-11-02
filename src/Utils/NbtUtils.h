@@ -14,7 +14,7 @@ class BlockActor;
 // Forward declaration
 class ItemStack;
 
-namespace CauldronZero::NbtUtils {
+namespace CT::NbtUtils {
 class MoreGlobal {
 public:
     static DataLoadHelper& defaultDataLoadHelper();
@@ -133,4 +133,4 @@ std::unique_ptr<CompoundTag> getBlockEntityNbt(BlockActor* blockEntity);
  */
  bool setItemNbt(ItemStack& item, const CompoundTag& tag);
 
-} // namespace CauldronZero::NbtUtils
+ } // namespace CT::::NbtUtils

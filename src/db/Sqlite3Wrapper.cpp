@@ -54,7 +54,23 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
                                              "pos_z INTEGER NOT NULL,"
                                              "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
                                              "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
-    return execute_unsafe(create_shared_chests_table);
+    if (!execute_unsafe(create_shared_chests_table)) {
+        return false;
+    }
+
+    // 总是确保 shop_items 表存在
+    const char* create_shop_items_table = "CREATE TABLE IF NOT EXISTS shop_items ("
+                                          "dim_id INTEGER NOT NULL,"
+                                          "pos_x INTEGER NOT NULL,"
+                                          "pos_y INTEGER NOT NULL,"
+                                          "pos_z INTEGER NOT NULL,"
+                                          "slot INTEGER NOT NULL,"
+                                          "item_nbt TEXT NOT NULL,"
+                                          "price INTEGER NOT NULL,"
+                                          "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, slot),"
+                                          "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
+                                          "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
+    return execute_unsafe(create_shop_items_table);
 }
 
 void Sqlite3Wrapper::close() {

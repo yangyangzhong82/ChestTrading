@@ -21,5 +21,9 @@ void showChestLockForm(
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showItemDetailsForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
+void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, BlockSource& region);
+void showShopItemManageForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, BlockSource& region);
+void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showShopItemBuyForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, int price, BlockSource& region);
 
 }
