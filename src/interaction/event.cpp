@@ -1,6 +1,7 @@
 #include "event.h"
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "form/LockForm.h"
+#include "form/ShopForm.h" // 引入 ShopForm
 #include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerInteractBlockEvent.h"
