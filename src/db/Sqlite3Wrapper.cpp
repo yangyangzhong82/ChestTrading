@@ -67,10 +67,35 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
                                           "slot INTEGER NOT NULL,"
                                           "item_nbt TEXT NOT NULL,"
                                           "price INTEGER NOT NULL,"
-                                          "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, slot),"
+                                          "db_count INTEGER NOT NULL DEFAULT 0," // 添加 db_count 字段
+                                          "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt),"
                                           "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
                                           "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
-    return execute_unsafe(create_shop_items_table);
+    if (!execute_unsafe(create_shop_items_table)) {
+        return false;
+    }
+
+    // 检查 shop_items 表是否缺少 db_count 字段，如果缺少则添加
+    std::vector<std::vector<std::string>> tables_info =
+        query("PRAGMA table_info(shop_items);");
+    bool has_db_count_column = false;
+    for (const auto& row : tables_info) {
+        if (row[1] == "db_count") { // row[1] 是列名
+            has_db_count_column = true;
+            break;
+        }
+    }
+
+    if (!has_db_count_column) {
+        CT::logger.info("检测到 `shop_items` 表缺少 `db_count` 字段，正在添加...");
+        if (execute_unsafe("ALTER TABLE shop_items ADD COLUMN db_count INTEGER NOT NULL DEFAULT 0;")) {
+            CT::logger.info("`db_count` 字段添加成功！");
+        } else {
+            CT::logger.error("`db_count` 字段添加失败！");
+            return false;
+        }
+    }
+    return true;
 }
 
 void Sqlite3Wrapper::close() {

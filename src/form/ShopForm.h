@@ -9,9 +9,9 @@
 namespace CT {
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
-void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, BlockSource& region);
-void showShopItemManageForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, BlockSource& region);
+void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
+void showShopItemManageForm(Player& player, const std::string& itemNbtStr, BlockPos pos, int dimId, BlockSource& region);
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
-void showShopItemBuyForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, int price, BlockSource& region);
+void showShopItemBuyForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, int slot, int unitPrice, BlockSource& region, const std::string& itemNbtStr);
 
 } // namespace CT
