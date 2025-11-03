@@ -11,9 +11,102 @@
 #include "mc/platform/UUID.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "mc/world/item/enchanting/ItemEnchants.h"
+#include "mc/world/item/enchanting/Enchant.h"
+#include "mc/world/item/enchanting/EnchantmentInstance.h"
 
 
 namespace CT {
+
+// 将附魔ID转换为可读的字符串
+std::string enchantToString(const Enchant::Type type) {
+    switch (type) {
+        case Enchant::Type::Protection:
+            return "保护";
+        case Enchant::Type::FireProtection:
+            return "火焰保护";
+        case Enchant::Type::FeatherFalling:
+            return "摔落保护";
+        case Enchant::Type::BlastProtection:
+            return "爆炸保护";
+        case Enchant::Type::ProjectileProtection:
+            return "弹射物保护";
+        case Enchant::Type::Thorns:
+            return "荆棘";
+        case Enchant::Type::Respiration:
+            return "水下呼吸";
+        case Enchant::Type::DepthStrider:
+            return "深海探索者";
+        case Enchant::Type::AquaAffinity:
+            return "水下速掘";
+        case Enchant::Type::Sharpness:
+            return "锋利";
+        case Enchant::Type::Smite:
+            return "亡灵杀手";
+        case Enchant::Type::BaneOfArthropods:
+            return "节肢杀手";
+        case Enchant::Type::Knockback:
+            return "击退";
+        case Enchant::Type::FireAspect:
+            return "火焰附加";
+        case Enchant::Type::Looting:
+            return "抢夺";
+        case Enchant::Type::Efficiency:
+            return "效率";
+        case Enchant::Type::SilkTouch:
+            return "精准采集";
+        case Enchant::Type::Unbreaking:
+            return "耐久";
+        case Enchant::Type::Fortune:
+            return "时运";
+        case Enchant::Type::Power:
+            return "力量";
+        case Enchant::Type::Punch:
+            return "冲击";
+        case Enchant::Type::Flame:
+            return "火矢";
+        case Enchant::Type::Infinity:
+            return "无限";
+        case Enchant::Type::LuckOfTheSea:
+            return "海之眷顾";
+        case Enchant::Type::Lure:
+            return "饵钓";
+        case Enchant::Type::FrostWalker:
+            return "冰霜行者";
+        case Enchant::Type::Mending:
+            return "经验修补";
+        case Enchant::Type::CurseOfBinding:
+            return "绑定诅咒";
+        case Enchant::Type::CurseOfVanishing:
+            return "消失诅咒";
+        case Enchant::Type::Impaling:
+            return "穿刺";
+        case Enchant::Type::Riptide:
+            return "激流";
+        case Enchant::Type::Loyalty:
+            return "忠诚";
+        case Enchant::Type::Channeling:
+            return "引雷";
+        case Enchant::Type::Multishot:
+            return "多重射击";
+        case Enchant::Type::Piercing:
+            return "穿透";
+        case Enchant::Type::QuickCharge:
+            return "快速装填";
+        case Enchant::Type::SoulSpeed:
+            return "灵魂疾行";
+        case Enchant::Type::SwiftSneak:
+            return "迅捷潜行";
+        case Enchant::Type::WindBurst:
+            return "风爆";
+        case Enchant::Type::Density:
+            return "密度";
+        case Enchant::Type::Breach:
+            return "破甲";
+        default:
+            return "未知附魔";
+    }
+}
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
@@ -103,8 +196,38 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
             logger.debug("showShopChestItemsForm: Calculated totalCount in chest for item '{}': {}.", item.getName(), totalCount);
 
             // 显示数据库中的可售数量 (dbCount) 和箱子中实际存在的数量 (totalCount)
-            std::string buttonText = std::string(item.getName()) + " §b[库存: " + std::to_string(dbCount) + "/"
+            std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r" + " §b[库存: " + std::to_string(dbCount) + "/"
                                    + std::to_string(totalCount) + "]§r" + " §6[价格: " + std::to_string(price) + "]§r";
+
+            std::string itemInfo;
+            // 显示耐久度
+            if (item.isDamageableItem()) {
+                int maxDamage = item.getItem()->getMaxDamage();
+                int currentDamage = item.getDamageValue();
+                itemInfo += "\n§a耐久: " + std::to_string(maxDamage - currentDamage) + " / " + std::to_string(maxDamage);
+            }
+
+            // 显示特殊值
+            short auxValue = item.getAuxValue();
+            if (auxValue != 0) {
+                itemInfo += "\n§e特殊值: " + std::to_string(auxValue);
+            }
+            
+            buttonText += itemInfo;
+
+            // 获取并显示附魔信息
+            if (item.isEnchanted()) {
+                ItemEnchants enchants = item.constructItemEnchantsFromUserData();
+                auto         enchantList = enchants.getAllEnchants();
+                if (!enchantList.empty()) {
+                    buttonText += "\n§d附魔: ";
+                    for (const auto& enchant : enchantList) {
+                        buttonText += enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+                    }
+                    buttonText += "§r";
+                }
+            }
+
             std::string itemName = item.getTypeName();
             if (itemName.rfind("minecraft:", 0) == 0) {
                 itemName = itemName.substr(10);
@@ -423,7 +546,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         int                totalCount = std::get<1>(entry.second);
         const std::string& priceStr   = std::get<2>(entry.second);
 
-        std::string buttonText = std::string(item.getName()) + " x" + std::to_string(totalCount) + " " + priceStr;
+        std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r" + " x" + std::to_string(totalCount) + " " + priceStr;
         std::string itemName   = item.getTypeName();
         if (itemName.rfind("minecraft:", 0) == 0) {
             itemName = itemName.substr(10);
@@ -486,7 +609,70 @@ void showShopItemBuyForm(
         itemNbtStr
     );
 
-    fm.appendLabel("你正在购买物品: " + std::string(item.getName()) + " (每件)");
+    fm.appendLabel("你正在购买物品: " + std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r" + " (每件)");
+
+    // 查询数据库以获取最新库存
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        itemNbtStr
+    );
+    if (!results.empty()) {
+        fm.appendLabel("剩余库存: §b" + results[0][0] + "§r");
+    }
+
+    // 显示耐久度
+    if (item.isDamageableItem()) {
+        int maxDamage = item.getItem()->getMaxDamage();
+        int currentDamage = item.getDamageValue();
+        fm.appendLabel("§a耐久: " + std::to_string(maxDamage - currentDamage) + " / " + std::to_string(maxDamage));
+    }
+
+    // 显示特殊值
+    short auxValue = item.getAuxValue();
+    if (auxValue != 0) {
+        fm.appendLabel("§e特殊值: " + std::to_string(auxValue));
+    }
+
+    // 显示附魔信息
+    if (item.isEnchanted()) {
+        ItemEnchants enchants = item.constructItemEnchantsFromUserData();
+        auto         enchantList = enchants.getAllEnchants();
+        if (!enchantList.empty()) {
+            std::string enchantText = "§d附魔: ";
+            for (const auto& enchant : enchantList) {
+                enchantText += enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+            }
+            fm.appendLabel(enchantText);
+        }
+    }
+
+    // 如果是潜影盒，显示其内部物品
+    if (item.getTypeName().find("shulker_box") != std::string::npos) {
+        auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
+        if (itemNbt) {
+            std::string shulkerContent = CT::NbtUtils::getShulkerBoxItems(*itemNbt);
+            if (!shulkerContent.empty()) {
+                fm.appendLabel("§7内含: " + shulkerContent + "§r");
+            }
+        }
+    }
+
+    // 如果是收纳袋，显示其内部物品
+    if (item.getTypeName().find("bundle") != std::string::npos) {
+        auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
+        if (itemNbt) {
+            std::string bundleContent = CT::NbtUtils::getBundleItems(*itemNbt);
+            if (!bundleContent.empty()) {
+                fm.appendLabel("§7内含: " + bundleContent + "§r");
+            }
+        }
+    }
+
     fm.appendLabel("单价: §6" + std::to_string(unitPrice) + "§r");
     fm.appendInput("buy_count", "请输入购买数量", "1"); // 添加数量输入框
     fm.appendLabel("你的余额: §e" + std::to_string(Economy::getMoney(player)) + "§r");
@@ -698,5 +884,6 @@ void showShopItemBuyForm(
         }
     );
 
-} // namespace CT
+}
+
 } // namespace CT

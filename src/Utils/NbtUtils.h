@@ -133,4 +133,18 @@ std::unique_ptr<CompoundTag> getBlockEntityNbt(BlockActor* blockEntity);
  */
  bool setItemNbt(ItemStack& item, const CompoundTag& tag);
 
- } // namespace CT::::NbtUtils
+ /**
+  * @brief 从潜影贝的NBT数据中提取内部物品名称和数量。
+  * @param shulkerNbt 潜影贝的CompoundTag。
+  * @return 包含内部物品名称和数量的字符串，格式为 "物品1 x数量, 物品2 x数量"。
+  */
+ std::string getShulkerBoxItems(const CompoundTag& shulkerNbt);
+
+ /**
+  * @brief 从收纳袋的NBT数据中提取内部物品名称和数量。
+  * @param bundleNbt 收纳袋的CompoundTag。
+  * @return 包含内部物品名称和数量的字符串，格式为 "物品1 x数量, 物品2 x数量"。
+  */
+ std::string getBundleItems(const CompoundTag& bundleNbt);
+
+ } // namespace CT::NbtUtils
