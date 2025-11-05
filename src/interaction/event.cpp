@@ -2,6 +2,8 @@
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
 #include "form/LockForm.h"
 #include "form/ShopForm.h" // 引入 ShopForm
+#include "form/RecycleForm.h"
+
 #include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerInteractBlockEvent.h"
@@ -27,6 +29,7 @@
 #include "mc/world/level/block/actor/PistonBlockActor.h"
 #include "mc\world\actor\boss\WitherBoss.h"
 #include "mc\world\actor\monster\EnderDragon.h"
+
 
 #include "mc\world\actor\provider\SynchedActorDataAccess.h"
 #include <chrono> // 引入 chrono
@@ -98,6 +101,8 @@ void registerEventListener() {
                     // 分享玩家未手持木棍
                     if (chestType == ChestType::Shop) {
                         showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                    } else if (chestType == ChestType::RecycleShop) {
+                        showRecycleForm(player, pos, static_cast<int>(dimId), region);
                     } else if (chestType == ChestType::Public) {
                         // 公共箱子，分享玩家可以直接打开
                         return; // 不取消事件，允许打开
@@ -112,6 +117,8 @@ void registerEventListener() {
                 // 玩家既不是箱子主人也不是分享玩家
                 if (chestType == ChestType::Shop) {
                     showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                } else if (chestType == ChestType::RecycleShop) {
+                    showRecycleForm(player, pos, static_cast<int>(dimId), region);
                 } else if (chestType == ChestType::Public) {
                     // 公共箱子，允许任何玩家打开
                     return; // 不取消事件，允许打开

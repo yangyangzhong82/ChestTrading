@@ -19,5 +19,6 @@ void showChestLockForm(
     BlockSource&       region
 );
 
+void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 
 }

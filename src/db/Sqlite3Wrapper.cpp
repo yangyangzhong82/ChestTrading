@@ -95,6 +95,58 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
             return false;
         }
     }
+
+    // 总是确保 recycle_shop_items 表存在
+    const char* create_recycle_shop_items_table = "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
+                                                  "dim_id INTEGER NOT NULL,"
+                                                  "pos_x INTEGER NOT NULL,"
+                                                  "pos_y INTEGER NOT NULL,"
+                                                  "pos_z INTEGER NOT NULL,"
+                                                  "item_nbt TEXT NOT NULL,"
+                                                  "price INTEGER NOT NULL,"
+                                                  "min_durability INTEGER NOT NULL DEFAULT 0,"
+                                                  "required_enchant_id INTEGER NOT NULL DEFAULT -1,"
+                                                  "required_enchant_level INTEGER NOT NULL DEFAULT 0,"
+                                                  "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt),"
+                                                  "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
+                                                  "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
+    if (!execute_unsafe(create_recycle_shop_items_table)) {
+        return false;
+    }
+
+    // 检查 recycle_shop_items 表是否缺少新字段，如果缺少则添加
+    std::vector<std::vector<std::string>> recycle_tables_info = query("PRAGMA table_info(recycle_shop_items);");
+    bool has_min_durability_column = false;
+    bool has_req_enchant_id_column = false;
+    bool has_req_enchant_lvl_column = false;
+    for (const auto& row : recycle_tables_info) {
+        if (row[1] == "min_durability") has_min_durability_column = true;
+        if (row[1] == "required_enchant_id") has_req_enchant_id_column = true;
+        if (row[1] == "required_enchant_level") has_req_enchant_lvl_column = true;
+    }
+
+    if (!has_min_durability_column) {
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `min_durability` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN min_durability INTEGER NOT NULL DEFAULT 0;")) {
+            CT::logger.error("`min_durability` 字段添加失败！");
+            return false;
+        }
+    }
+    if (!has_req_enchant_id_column) {
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_id` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_id INTEGER NOT NULL DEFAULT -1;")) {
+            CT::logger.error("`required_enchant_id` 字段添加失败！");
+            return false;
+        }
+    }
+    if (!has_req_enchant_lvl_column) {
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_level` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_level INTEGER NOT NULL DEFAULT 0;")) {
+            CT::logger.error("`required_enchant_level` 字段添加失败！");
+            return false;
+        }
+    }
+
     return true;
 }
 

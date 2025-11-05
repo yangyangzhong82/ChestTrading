@@ -15,98 +15,9 @@
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 
-
 namespace CT {
 
-// 将附魔ID转换为可读的字符串
-std::string enchantToString(const Enchant::Type type) {
-    switch (type) {
-        case Enchant::Type::Protection:
-            return "保护";
-        case Enchant::Type::FireProtection:
-            return "火焰保护";
-        case Enchant::Type::FeatherFalling:
-            return "摔落保护";
-        case Enchant::Type::BlastProtection:
-            return "爆炸保护";
-        case Enchant::Type::ProjectileProtection:
-            return "弹射物保护";
-        case Enchant::Type::Thorns:
-            return "荆棘";
-        case Enchant::Type::Respiration:
-            return "水下呼吸";
-        case Enchant::Type::DepthStrider:
-            return "深海探索者";
-        case Enchant::Type::AquaAffinity:
-            return "水下速掘";
-        case Enchant::Type::Sharpness:
-            return "锋利";
-        case Enchant::Type::Smite:
-            return "亡灵杀手";
-        case Enchant::Type::BaneOfArthropods:
-            return "节肢杀手";
-        case Enchant::Type::Knockback:
-            return "击退";
-        case Enchant::Type::FireAspect:
-            return "火焰附加";
-        case Enchant::Type::Looting:
-            return "抢夺";
-        case Enchant::Type::Efficiency:
-            return "效率";
-        case Enchant::Type::SilkTouch:
-            return "精准采集";
-        case Enchant::Type::Unbreaking:
-            return "耐久";
-        case Enchant::Type::Fortune:
-            return "时运";
-        case Enchant::Type::Power:
-            return "力量";
-        case Enchant::Type::Punch:
-            return "冲击";
-        case Enchant::Type::Flame:
-            return "火矢";
-        case Enchant::Type::Infinity:
-            return "无限";
-        case Enchant::Type::LuckOfTheSea:
-            return "海之眷顾";
-        case Enchant::Type::Lure:
-            return "饵钓";
-        case Enchant::Type::FrostWalker:
-            return "冰霜行者";
-        case Enchant::Type::Mending:
-            return "经验修补";
-        case Enchant::Type::CurseOfBinding:
-            return "绑定诅咒";
-        case Enchant::Type::CurseOfVanishing:
-            return "消失诅咒";
-        case Enchant::Type::Impaling:
-            return "穿刺";
-        case Enchant::Type::Riptide:
-            return "激流";
-        case Enchant::Type::Loyalty:
-            return "忠诚";
-        case Enchant::Type::Channeling:
-            return "引雷";
-        case Enchant::Type::Multishot:
-            return "多重射击";
-        case Enchant::Type::Piercing:
-            return "穿透";
-        case Enchant::Type::QuickCharge:
-            return "快速装填";
-        case Enchant::Type::SoulSpeed:
-            return "灵魂疾行";
-        case Enchant::Type::SwiftSneak:
-            return "迅捷潜行";
-        case Enchant::Type::WindBurst:
-            return "风爆";
-        case Enchant::Type::Density:
-            return "密度";
-        case Enchant::Type::Breach:
-            return "破甲";
-        default:
-            return "未知附魔";
-    }
-}
+using CT::NbtUtils::enchantToString;
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;

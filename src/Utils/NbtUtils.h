@@ -3,6 +3,7 @@
 #include "mc/dataloadhelper/DataLoadHelper.h"
 #include "mc/nbt/CompoundTag.h"
 #include "mc/nbt/Tag.h"
+#include "mc/world/item/enchanting/Enchant.h" // Added for Enchant::Type
 #include <memory>
 #include <string>
 
@@ -146,5 +147,7 @@ std::unique_ptr<CompoundTag> getBlockEntityNbt(BlockActor* blockEntity);
   * @return 包含内部物品名称和数量的字符串，格式为 "物品1 x数量, 物品2 x数量"。
   */
  std::string getBundleItems(const CompoundTag& bundleNbt);
+
+ std::string enchantToString(const Enchant::Type type);
 
  } // namespace CT::NbtUtils

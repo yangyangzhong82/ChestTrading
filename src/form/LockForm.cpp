@@ -1,4 +1,5 @@
 #include "LockForm.h"
+#include "RecycleForm.h"
 #include "Utils/ItemTextureManager.h" // 引入 ItemTextureManager
 #include "Utils/NbtUtils.h"           // 引入 NbtUtils
 #include "Utils/economy.h"            // 引入 economy
@@ -67,6 +68,10 @@ void showChestLockForm(
                 fm.appendButton("管理商店物品", [&player, pos, dimId, &region](Player& p) {
                     showShopChestManageForm(p, pos, dimId, region);
                 });
+            } else if (chestType == ChestType::RecycleShop) {
+                fm.appendButton("管理回收商店", [&player, pos, dimId, &region](Player& p) {
+                    showRecycleShopManageForm(p, pos, dimId, region); // 调用新的管理表单
+                });
             }
 
         } else {
@@ -77,6 +82,10 @@ void showChestLockForm(
             if (chestType == ChestType::Shop) {
                 fm.appendButton("浏览商店物品", [&player, pos, dimId, &region](Player& p) {
                     showShopChestItemsForm(p, pos, dimId, region);
+                });
+            } else if (chestType == ChestType::RecycleShop) {
+                fm.appendButton("浏览回收商店", [&player, pos, dimId, &region](Player& p) {
+                    showRecycleForm(p, pos, dimId, region);
                 });
             }
         }
