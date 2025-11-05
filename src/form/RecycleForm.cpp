@@ -357,10 +357,40 @@ void showRecycleFinalConfirmForm(
                             return;
                         }
 
-                        // 重新获取委托条件
+                        // 预检查箱子容量
+                        int chestAvailableSpace = 0; // 可以容纳的物品总数
+                        // 遍历箱子，计算可以堆叠的物品数量和空槽位数量
+                        for (int i = 0; i < chest->getContainerSize(); ++i) {
+                            const auto& chestItemInSlot = chest->getItem(i);
+                            if (chestItemInSlot.isNull()) {
+                                // 空槽位，可以放入一个完整堆叠
+                                chestAvailableSpace += item.getMaxStackSize();
+                            } else {
+                                // 如果物品类型匹配且未满堆叠，可以堆叠
+                                auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
+                                if (chestItemNbt) {
+                                    auto chestItemNbtForComparison = chestItemNbt->clone();
+                                    if (chestItemNbtForComparison->contains("Count")) {
+                                        chestItemNbtForComparison->erase("Count");
+                                    }
+                                    std::string currentItemNbtStr = CT::NbtUtils::toSNBT(*chestItemNbtForComparison);
+
+                                    if (currentItemNbtStr == commissionNbtStr) {
+                                        chestAvailableSpace += (item.getMaxStackSize() - chestItemInSlot.mCount);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (chestAvailableSpace < recycleCount) {
+                            p.sendMessage("§c回收失败，箱子空间不足，请清理箱子后再试。");
+                            return;
+                        }
+
+                        // 重新获取委托条件，包括最大回收数量和当前已回收数量
                         auto& db = Sqlite3Wrapper::getInstance();
                         auto commission = db.query(
-                            "SELECT min_durability, required_enchant_id, required_enchant_level FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                            "SELECT min_durability, required_enchant_id, required_enchant_level, max_recycle_count, current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
                             dimId, pos.x, pos.y, pos.z, commissionNbtStr
                         );
                         if (commission.empty()) {
@@ -370,6 +400,14 @@ void showRecycleFinalConfirmForm(
                         int minDurability = std::stoi(commission[0][0]);
                         int requiredEnchantId = std::stoi(commission[0][1]);
                         int requiredEnchantLevel = std::stoi(commission[0][2]);
+                        int maxRecycleCount = std::stoi(commission[0][3]);
+                        int currentRecycledCount = std::stoi(commission[0][4]);
+
+                        // 检查是否达到最大回收数量
+                        if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
+                            p.sendMessage("§c回收失败，该委托已达到最大回收数量 (" + std::to_string(maxRecycleCount) + ")。");
+                            return;
+                        }
 
                         // 从玩家背包中移除物品
                         int removedCount = 0;
@@ -431,6 +469,12 @@ void showRecycleFinalConfirmForm(
                         // 5. 交易
                         LLMoney_Reduce(ownerInfo->xuid, recyclePrice);
                         Economy::addMoney(p, recyclePrice);
+
+                        // 6. 更新当前已回收数量
+                        db.execute(
+                            "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                            recycleCount, dimId, pos.x, pos.y, pos.z, commissionNbtStr
+                        );
 
                         p.sendMessage(
                             "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
@@ -531,6 +575,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
     fm.appendInput("enchant_id", "要求附魔ID (留空或-1为不限制)", "-1");
     fm.appendInput("enchant_level", "要求附魔等级 (0为不限制)", "0");
     fm.appendLabel("附魔ID列表请参考Minecraft Wiki。例如：保护为0，锋利为9。");
+    fm.appendInput("max_recycle_count", "最大回收数量 (0为不限制)", "0"); // 新增最大回收数量输入框
 
 
     fm.sendTo(
@@ -584,6 +629,13 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     }
                 }
 
+                int maxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
+                if (maxRecycleCount < 0) {
+                    p.sendMessage("§c最大回收数量不能为负数！");
+                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    return;
+                }
+
 
                 // 获取物品NBT
                 auto itemNbt = CT::NbtUtils::getItemNbt(item);
@@ -601,15 +653,16 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
                 // 插入或更新到数据库
                 // 注意: 这需要数据库表 recycle_shop_items 包含 min_durability, required_enchant_id,
-                // required_enchant_level 列
+                // required_enchant_level, max_recycle_count, current_recycled_count 列
                 auto&       db  = Sqlite3Wrapper::getInstance();
                 std::string sql = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_nbt, price, "
-                                  "min_durability, required_enchant_id, required_enchant_level) "
-                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                                  "min_durability, required_enchant_id, required_enchant_level, max_recycle_count, "
+                                  "current_recycled_count) "
+                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0) " // current_recycled_count 初始化为 0
                                   "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_nbt) DO UPDATE SET price = "
                                   "excluded.price, min_durability = excluded.min_durability, required_enchant_id = "
                                   "excluded.required_enchant_id, required_enchant_level = "
-                                  "excluded.required_enchant_level;";
+                                  "excluded.required_enchant_level, max_recycle_count = excluded.max_recycle_count;";
 
                 if (db.execute(
                         sql,
@@ -621,9 +674,10 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         price,
                         minDurability,
                         enchantId,
-                        enchantLevel
+                        enchantLevel,
+                        maxRecycleCount
                     )) {
-                    p.sendMessage("§a回收委托设置成功！价格: " + std::to_string(price));
+                    p.sendMessage("§a回收委托设置成功！价格: " + std::to_string(price) + "，最大回收数量: " + std::to_string(maxRecycleCount));
                 } else {
                     p.sendMessage("§c回收委托设置失败！请联系管理员检查数据库表结构。");
                 }

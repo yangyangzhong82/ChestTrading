@@ -119,10 +119,15 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     bool has_min_durability_column = false;
     bool has_req_enchant_id_column = false;
     bool has_req_enchant_lvl_column = false;
+    bool has_max_recycle_count_column = false;
+    bool has_current_recycled_count_column = false;
+
     for (const auto& row : recycle_tables_info) {
         if (row[1] == "min_durability") has_min_durability_column = true;
         if (row[1] == "required_enchant_id") has_req_enchant_id_column = true;
         if (row[1] == "required_enchant_level") has_req_enchant_lvl_column = true;
+        if (row[1] == "max_recycle_count") has_max_recycle_count_column = true;
+        if (row[1] == "current_recycled_count") has_current_recycled_count_column = true;
     }
 
     if (!has_min_durability_column) {
@@ -143,6 +148,20 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_level` 字段，正在添加...");
         if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_level INTEGER NOT NULL DEFAULT 0;")) {
             CT::logger.error("`required_enchant_level` 字段添加失败！");
+            return false;
+        }
+    }
+    if (!has_max_recycle_count_column) {
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `max_recycle_count` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN max_recycle_count INTEGER NOT NULL DEFAULT 0;")) {
+            CT::logger.error("`max_recycle_count` 字段添加失败！");
+            return false;
+        }
+    }
+    if (!has_current_recycled_count_column) {
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `current_recycled_count` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;")) {
+            CT::logger.error("`current_recycled_count` 字段添加失败！");
             return false;
         }
     }
