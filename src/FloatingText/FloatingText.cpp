@@ -1,7 +1,8 @@
 #include "FloatingText/FloatingText.h"
+#include "Utils/NetworkPacket.h"
 #include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
-#include "debug_shape/DebugShapeDrawer.h"
-#include "debug_shape/DebugText.h"
+#include "debug_shape/api/IDebugShapeDrawer.h"
+#include "debug_shape/api/shape/IDebugText.h"
 #include "interaction/chestprotect.h" // 引入 getChestDetails
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerJoinEvent.h"
@@ -10,6 +11,15 @@
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include "mc\network\LoopbackPacketSender.h"
+#include "mc/network/MinecraftPacketIds.h"
+#include "mc/network/packet/AddItemActorPacket.h"
+#include "mc/world/item/NetworkItemStackDescriptor.h"
+#include "mc/world/actor/DataItem.h" // 添加缺失的头文件
+#include "mc/nbt/CompoundTag.h"     // 添加缺失的头文件
+#include "ll/api/base/Meta.h"       // 添加缺失的头文件
+#include "Utils/NetworkPacket.h"
+
 
 namespace CT {
 
@@ -39,13 +49,13 @@ void FloatingTextManager::addOrUpdateFloatingText(
         }
     } else {
         // 创建新的悬浮字
-        auto newText = std::make_shared<debug_shape::DebugText>(
+        auto newText = debug_shape::IDebugText::create(
             Vec3(static_cast<float>(pos.x) + 0.5f, static_cast<float>(pos.y) + 1.5f, static_cast<float>(pos.z) + 0.5f),
             text
         );
         mFloatingTexts.emplace(key, ChestFloatingText(pos, dimId, ownerUuid, text));
-        mFloatingTexts.at(key).debugText = newText;
-        newText->draw(); // 绘制给所有客户端
+        mFloatingTexts.at(key).debugText = std::move(newText);
+        debug_shape::IDebugShapeDrawer::getInstance().drawShape(*mFloatingTexts.at(key).debugText); // 绘制给所有客户端
         logger.debug("已为箱子 ({}, {}, {}) in dim {} 创建悬浮字: {}", pos.x, pos.y, pos.z, dimId, text);
     }
 }
@@ -56,7 +66,7 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
     if (mFloatingTexts.count(key)) {
         auto& ft = mFloatingTexts.at(key);
         if (ft.debugText) {
-            ft.debugText->remove(); // 从所有客户端移除
+            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText); // 从所有客户端移除
         }
         mFloatingTexts.erase(key);
         logger.debug("已移除箱子 ({}, {}, {}) in dim {} 的悬浮字。", pos.x, pos.y, pos.z, dimId);
@@ -67,7 +77,7 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
 void FloatingTextManager::drawAllFloatingTexts(Player& player) {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.debugText) {
-            ft.debugText->draw(player);
+            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, player);
         }
     }
 }
@@ -76,7 +86,7 @@ void FloatingTextManager::drawAllFloatingTexts(Player& player) {
 void FloatingTextManager::removeAllFloatingTexts(Player& player) {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.debugText) {
-            ft.debugText->remove(player);
+            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
         }
     }
 }
@@ -85,7 +95,7 @@ void FloatingTextManager::removeAllFloatingTexts(Player& player) {
 void FloatingTextManager::drawAllFloatingTexts(DimensionType dimension) {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            ft.debugText->draw(dimension);
+            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, dimension);
         }
     }
 }
@@ -94,7 +104,7 @@ void FloatingTextManager::drawAllFloatingTexts(DimensionType dimension) {
 void FloatingTextManager::removeAllFloatingTexts(DimensionType dimension) {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            ft.debugText->remove(dimension);
+            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, dimension);
         }
     }
 }
@@ -103,7 +113,7 @@ void FloatingTextManager::removeAllFloatingTexts(DimensionType dimension) {
 void FloatingTextManager::drawAllFloatingTexts() {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.debugText) {
-            ft.debugText->draw();
+            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText);
         }
     }
 }
@@ -112,7 +122,7 @@ void FloatingTextManager::drawAllFloatingTexts() {
 void FloatingTextManager::removeAllFloatingTexts() {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.debugText) {
-            ft.debugText->remove();
+            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText);
         }
     }
     mFloatingTexts.clear();
@@ -180,39 +190,14 @@ void registerPlayerConnectionListener() {
             if (!FloatingTextManager::getInstance().mIsLoaded) {
                 FloatingTextManager::getInstance().loadAllLockedChests();
             }
-            // 玩家加入时，绘制所有悬浮字给该玩家
-            FloatingTextManager::getInstance().drawAllFloatingTexts(player);
+
+            //
+            FloatingTextManager::getInstance()
+                .drawAllFloatingTexts(player);
             logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字。", player.getRealName());
         }
     );
 }
 
-LL_AUTO_TYPE_INSTANCE_HOOK(
-    PlayerChangeDimensionHook2,       // Hook 名称
-    ll::memory::HookPriority::Normal, // Hook 优先级
-    Level,
-    &Level::$requestPlayerChangeDimension,
-    void,
-    Player&                  player,
-    ChangeDimensionRequest&& changeRequest
-) {
-    // 在玩家切换维度时，先移除旧维度的悬浮字，再绘制新维度的悬浮字
-    // 注意：这里需要知道玩家离开的维度和进入的维度
-    // changeRequest.mFromDimension 和 changeRequest.mToDimension
-    // 但是 DebugShapeDrawer 并没有提供按玩家和维度移除的功能，
-    // 只能移除所有或特定维度的所有玩家。
-    // 最好的做法是，当玩家切换维度时，移除该玩家的所有悬浮字，然后重新绘制新维度的悬浮字给该玩家。
 
-    // 移除该玩家的所有悬浮字
-    FloatingTextManager::getInstance().removeAllFloatingTexts(player);
-    logger.debug("玩家 {} 切换维度，已移除其所有悬浮字。", player.getRealName());
-
-    // 执行原始的维度切换逻辑
-    origin(player, std::move(changeRequest));
-
-    // 重新绘制新维度的悬浮字给该玩家
-    FloatingTextManager::getInstance().drawAllFloatingTexts(player);
-    logger.debug("玩家 {} 切换维度完成，已为其绘制新维度的悬浮字。", player.getRealName());
 }
-
-} // namespace CT

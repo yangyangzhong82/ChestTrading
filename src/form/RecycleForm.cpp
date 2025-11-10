@@ -1,6 +1,6 @@
 #include "RecycleForm.h"
-#include "LLMoney.h"  // 引入 LLMoney 库
-#include "LockForm.h" // 因为可能需要返回到 LockForm
+#include "LLMoney.h"  
+#include "LockForm.h" 
 #include "Utils/ItemTextureManager.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -8,11 +8,11 @@
 #include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo 用于获取XUID
+#include "ll/api/service/PlayerInfo.h" 
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/actor/player/Inventory.h"       // 引入 Inventory
-#include "mc/world/actor/player/PlayerInventory.h" // 引入 PlayerInventory
+#include "mc/world/actor/player/Inventory.h"       
+#include "mc/world/actor/player/PlayerInventory.h" 
 #include "mc/world/item/Item.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
@@ -25,8 +25,6 @@ namespace CT {
 using CT::NbtUtils::enchantToString;
 
 void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    // The old filters are not compatible with the new commission-based logic.
-    // We go directly to the item list, which will show all items that can be recycled.
     showRecycleItemListForm(player, pos, dimId, region);
 }
 
@@ -340,10 +338,17 @@ void showRecycleFinalConfirmForm(
                             p.sendMessage("§c回收失败，找不到商店主人。");
                             return;
                         }
+                        // 检查商店主人余额
                         if (LLMoney_Get(ownerInfo->xuid) < recyclePrice) {
                             p.sendMessage("§c回收失败，商店主人余额不足。");
                             return;
                         }
+                        
+                        // 扣除商店主人金钱
+                        LLMoney_Reduce(ownerInfo->xuid, recyclePrice);
+                        
+                        // 给予玩家金钱
+                        Economy::addMoney(p, recyclePrice);
 
                         // 4. 从玩家背包移除物品并放入箱子
                         auto* blockActor = region.getBlockEntity(pos);
@@ -466,11 +471,7 @@ void showRecycleFinalConfirmForm(
                         }
 
 
-                        // 5. 交易
-                        LLMoney_Reduce(ownerInfo->xuid, recyclePrice);
-                        Economy::addMoney(p, recyclePrice);
-
-                        // 6. 更新当前已回收数量
+                        // 5. 更新当前已回收数量
                         db.execute(
                             "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
                             recycleCount, dimId, pos.x, pos.y, pos.z, commissionNbtStr

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "debug_shape/DebugText.h"
+#include "debug_shape/api/IDebugShapeDrawer.h"
+#include "debug_shape/api/shape/IDebugText.h"
 #include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/dimension/Dimension.h"
@@ -17,7 +18,7 @@ struct ChestFloatingText {
     int                            dimId;
     std::string                    ownerUuid;
     std::string                    text;
-    std::shared_ptr<debug_shape::DebugText> debugText; // 对应的 DebugText 对象
+    std::unique_ptr<debug_shape::IDebugText> debugText; // 对应的 DebugText 对象
 
     // 构造函数
     ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t)

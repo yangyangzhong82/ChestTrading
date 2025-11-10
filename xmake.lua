@@ -1,12 +1,13 @@
 add_rules("mode.debug", "mode.release")
 
 add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
+add_repositories("yyz-repo https://github.com/yangyangzhong82/xmake-repo.git")
 
 -- add_requires("levilamina x.x.x") for a specific version
 -- add_requires("levilamina develop") to use develop version
 -- please note that you should add bdslibrary yourself if using dev version
 if is_config("target_type", "server") then
-    add_requires("levilamina 1.6.0", {configs = {target_type = "server"}})
+    add_requires("levilamina 1.7.0", {configs = {target_type = "server"}})
 else
     add_requires("levilamina", {configs = {target_type = "client"}})
 end
@@ -14,7 +15,6 @@ end
 add_requires("levibuildscript")
 add_requires("sqlite3")
 add_requires("legacymoney")
-add_repositories("engsr6982-repo https://github.com/engsr6982/xmake-repo.git")
 
 add_requires("debug_shape")
 if not has_config("vs_runtime") then
