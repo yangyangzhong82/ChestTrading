@@ -6,6 +6,8 @@
 #include "mc/platform/UUID.h"
 #include "mc/world/level/BlockSource.h"                 // 引入 BlockSource
 #include "mc/world/level/block/actor/ChestBlockActor.h" // 引入 ChestBlockActor
+#include "mc/world/item/ItemStack.h"                    // 引入 ItemStack
+#include "mc/nbt/CompoundTag.h"                         // 引入 CompoundTag
 
 
 namespace CT {
@@ -115,7 +117,12 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
             text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
             break;
         }
-        FloatingTextManager::getInstance().addOrUpdateFloatingText(pos, dimId, player_uuid, text);
+        FloatingTextManager::getInstance().addOrUpdateFloatingText(pos, dimId, player_uuid, text, type);
+
+        // 如果是商店或回收商店，更新 FloatingTextManager 中的物品列表
+        if (type == ChestType::Shop || type == ChestType::RecycleShop) {
+            FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, type);
+        }
 
         auto* blockActor = region.getBlockEntity(pos);
         if (blockActor) {
@@ -132,7 +139,12 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
                     pairedChestPos.z,
                     static_cast<int>(type)
                 );
-                FloatingTextManager::getInstance().addOrUpdateFloatingText(pairedChestPos, dimId, player_uuid, text);
+                FloatingTextManager::getInstance().addOrUpdateFloatingText(pairedChestPos, dimId, player_uuid, text, type);
+
+                // 如果是商店或回收商店，更新配对箱子的物品列表
+                if (type == ChestType::Shop || type == ChestType::RecycleShop) {
+                    FloatingTextManager::getInstance().updateShopFloatingText(pairedChestPos, dimId, type);
+                }
             }
         }
     }

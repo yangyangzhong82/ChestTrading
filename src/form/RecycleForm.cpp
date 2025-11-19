@@ -1,6 +1,6 @@
 #include "RecycleForm.h"
-#include "LLMoney.h"  
-#include "LockForm.h" 
+#include "LLMoney.h"
+#include "LockForm.h"
 #include "Utils/ItemTextureManager.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -8,11 +8,11 @@
 #include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/PlayerInfo.h" 
+#include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/actor/player/Inventory.h"       
-#include "mc/world/actor/player/PlayerInventory.h" 
+#include "mc/world/actor/player/Inventory.h"
+#include "mc/world/actor/player/PlayerInventory.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
@@ -288,7 +288,17 @@ void showRecycleConfirmForm(
             long long recyclePrice = (long long)unitPrice * recycleCount;
 
             // 跳转到最终确认表单
-            showRecycleFinalConfirmForm(p, item, pos, dimId, region, recycleCount, recyclePrice, commissionNbtStr, unitPrice);
+            showRecycleFinalConfirmForm(
+                p,
+                item,
+                pos,
+                dimId,
+                region,
+                recycleCount,
+                recyclePrice,
+                commissionNbtStr,
+                unitPrice
+            );
         }
     );
 }
@@ -310,185 +320,207 @@ void showRecycleFinalConfirmForm(
     ll::form::SimpleForm fm;
     fm.setTitle("确认回收");
     fm.setContent(
-        "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + " 吗？\n"
-        "你将获得 §6" + std::to_string(recyclePrice) + "§r 金币。\n"
-        "回收后，你的背包将会刷新。"
+        "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount)
+        + " 吗？\n"
+          "你将获得 §6"
+        + std::to_string(recyclePrice)
+        + "§r 金币。\n"
+          "回收后，你的背包将会刷新。"
     );
 
-    fm.appendButton("§a确认回收",
-                    [&player,
-                     item,
-                     pos,
-                     dimId,
-                     &region,
-                     recycleCount,
-                     recyclePrice,
-                     commissionNbtStr,
-                     unitPrice](Player& p) {
-                        // 2. 获取箱子所有者
-                        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
-                        if (!isLocked) {
-                            p.sendMessage("§c回收失败，此箱子不再是回收商店。");
-                            return;
-                        }
+    fm.appendButton(
+        "§a确认回收",
+        [&player, item, pos, dimId, &region, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
+            // 2. 获取箱子所有者
+            auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
+            if (!isLocked) {
+                p.sendMessage("§c回收失败，此箱子不再是回收商店。");
+                return;
+            }
 
-                        // 3. 扣除箱主金钱
-                        auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
-                        if (!ownerInfo) {
-                            p.sendMessage("§c回收失败，找不到商店主人。");
-                            return;
-                        }
-                        // 检查商店主人余额
-                        if (LLMoney_Get(ownerInfo->xuid) < recyclePrice) {
-                            p.sendMessage("§c回收失败，商店主人余额不足。");
-                            return;
-                        }
-                        
-                        // 扣除商店主人金钱
-                        LLMoney_Reduce(ownerInfo->xuid, recyclePrice);
-                        
-                        // 给予玩家金钱
-                        Economy::addMoney(p, recyclePrice);
+            // 3. 扣除箱主金钱
+            auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
+            if (!ownerInfo) {
+                p.sendMessage("§c回收失败，找不到商店主人。");
+                return;
+            }
+            // 检查商店主人余额
+            if (LLMoney_Get(ownerInfo->xuid) < recyclePrice) {
+                p.sendMessage("§c回收失败，商店主人余额不足。");
+                return;
+            }
 
-                        // 4. 从玩家背包移除物品并放入箱子
-                        auto* blockActor = region.getBlockEntity(pos);
-                        if (!blockActor) {
-                            p.sendMessage("§c回收失败，无法获取箱子实体。");
-                            return;
-                        }
-                        auto chest = static_cast<class ChestBlockActor*>(blockActor);
-                        if (!chest) {
-                            p.sendMessage("§c回收失败，无法获取箱子实体。");
-                            return;
-                        }
+            // 扣除商店主人金钱
+            LLMoney_Reduce(ownerInfo->xuid, recyclePrice);
 
-                        // 预检查箱子容量
-                        int chestAvailableSpace = 0; // 可以容纳的物品总数
-                        // 遍历箱子，计算可以堆叠的物品数量和空槽位数量
-                        for (int i = 0; i < chest->getContainerSize(); ++i) {
-                            const auto& chestItemInSlot = chest->getItem(i);
-                            if (chestItemInSlot.isNull()) {
-                                // 空槽位，可以放入一个完整堆叠
-                                chestAvailableSpace += item.getMaxStackSize();
-                            } else {
-                                // 如果物品类型匹配且未满堆叠，可以堆叠
-                                auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
-                                if (chestItemNbt) {
-                                    auto chestItemNbtForComparison = chestItemNbt->clone();
-                                    if (chestItemNbtForComparison->contains("Count")) {
-                                        chestItemNbtForComparison->erase("Count");
-                                    }
-                                    std::string currentItemNbtStr = CT::NbtUtils::toSNBT(*chestItemNbtForComparison);
+            // 给予玩家金钱
+            Economy::addMoney(p, recyclePrice);
 
-                                    if (currentItemNbtStr == commissionNbtStr) {
-                                        chestAvailableSpace += (item.getMaxStackSize() - chestItemInSlot.mCount);
-                                    }
-                                }
+            // 4. 从玩家背包移除物品并放入箱子
+            auto* blockActor = region.getBlockEntity(pos);
+            if (!blockActor) {
+                p.sendMessage("§c回收失败，无法获取箱子实体。");
+                return;
+            }
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+            if (!chest) {
+                p.sendMessage("§c回收失败，无法获取箱子实体。");
+                return;
+            }
+
+            // 预检查箱子容量
+            int chestAvailableSpace = 0; // 可以容纳的物品总数
+            // 遍历箱子，计算可以堆叠的物品数量和空槽位数量
+            for (int i = 0; i < chest->getContainerSize(); ++i) {
+                const auto& chestItemInSlot = chest->getItem(i);
+                if (chestItemInSlot.isNull()) {
+                    // 空槽位，可以放入一个完整堆叠
+                    chestAvailableSpace += item.getMaxStackSize();
+                } else {
+                    // 如果物品类型匹配且未满堆叠，可以堆叠
+                    auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
+                    if (chestItemNbt) {
+                        auto chestItemNbtForComparison = chestItemNbt->clone();
+                        if (chestItemNbtForComparison->contains("Count")) {
+                            chestItemNbtForComparison->erase("Count");
+                        }
+                        std::string currentItemNbtStr = CT::NbtUtils::toSNBT(*chestItemNbtForComparison);
+
+                        if (currentItemNbtStr == commissionNbtStr) {
+                            chestAvailableSpace += (item.getMaxStackSize() - chestItemInSlot.mCount);
+                        }
+                    }
+                }
+            }
+
+            if (chestAvailableSpace < recycleCount) {
+                p.sendMessage("§c回收失败，箱子空间不足，请清理箱子后再试。");
+                return;
+            }
+
+            // 重新获取委托条件，包括最大回收数量和当前已回收数量
+            auto& db         = Sqlite3Wrapper::getInstance();
+            auto  commission = db.query(
+                "SELECT min_durability, required_enchant_id, required_enchant_level, max_recycle_count, "
+                 "current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z "
+                 "= ? AND item_nbt = ?",
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z,
+                commissionNbtStr
+            );
+            if (commission.empty()) {
+                p.sendMessage("§c回收失败，无法找到回收委托。");
+                return;
+            }
+            int minDurability        = std::stoi(commission[0][0]);
+            int requiredEnchantId    = std::stoi(commission[0][1]);
+            int requiredEnchantLevel = std::stoi(commission[0][2]);
+            int maxRecycleCount      = std::stoi(commission[0][3]);
+            int currentRecycledCount = std::stoi(commission[0][4]);
+
+            // 检查是否达到最大回收数量
+            if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
+                p.sendMessage("§c回收失败，该委托已达到最大回收数量 (" + std::to_string(maxRecycleCount) + ")。");
+                return;
+            }
+
+            // 从玩家背包中移除物品
+            int   removedCount    = 0;
+            auto& playerInventory = p.getInventory();
+            for (int i = 0; i < playerInventory.getContainerSize() && removedCount < recycleCount; ++i) {
+                const auto& itemInSlot = playerInventory.getItem(i);
+                if (itemInSlot.isNull()) continue;
+
+                auto itemNbt = CT::NbtUtils::getItemNbt(itemInSlot);
+                if (!itemNbt) continue;
+                auto itemNbtForComparison = itemNbt->clone();
+                if (itemNbtForComparison->contains("Count")) {
+                    itemNbtForComparison->erase("Count");
+                }
+                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbtForComparison);
+
+                if (itemNbtStr == commissionNbtStr) {
+                    // 检查条件
+                    if (itemInSlot.isDamageableItem()) {
+                        int maxDamage         = itemInSlot.getItem()->getMaxDamage();
+                        int currentDamage     = itemInSlot.getDamageValue();
+                        int currentDurability = maxDamage - currentDamage;
+                        if (currentDurability < minDurability) continue;
+                    }
+                    if (requiredEnchantId != -1) {
+                        bool         hasEnchant = false;
+                        ItemEnchants enchants   = itemInSlot.constructItemEnchantsFromUserData();
+                        for (const auto& enchant : enchants.getAllEnchants()) {
+                            if ((int)enchant.mEnchantType == requiredEnchantId
+                                && enchant.mLevel >= requiredEnchantLevel) {
+                                hasEnchant = true;
+                                break;
                             }
                         }
+                        if (!hasEnchant) continue;
+                    }
 
-                        if (chestAvailableSpace < recycleCount) {
-                            p.sendMessage("§c回收失败，箱子空间不足，请清理箱子后再试。");
-                            return;
-                        }
+                    int countToRemove = std::min((int)itemInSlot.mCount, recycleCount - removedCount);
 
-                        // 重新获取委托条件，包括最大回收数量和当前已回收数量
-                        auto& db = Sqlite3Wrapper::getInstance();
-                        auto commission = db.query(
-                            "SELECT min_durability, required_enchant_id, required_enchant_level, max_recycle_count, current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
-                            dimId, pos.x, pos.y, pos.z, commissionNbtStr
-                        );
-                        if (commission.empty()) {
-                            p.sendMessage("§c回收失败，无法找到回收委托。");
-                            return;
-                        }
-                        int minDurability = std::stoi(commission[0][0]);
-                        int requiredEnchantId = std::stoi(commission[0][1]);
-                        int requiredEnchantLevel = std::stoi(commission[0][2]);
-                        int maxRecycleCount = std::stoi(commission[0][3]);
-                        int currentRecycledCount = std::stoi(commission[0][4]);
+                    ItemStack itemToRecycle = itemInSlot;
+                    itemToRecycle.setStackSize(countToRemove);
+                    if (!chest->addItem(itemToRecycle)) {
+                        p.sendMessage("§c回收失败，箱子已满。");
+                        // 如果有部分物品已经转移，需要回滚或处理
+                        return;
+                    }
 
-                        // 检查是否达到最大回收数量
-                        if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
-                            p.sendMessage("§c回收失败，该委托已达到最大回收数量 (" + std::to_string(maxRecycleCount) + ")。");
-                            return;
-                        }
+                    playerInventory.removeItem(i, countToRemove);
+                    removedCount += countToRemove;
+                }
+            }
 
-                        // 从玩家背包中移除物品
-                        int removedCount = 0;
-                        auto& playerInventory = p.getInventory();
-                        for (int i = 0; i < playerInventory.getContainerSize() && removedCount < recycleCount; ++i) {
-                            const auto& itemInSlot = playerInventory.getItem(i);
-                            if (itemInSlot.isNull()) continue;
-
-                            auto itemNbt = CT::NbtUtils::getItemNbt(itemInSlot);
-                            if (!itemNbt) continue;
-                            auto itemNbtForComparison = itemNbt->clone();
-                            if (itemNbtForComparison->contains("Count")) {
-                                itemNbtForComparison->erase("Count");
-                            }
-                            std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbtForComparison);
-
-                            if (itemNbtStr == commissionNbtStr) {
-                                // 检查条件
-                                if (itemInSlot.isDamageableItem()) {
-                                    int maxDamage = itemInSlot.getItem()->getMaxDamage();
-                                    int currentDamage = itemInSlot.getDamageValue();
-                                    int currentDurability = maxDamage - currentDamage;
-                                    if (currentDurability < minDurability) continue;
-                                }
-                                if (requiredEnchantId != -1) {
-                                    bool hasEnchant = false;
-                                    ItemEnchants enchants = itemInSlot.constructItemEnchantsFromUserData();
-                                    for (const auto& enchant : enchants.getAllEnchants()) {
-                                        if ((int)enchant.mEnchantType == requiredEnchantId && enchant.mLevel >= requiredEnchantLevel) {
-                                            hasEnchant = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!hasEnchant) continue;
-                                }
-
-                                int countToRemove = std::min((int)itemInSlot.mCount, recycleCount - removedCount);
-                                
-                                ItemStack itemToRecycle = itemInSlot;
-                                itemToRecycle.setStackSize(countToRemove);
-                                if (!chest->addItem(itemToRecycle)) {
-                                    p.sendMessage("§c回收失败，箱子已满。");
-                                    // 如果有部分物品已经转移，需要回滚或处理
-                                    return;
-                                }
-
-                                playerInventory.removeItem(i, countToRemove);
-                                removedCount += countToRemove;
-                            }
-                        }
-
-                        if (removedCount < recycleCount) {
-                            p.sendMessage("§c回收失败，背包中可回收物品不足。");
-                            // 这里需要处理部分回收的情况，比如回滚箱子操作
-                            return;
-                        }
+            if (removedCount < recycleCount) {
+                p.sendMessage("§c回收失败，背包中可回收物品不足。");
+                // 这里需要处理部分回收的情况，比如回滚箱子操作
+                return;
+            }
 
 
-                        // 5. 更新当前已回收数量
-                        db.execute(
-                            "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
-                            recycleCount, dimId, pos.x, pos.y, pos.z, commissionNbtStr
-                        );
+            // 5. 更新当前已回收数量
+            db.execute(
+                "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? "
+                "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                recycleCount,
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z,
+                commissionNbtStr
+            );
 
-                        p.sendMessage(
-                            "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
-                            + std::to_string(recyclePrice) + "§a 金币。"
-                        );
-                        p.refreshInventory(); // 刷新玩家背包
+            p.sendMessage(
+                "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
+                + std::to_string(recyclePrice) + "§a 金币。"
+            );
+            p.refreshInventory(); // 刷新玩家背包
 
-                        showRecycleForm(p, pos, dimId, region); // 返回回收商店主界面
-                    });
+            showRecycleForm(p, pos, dimId, region); // 返回回收商店主界面
+        }
+    );
 
-    fm.appendButton("§c取消", [&player, item, pos, dimId, &region, actualSlotIndex = -1, unitPrice, commissionNbtStr](Player& p) {
-        showRecycleConfirmForm(p, item, pos, dimId, region, actualSlotIndex, unitPrice, commissionNbtStr); // 返回上一个表单
-    });
+    fm.appendButton(
+        "§c取消",
+        [&player, item, pos, dimId, &region, actualSlotIndex = -1, unitPrice, commissionNbtStr](Player& p) {
+            showRecycleConfirmForm(
+                p,
+                item,
+                pos,
+                dimId,
+                region,
+                actualSlotIndex,
+                unitPrice,
+                commissionNbtStr
+            ); // 返回上一个表单
+        }
+    );
     fm.sendTo(player);
 }
 
@@ -678,7 +710,10 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         enchantLevel,
                         maxRecycleCount
                     )) {
-                    p.sendMessage("§a回收委托设置成功！价格: " + std::to_string(price) + "，最大回收数量: " + std::to_string(maxRecycleCount));
+                    p.sendMessage(
+                        "§a回收委托设置成功！价格: " + std::to_string(price)
+                        + "，最大回收数量: " + std::to_string(maxRecycleCount)
+                    );
                 } else {
                     p.sendMessage("§c回收委托设置失败！请联系管理员检查数据库表结构。");
                 }

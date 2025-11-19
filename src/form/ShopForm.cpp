@@ -210,12 +210,8 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     return;
                 }
 
-                // 获取物品NBT，并移除数量标签，以便进行物品类型聚合和数据库存储
-                auto itemNbtForStorage = itemNbt->clone();
-                if (itemNbtForStorage->contains("Count")) {
-                    itemNbtForStorage->erase("Count");
-                }
-                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbtForStorage);
+                // 获取物品NBT，直接存储完整的NBT字符串
+                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
 
                 // 重新计算箱子中该物品的总数，使用与数据库键相同的NBT字符串比较逻辑
                 int   totalCountInChest = 0;
@@ -259,6 +255,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                         + "，数量: " + std::to_string(dbCount)
                     );
                     logger.info("showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.", item.getName(), price, dbCount);
+                    FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop); // 更新悬浮字
                 } else {
                     p.sendMessage("§c物品价格和数量设置失败！");
                     logger.error("showShopItemPriceForm: Failed to set item '{}' price and count. Price: {}, Count: {}.", item.getName(), price, dbCount);
@@ -361,6 +358,7 @@ void showShopItemManageForm(
                 itemNbtStr
             )) {
             p.sendMessage("§a商品已成功移除！");
+            FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop); // 更新悬浮字
         } else {
             p.sendMessage("§c商品移除失败！");
         }
@@ -787,6 +785,7 @@ void showShopItemBuyForm(
                     "§a购买成功！你花费了 §6" + std::to_string(totalPrice) + "§a 金币购买了 "
                     + std::string(item.getName()) + " x" + std::to_string(buyCount) + "。"
                 );
+                FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop); // 更新悬浮字
             } else {
                 p.sendMessage("§c购买失败，金币扣除失败。");
                 logger.error("showShopItemBuyForm: Failed to reduce money for player {}.", p.getRealName());

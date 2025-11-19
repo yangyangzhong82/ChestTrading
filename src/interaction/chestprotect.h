@@ -10,14 +10,6 @@
 
 namespace CT {
 
-enum class ChestType {
-    Locked      = 0, // 普通锁
-    RecycleShop = 1, // 回收商店
-    Shop        = 2, // 商店
-    Public      = 3  // 公共箱子
-};
-
-
 // 检查箱子状态，返回是否锁定、主人UUID和箱子类型
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region);
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId);

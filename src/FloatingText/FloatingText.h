@@ -2,44 +2,70 @@
 
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
+#include "ll/api/coro/CoroTask.h"
 #include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
+#include "ll/api/thread/ServerThreadExecutor.h"
+#include "ll/api/coro/SleepAwaiter.h" // 引入 sleep
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include <map>
 #include <memory>
+#include <optional> // 引入 optional
 #include <string>
 #include <vector>
 
 namespace CT {
-
+enum class ChestType {
+    Locked       = 0,
+    Public       = 1,
+    Shop         = 2,
+    RecycleShop  = 3,
+    Invalid      = 4, // 无效或未定义
+    AdminShop    = 5,
+    AdminRecycle = 6
+};
 // 存储每个箱子的悬浮字信息
 struct ChestFloatingText {
-    BlockPos                       pos;
-    int                            dimId;
-    std::string                    ownerUuid;
-    std::string                    text;
+    BlockPos                                 pos;
+    int                                      dimId;
+    std::string                              ownerUuid;
+    std::string                              text;
     std::unique_ptr<debug_shape::IDebugText> debugText; // 对应的 DebugText 对象
+    ChestType                                type;
+    bool                                     isDynamic        = false;
+    std::vector<std::string>                 itemNames;
+    size_t                                   currentItemIndex = 0;
+
 
     // 构造函数
-    ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t)
-        : pos(p), dimId(d), ownerUuid(std::move(uuid)), text(std::move(t)) {}
+    ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct)
+    : pos(p),
+      dimId(d),
+      ownerUuid(std::move(uuid)),
+      text(std::move(t)),
+      type(ct) {}
 };
 
 // 悬浮字管理器
 class FloatingTextManager {
-private:
+public:
     // 使用 map 存储悬浮字，键为 (dimId, BlockPos)
     std::map<std::pair<int, BlockPos>, ChestFloatingText> mFloatingTexts;
-
+    std::optional<ll::coro::CoroTask<>>                   mUpdateTask; // 用于更新悬浮字的协程任务
+    bool                                                  mIsLoaded = false; // 标志，指示是否已从数据库加载悬浮字
 
     FloatingTextManager() = default; // 私有构造函数，实现单例模式
+
+    void startDynamicTextUpdateLoop(); // 启动动态更新循环
+
+private:
+    ll::coro::CoroTask<> dynamicTextUpdateCoroutine(); // 新增协程函数声明
 
 public:
     // 获取单例实例
     static FloatingTextManager& getInstance();
-    bool                        mIsLoaded = false; // 标志，指示是否已从数据库加载悬浮字
     // 添加或更新一个箱子的悬浮字
-    void addOrUpdateFloatingText(BlockPos pos, int dimId, const std::string& ownerUuid, const std::string& text);
+    void addOrUpdateFloatingText(BlockPos pos, int dimId, const std::string& ownerUuid, const std::string& text, ChestType type);
 
     // 移除一个箱子的悬浮字
     void removeFloatingText(BlockPos pos, int dimId);
@@ -64,6 +90,9 @@ public:
 
     // 从数据库加载所有已锁定的箱子并创建悬浮字
     void loadAllLockedChests();
+
+    // 更新商店/回收商店的悬浮字物品列表
+    void updateShopFloatingText(BlockPos pos, int dimId, ChestType type);
 };
 
 void registerPlayerConnectionListener();

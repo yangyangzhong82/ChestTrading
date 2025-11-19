@@ -6,7 +6,7 @@
 #include "interaction/event.h"
 #include "ll/api/Config.h"
 #include "ll/api/mod/RegisterHelper.h"
-
+#include "Config/ConfigManager.h"
 namespace CT {
 
 Entry& Entry::getInstance() {
@@ -17,11 +17,23 @@ Entry& Entry::getInstance() {
 bool Entry::load() {
     getSelf().getLogger().debug("Loading...");
     // Code for loading the mod goes here.
+    auto configPath = getSelf().getConfigDir();
+    if (!std::filesystem::exists(configPath)) {
+        std::filesystem::create_directories(configPath);
+    }
+    configPath /= "config.json";
+    configPath.make_preferred();
+
+    if (!ConfigManager::getInstance().load(configPath.string())) {
+        getSelf().getLogger().error("Failed to load config file!");
+        return false;
+    }
     return true;
 }
 
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
+    getSelf().getLogger().setLevel(ll::io::LogLevel::Trace);
     // Code for enabling the mod goes here.
     // 优先加载用户指定的 texture_path.json
     std::string customTexturePath = "texture_path.json";
@@ -80,9 +92,7 @@ bool Entry::enable() {
         } else {
             getSelf().getLogger().error("Failed to create table: shared_chests");
         }
-
-        // 悬浮字将在第一个玩家加入时加载
-
+        FloatingTextManager::getInstance().loadAllLockedChests(); // 在模组启用时加载所有悬浮字
     } else {
         getSelf().getLogger().error("Failed to open database: " + db_path);
         return false; // 数据库打开失败，模组启用失败
