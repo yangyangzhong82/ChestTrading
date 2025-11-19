@@ -113,6 +113,43 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     if (!execute_unsafe(create_recycle_shop_items_table)) {
         return false;
     }
+    // 创建回收记录表
+    const char* create_recycle_records_table = "CREATE TABLE IF NOT EXISTS recycle_records ("
+                                               "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                               "dim_id INTEGER NOT NULL,"
+                                               "pos_x INTEGER NOT NULL,"
+                                               "pos_y INTEGER NOT NULL,"
+                                               "pos_z INTEGER NOT NULL,"
+                                               "item_nbt TEXT NOT NULL,"
+                                               "recycler_uuid TEXT NOT NULL,"
+                                               "recycle_count INTEGER NOT NULL,"
+                                               "total_price INTEGER NOT NULL,"
+                                               "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                               "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_nbt) REFERENCES "
+                                               "recycle_shop_items(dim_id, pos_x, pos_y, pos_z, item_nbt) ON DELETE "
+                                               "CASCADE);";
+    if (!execute_unsafe(create_recycle_records_table)) {
+        return false;
+    }
+    // 创建购买记录表
+    const char* create_purchase_records_table = "CREATE TABLE IF NOT EXISTS purchase_records ("
+                                                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                "dim_id INTEGER NOT NULL,"
+                                                "pos_x INTEGER NOT NULL,"
+                                                "pos_y INTEGER NOT NULL,"
+                                                "pos_z INTEGER NOT NULL,"
+                                                "item_nbt TEXT NOT NULL,"
+                                                "buyer_uuid TEXT NOT NULL,"
+                                                "purchase_count INTEGER NOT NULL,"
+                                                "total_price INTEGER NOT NULL,"
+                                                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                                "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_nbt) REFERENCES "
+                                                "shop_items(dim_id, pos_x, pos_y, pos_z, item_nbt) ON DELETE "
+                                                "CASCADE);";
+    if (!execute_unsafe(create_purchase_records_table)) {
+        return false;
+    }
+
 
     // 检查 recycle_shop_items 表是否缺少新字段，如果缺少则添加
     std::vector<std::vector<std::string>> recycle_tables_info = query("PRAGMA table_info(recycle_shop_items);");

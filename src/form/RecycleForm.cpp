@@ -496,6 +496,20 @@ void showRecycleFinalConfirmForm(
                 commissionNbtStr
             );
 
+            // 6. 记录回收事件
+            db.execute(
+                "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_nbt, recycler_uuid, recycle_count, "
+                "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z,
+                commissionNbtStr,
+                p.getUuid().asString(),
+                recycleCount,
+                (int)recyclePrice
+            );
+
             p.sendMessage(
                 "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
                 + std::to_string(recyclePrice) + "§a 金币。"
@@ -526,6 +540,15 @@ void showRecycleFinalConfirmForm(
 
 void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
+void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showCommissionDetailsForm(
+    Player&            player,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region,
+    const std::string& commissionNbtStr
+);
+
 
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
@@ -537,9 +560,7 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
     });
 
     fm.appendButton("查看回收委托", [&player, pos, dimId, &region](Player& p) {
-        // TODO: 实现查看现有回收委托的表单
-        p.sendMessage("§a功能待实现：查看回收委托");
-        showRecycleShopManageForm(p, pos, dimId, region); // 返回管理界面
+        showViewRecycleCommissionsForm(p, pos, dimId, region);
     });
 
     fm.appendButton("删除回收委托", [&player, pos, dimId, &region](Player& p) {
@@ -558,6 +579,121 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
 
     fm.sendTo(player);
 }
+
+void showCommissionDetailsForm(
+    Player&            player,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region,
+    const std::string& commissionNbtStr
+) {
+    ll::form::SimpleForm fm;
+    fm.setTitle("回收记录详情");
+
+    auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
+    if (!itemNbt) {
+        player.sendMessage("§c无法加载物品信息。");
+        return;
+    }
+    itemNbt->at("Count") = ByteTag(1);
+    auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+    if (!itemPtr) {
+        player.sendMessage("§c无法加载物品信息。");
+        return;
+    }
+    ItemStack item = *itemPtr;
+
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  records = db.query(
+        "SELECT recycler_uuid, recycle_count, total_price, timestamp FROM recycle_records WHERE dim_id = ? AND pos_x "
+        "= ? AND pos_y = ? AND pos_z = ? AND item_nbt = ? ORDER BY timestamp DESC",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        commissionNbtStr
+    );
+
+    if (records.empty()) {
+        fm.setContent("物品: " + std::string(item.getName()) + "\n\n§7该委托暂无回收记录。");
+    } else {
+        std::string content = "物品: " + std::string(item.getName()) + "\n\n§a最近的回收记录:\n";
+        for (const auto& row : records) {
+            std::string recyclerUuid = row[0];
+            std::string recycleCount = row[1];
+            std::string totalPrice   = row[2];
+            std::string timestamp    = row[3];
+
+            std::string recyclerName = recyclerUuid; // 默认显示UUID
+            auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(recyclerUuid));
+            if (playerInfo) {
+                recyclerName = playerInfo->name;
+            }
+
+            content += "§f" + timestamp + " - " + recyclerName + " 回收了 " + recycleCount + " 个，花费 " + totalPrice
+                     + " 金币\n";
+        }
+        fm.setContent(content);
+    }
+
+    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+        showViewRecycleCommissionsForm(p, pos, dimId, region);
+    });
+
+    fm.sendTo(player);
+}
+
+void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::SimpleForm fm;
+    fm.setTitle("查看回收委托");
+
+    auto& db          = Sqlite3Wrapper::getInstance();
+    auto  commissions = db.query(
+        "SELECT item_nbt, price, max_recycle_count, current_recycled_count FROM recycle_shop_items WHERE dim_id = ? "
+        "AND pos_x = ? AND pos_y = ? AND pos_z = ?",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    if (commissions.empty()) {
+        fm.setContent("该商店没有设置任何回收委托。");
+    } else {
+        fm.setContent("点击查看每个委托的详细回收记录：");
+        for (const auto& row : commissions) {
+            std::string itemNbtStr           = row[0];
+            int         price                = std::stoi(row[1]);
+            int         maxRecycleCount      = std::stoi(row[2]);
+            int         currentRecycledCount = std::stoi(row[3]);
+
+            auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
+            if (!itemNbt) continue;
+            itemNbt->at("Count") = ByteTag(1);
+            auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+            if (!itemPtr) continue;
+            ItemStack item = *itemPtr;
+
+            std::string progress = "§7(无限)";
+            if (maxRecycleCount > 0) {
+                progress = "§a[" + std::to_string(currentRecycledCount) + " / " + std::to_string(maxRecycleCount)
+                         + "]§r";
+            }
+
+            std::string buttonText =
+                std::string(item.getName()) + " §e" + progress + " §6[单价: " + std::to_string(price) + "]§r";
+            fm.appendButton(buttonText, [&player, pos, dimId, &region, itemNbtStr](Player& p) {
+                showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
+            });
+        }
+    }
+
+    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+        showRecycleShopManageForm(p, pos, dimId, region);
+    });
+    fm.sendTo(player);
+}
+
 
 void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;

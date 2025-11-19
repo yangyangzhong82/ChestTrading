@@ -373,6 +373,8 @@ void showShopItemManageForm(
 }
 
 
+void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("管理商店箱子");
@@ -479,6 +481,10 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         fm.setContent("箱子是空的。\n");
         logger.debug("showShopChestManageForm: Chest at pos ({},{},{}) dim {} is empty.", pos.x, pos.y, pos.z, dimId);
     }
+
+    fm.appendButton("查看购买记录", [&player, pos, dimId, &region](Player& p) {
+        showPurchaseRecordsForm(p, pos, dimId, region);
+    });
 
     fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
         // 返回到箱子管理界面，这里需要根据实际情况调整
@@ -781,6 +787,20 @@ void showShopItemBuyForm(
                 );
                 logger.debug("showShopItemBuyForm: Updated database db_count for item {}. Reduced by {}.", item.getName(), buyCount);
 
+                // 记录购买事件
+                db.execute(
+                    "INSERT INTO purchase_records (dim_id, pos_x, pos_y, pos_z, item_nbt, buyer_uuid, purchase_count, "
+                    "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    dimId,
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    itemNbtStr,
+                    p.getUuid().asString(),
+                    buyCount,
+                    (int)totalPrice
+                );
+
                 p.sendMessage(
                     "§a购买成功！你花费了 §6" + std::to_string(totalPrice) + "§a 金币购买了 "
                     + std::string(item.getName()) + " x" + std::to_string(buyCount) + "。"
@@ -794,6 +814,60 @@ void showShopItemBuyForm(
         }
     );
 
+}
+
+void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::SimpleForm fm;
+    fm.setTitle("购买记录");
+
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  records = db.query(
+        "SELECT item_nbt, buyer_uuid, purchase_count, total_price, timestamp FROM purchase_records WHERE dim_id = ? "
+        "AND pos_x = ? AND pos_y = ? AND pos_z = ? ORDER BY timestamp DESC",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    if (records.empty()) {
+        fm.setContent("§7该商店暂无购买记录。");
+    } else {
+        std::string content = "§a最近的购买记录:\n";
+        for (const auto& row : records) {
+            std::string itemNbtStr     = row[0];
+            std::string buyerUuid      = row[1];
+            std::string purchaseCount  = row[2];
+            std::string totalPrice     = row[3];
+            std::string timestamp      = row[4];
+
+            auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
+            std::string itemName = "未知物品";
+            if (itemNbt) {
+                 itemNbt->at("Count") = ByteTag(1);
+                 auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
+                 if (itemPtr) {
+                    itemName = itemPtr->getName();
+                 }
+            }
+
+            std::string buyerName = buyerUuid; // 默认显示UUID
+            auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(buyerUuid));
+            if (playerInfo) {
+                buyerName = playerInfo->name;
+            }
+
+            content += "§f" + timestamp + " - " + buyerName + " 购买了 " + itemName + " x" + purchaseCount
+                     + "，花费 " + totalPrice + " 金币\n";
+        }
+        fm.setContent(content);
+    }
+
+    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+        showShopChestManageForm(p, pos, dimId, region);
+    });
+
+    fm.sendTo(player);
 }
 
 } // namespace CT
