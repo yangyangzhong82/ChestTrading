@@ -813,12 +813,9 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     return;
                 }
 
-                // 获取物品NBT，并移除数量标签，以便进行物品类型聚合和数据库存储
-                auto itemNbtForStorage = itemNbt->clone();
-                if (itemNbtForStorage->contains("Count")) {
-                    itemNbtForStorage->erase("Count");
-                }
-                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbtForStorage);
+                // 获取物品NBT，并移除数量和损坏标签，以便进行物品类型聚合和数据库存储
+                //复修复：不再删除标签，直接存储完整除BT
+                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
 
                 // 插入或更新到数据库
                 // 注意: 这需要数据库表 recycle_shop_items 包含 min_durability, required_enchant_id,
@@ -850,6 +847,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         "§a回收委托设置成功！价格: " + std::to_string(price)
                         + "，最大回收数量: " + std::to_string(maxRecycleCount)
                     );
+                    FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop); // 更新悬浮字
                 } else {
                     p.sendMessage("§c回收委托设置失败！请联系管理员检查数据库表结构。");
                 }

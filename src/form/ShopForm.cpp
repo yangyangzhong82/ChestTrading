@@ -210,8 +210,12 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     return;
                 }
 
-                // 获取物品NBT，直接存储完整的NBT字符串
-                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
+                // 获取物品NBT，并移除数量和损坏标签，以便进行物品类型聚合和数据库存储
+                auto itemNbtForStorage = itemNbt->clone();
+                if (itemNbtForStorage->contains("Count")) {
+                    itemNbtForStorage->erase("Count");
+                }
+                std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbtForStorage);
 
                 // 重新计算箱子中该物品的总数，使用与数据库键相同的NBT字符串比较逻辑
                 int   totalCountInChest = 0;

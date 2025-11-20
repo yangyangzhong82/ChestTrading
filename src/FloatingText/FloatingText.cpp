@@ -201,6 +201,7 @@ void FloatingTextManager::loadAllLockedChests() {
                         // 从 NBT 字符串解析物品名称
                         auto nbt = CompoundTag::fromSnbt(itemRow[0]);
                         if (nbt) {
+                            nbt->at("Count") = ByteTag(1); // 修复：为创建ItemStack添加Count标签
                             auto itemPtr = NbtUtils::createItemFromNbt(*nbt);
                             if (itemPtr && !itemPtr->isNull()) {
                                 std::string itemName = itemPtr->getName();
@@ -296,6 +297,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 logger.debug("updateShopFloatingText: Processing item NBT string: {}", itemRow[0]);
                 auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]); // 使用 CT::NbtUtils::parseSNBT
                 if (nbt) {
+                    nbt->at("Count") = ByteTag(1); // 修复：为创建ItemStack添加Count标签
                     auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt); // 使用 CT::NbtUtils::createItemFromNbt
                     if (itemPtr && !itemPtr->isNull()) {
                         std::string itemName = itemPtr->getName();
