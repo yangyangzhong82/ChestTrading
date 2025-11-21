@@ -53,110 +53,131 @@ bool Entry::enable() {
     std::string db_path = "ChestTrading.db"; // 数据库文件路径
     if (db.open(db_path)) {
         getSelf().getLogger().info("Successfully opened database: " + db_path);
-        // 创建 items 表（如果不存在）
-        std::string create_items_table_sql =
-            "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER);";
-        if (db.execute(create_items_table_sql)) {
-            getSelf().getLogger().info("Successfully created table: items");
+        
+        // 启用数据库缓存，设置缓存时间为 60 秒
+        db.enableCache(true);
+        db.setCacheTimeout(60);
+        getSelf().getLogger().info("Database cache enabled with 60s timeout.");
+
+        // 开启事务处理初始化操作
+        if (db.beginTransaction()) {
+            // 创建 items 表（如果不存在）
+            std::string create_items_table_sql =
+                "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, quantity INTEGER);";
+            if (db.execute(create_items_table_sql)) {
+                getSelf().getLogger().info("Successfully created table: items");
+            } else {
+                getSelf().getLogger().error("Failed to create table: items");
+            }
+
+            // 创建 chests 表（如果不存在）
+            std::string create_chests_table_sql = "CREATE TABLE IF NOT EXISTS chests ("
+                                                  "player_uuid TEXT NOT NULL,"
+                                                  "dim_id INTEGER NOT NULL,"
+                                                  "pos_x INTEGER NOT NULL,"
+                                                  "pos_y INTEGER NOT NULL,"
+                                                  "pos_z INTEGER NOT NULL,"
+                                                  "type INTEGER NOT NULL DEFAULT 0," // 添加 type 字段，默认为 0 (Locked)
+                                                  "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z)"
+                                                  ");";
+            if (db.execute(create_chests_table_sql)) {
+                getSelf().getLogger().info("Successfully created table: chests");
+            } else {
+                getSelf().getLogger().error("Failed to create table: chests");
+            }
+
+            // 创建 shared_chests 表（如果不存在）
+            std::string create_shared_chests_table_sql = "CREATE TABLE IF NOT EXISTS shared_chests ("
+                                                         "player_uuid TEXT NOT NULL,"
+                                                         "dim_id INTEGER NOT NULL,"
+                                                         "pos_x INTEGER NOT NULL,"
+                                                         "pos_y INTEGER NOT NULL,"
+                                                         "pos_z INTEGER NOT NULL,"
+                                                         "PRIMARY KEY (player_uuid, dim_id, pos_x, pos_y, pos_z)"
+                                                         ");";
+            if (db.execute(create_shared_chests_table_sql)) {
+                getSelf().getLogger().info("Successfully created table: shared_chests");
+            } else {
+                getSelf().getLogger().error("Failed to create table: shared_chests");
+            }
+            
+            // 提交事务
+            db.commit();
         } else {
-            getSelf().getLogger().error("Failed to create table: items");
+            getSelf().getLogger().error("Failed to begin transaction for database initialization.");
         }
 
-        // 创建 chests 表（如果不存在）
-        std::string create_chests_table_sql = "CREATE TABLE IF NOT EXISTS chests ("
-                                              "player_uuid TEXT NOT NULL,"
-                                              "dim_id INTEGER NOT NULL,"
-                                              "pos_x INTEGER NOT NULL,"
-                                              "pos_y INTEGER NOT NULL,"
-                                              "pos_z INTEGER NOT NULL,"
-                                              "type INTEGER NOT NULL DEFAULT 0," // 添加 type 字段，默认为 0 (Locked)
-                                              "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z)"
-                                              ");";
-        if (db.execute(create_chests_table_sql)) {
-            getSelf().getLogger().info("Successfully created table: chests");
-        } else {
-            getSelf().getLogger().error("Failed to create table: chests");
-        }
-
-        // 创建 shared_chests 表（如果不存在）
-        std::string create_shared_chests_table_sql = "CREATE TABLE IF NOT EXISTS shared_chests ("
-                                                     "player_uuid TEXT NOT NULL,"
-                                                     "dim_id INTEGER NOT NULL,"
-                                                     "pos_x INTEGER NOT NULL,"
-                                                     "pos_y INTEGER NOT NULL,"
-                                                     "pos_z INTEGER NOT NULL,"
-                                                     "PRIMARY KEY (player_uuid, dim_id, pos_x, pos_y, pos_z)"
-                                                     ");";
-        if (db.execute(create_shared_chests_table_sql)) {
-            getSelf().getLogger().info("Successfully created table: shared_chests");
-        } else {
-            getSelf().getLogger().error("Failed to create table: shared_chests");
-        }
         FloatingTextManager::getInstance().loadAllLockedChests(); // 在模组启用时加载所有悬浮字
 
         // --- Shop & Recycle Shop Tables ---
+        // 使用新的事务块处理商店表
+        if (db.beginTransaction()) {
+            // 创建 shop_items 表
+            std::string create_shop_items_sql =
+                "CREATE TABLE IF NOT EXISTS shop_items ("
+                "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
+                "slot INTEGER, item_nbt TEXT NOT NULL, price INTEGER NOT NULL, db_count INTEGER NOT NULL,"
+                "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt)"
+                ");";
+            if (!db.execute(create_shop_items_sql)) {
+                getSelf().getLogger().error("Failed to create table: shop_items");
+            }
 
-        // 创建 shop_items 表
-        std::string create_shop_items_sql =
-            "CREATE TABLE IF NOT EXISTS shop_items ("
-            "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-            "slot INTEGER, item_nbt TEXT NOT NULL, price INTEGER NOT NULL, db_count INTEGER NOT NULL,"
-            "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt)"
-            ");";
-        if (!db.execute(create_shop_items_sql)) {
-            getSelf().getLogger().error("Failed to create table: shop_items");
-        }
+            // 创建 purchase_records 表
+            std::string create_purchase_records_sql =
+                "CREATE TABLE IF NOT EXISTS purchase_records ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
+                "item_nbt TEXT NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price INTEGER "
+                "NOT NULL,"
+                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"
+                ");";
+            if (!db.execute(create_purchase_records_sql)) {
+                getSelf().getLogger().error("Failed to create table: purchase_records");
+            }
 
-        // 创建 purchase_records 表
-        std::string create_purchase_records_sql =
-            "CREATE TABLE IF NOT EXISTS purchase_records ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-            "item_nbt TEXT NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price INTEGER "
-            "NOT NULL,"
-            "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"
-            ");";
-        if (!db.execute(create_purchase_records_sql)) {
-            getSelf().getLogger().error("Failed to create table: purchase_records");
-        }
+            // 创建 recycle_shop_items 表 (使用新的 required_enchants 字段)
+            std::string create_recycle_shop_items_sql =
+                "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
+                "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
+                "item_nbt TEXT NOT NULL, price INTEGER NOT NULL, min_durability INTEGER DEFAULT 0,"
+                "required_enchants TEXT, " // 新增：存储附魔要求的JSON字符串
+                "max_recycle_count INTEGER DEFAULT 0, current_recycled_count INTEGER DEFAULT 0,"
+                "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt)"
+                ");";
+            if (!db.execute(create_recycle_shop_items_sql)) {
+                getSelf().getLogger().error("Failed to create table: recycle_shop_items");
+            } else {
+                // 检查旧的附魔列是否存在，如果存在则删除 (用于平滑升级)
+                // 注意：DDL操作在某些数据库中可能会隐式提交事务，但在SQLite中通常可以在事务中执行
+                if (db.isColumnExists("recycle_shop_items", "required_enchant_id")) {
+                    db.execute("ALTER TABLE recycle_shop_items DROP COLUMN required_enchant_id;");
+                    getSelf().getLogger().info("Dropped legacy column 'required_enchant_id' from 'recycle_shop_items'.");
+                }
+                if (db.isColumnExists("recycle_shop_items", "required_enchant_level")) {
+                    db.execute("ALTER TABLE recycle_shop_items DROP COLUMN required_enchant_level;");
+                     getSelf().getLogger().info("Dropped legacy column 'required_enchant_level' from 'recycle_shop_items'.");
+                }
+            }
 
-        // 创建 recycle_shop_items 表 (使用新的 required_enchants 字段)
-        std::string create_recycle_shop_items_sql =
-            "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
-            "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-            "item_nbt TEXT NOT NULL, price INTEGER NOT NULL, min_durability INTEGER DEFAULT 0,"
-            "required_enchants TEXT, " // 新增：存储附魔要求的JSON字符串
-            "max_recycle_count INTEGER DEFAULT 0, current_recycled_count INTEGER DEFAULT 0,"
-            "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt)"
-            ");";
-        if (!db.execute(create_recycle_shop_items_sql)) {
-            getSelf().getLogger().error("Failed to create table: recycle_shop_items");
+            // 创建 recycle_records 表
+            std::string create_recycle_records_sql =
+                "CREATE TABLE IF NOT EXISTS recycle_records ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
+                "item_nbt TEXT NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price INTEGER "
+                "NOT NULL,"
+                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"
+                ");";
+            if (!db.execute(create_recycle_records_sql)) {
+                getSelf().getLogger().error("Failed to create table: recycle_records");
+            }
+            
+            // 提交商店表相关的事务
+            db.commit();
         } else {
-            // 检查旧的附魔列是否存在，如果存在则删除 (用于平滑升级)
-            if (db.isColumnExists("recycle_shop_items", "required_enchant_id")) {
-                db.execute("ALTER TABLE recycle_shop_items DROP COLUMN required_enchant_id;");
-                getSelf().getLogger().info("Dropped legacy column 'required_enchant_id' from 'recycle_shop_items'.");
-            }
-            if (db.isColumnExists("recycle_shop_items", "required_enchant_level")) {
-                db.execute("ALTER TABLE recycle_shop_items DROP COLUMN required_enchant_level;");
-                 getSelf().getLogger().info("Dropped legacy column 'required_enchant_level' from 'recycle_shop_items'.");
-            }
+             getSelf().getLogger().error("Failed to begin transaction for shop tables initialization.");
         }
-
-
-        // 创建 recycle_records 表
-        std::string create_recycle_records_sql =
-            "CREATE TABLE IF NOT EXISTS recycle_records ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-            "item_nbt TEXT NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price INTEGER "
-            "NOT NULL,"
-            "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP"
-            ");";
-        if (!db.execute(create_recycle_records_sql)) {
-            getSelf().getLogger().error("Failed to create table: recycle_records");
-        }
-
 
     } else {
         getSelf().getLogger().error("Failed to open database: " + db_path);
@@ -174,8 +195,7 @@ bool Entry::disable() {
     return true;
 }
 
-
-
 } // namespace CT
+
 
 LL_REGISTER_MOD(CT::Entry, CT::Entry::getInstance());
