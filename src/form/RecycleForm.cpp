@@ -18,6 +18,7 @@
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "nlohmann/json.hpp"
 
 
 namespace CT {
@@ -36,8 +37,8 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     // 1. 获取此回收箱的所有回收委托
     auto& db          = Sqlite3Wrapper::getInstance();
     auto  commissions = db.query(
-        "SELECT item_nbt, price, min_durability, required_enchant_id, required_enchant_level FROM recycle_shop_items "
-         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?",
+        "SELECT item_nbt, price, min_durability, required_enchants FROM recycle_shop_items "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?",
         dimId,
         pos.x,
         pos.y,
@@ -49,11 +50,10 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     } else {
         fm.setContent("以下是该回收商店的所有回收委托：");
         for (const auto& row : commissions) {
-            std::string commissionNbtStr     = row[0];
-            int         price                = std::stoi(row[1]);
-            int         minDurability        = std::stoi(row[2]);
-            int         requiredEnchantId    = std::stoi(row[3]);
-            int         requiredEnchantLevel = std::stoi(row[4]);
+            std::string commissionNbtStr  = row[0];
+            int         price             = std::stoi(row[1]);
+            int         minDurability     = std::stoi(row[2]);
+            std::string requiredEnchantsStr = row[3];
 
             auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
             if (!itemNbt) {
@@ -80,9 +80,21 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             if (minDurability > 0) {
                 itemInfo += "\n§a最低耐久: " + std::to_string(minDurability) + "§r";
             }
-            if (requiredEnchantId != -1) {
-                itemInfo += "\n§d要求附魔: " + enchantToString((Enchant::Type)requiredEnchantId) + " "
-                          + std::to_string(requiredEnchantLevel) + "§r";
+            if (!requiredEnchantsStr.empty()) {
+                try {
+                    nlohmann::json enchants = nlohmann::json::parse(requiredEnchantsStr);
+                    if (enchants.is_array() && !enchants.empty()) {
+                        itemInfo += "\n§d要求附魔: ";
+                        for (const auto& enchant : enchants) {
+                            int id    = enchant["id"];
+                            int level = enchant["level"];
+                            itemInfo += enchantToString((Enchant::Type)id) + " " + std::to_string(level) + " ";
+                        }
+                        itemInfo += "§r";
+                    }
+                } catch (const std::exception& e) {
+                    logger.error("Failed to parse required_enchants JSON: {}", e.what());
+                }
             }
             buttonText += itemInfo;
 
@@ -148,8 +160,8 @@ void showRecycleConfirmForm(
     int   totalPlayerCount = 0;
     auto& db               = Sqlite3Wrapper::getInstance();
     auto  commission       = db.query(
-        "SELECT min_durability, required_enchant_id, required_enchant_level FROM recycle_shop_items WHERE dim_id = ? "
-               "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+        "SELECT min_durability, required_enchants FROM recycle_shop_items WHERE dim_id = ? "
+        "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
         dimId,
         pos.x,
         pos.y,
@@ -162,9 +174,17 @@ void showRecycleConfirmForm(
         return;
     }
 
-    int minDurability        = std::stoi(commission[0][0]);
-    int requiredEnchantId    = std::stoi(commission[0][1]);
-    int requiredEnchantLevel = std::stoi(commission[0][2]);
+    int         minDurability     = std::stoi(commission[0][0]);
+    std::string requiredEnchantsStr = commission[0][1];
+    nlohmann::json requiredEnchants;
+    if (!requiredEnchantsStr.empty()) {
+        try {
+            requiredEnchants = nlohmann::json::parse(requiredEnchantsStr);
+        } catch (const std::exception& e) {
+            logger.error("Failed to parse required_enchants JSON in showRecycleConfirmForm: {}", e.what());
+        }
+    }
+
 
     for (int i = 0; i < player.getInventory().getContainerSize(); ++i) {
         const auto& itemInSlot = player.getInventory().getItem(i);
@@ -187,16 +207,27 @@ void showRecycleConfirmForm(
                 if (currentDurability < minDurability) continue;
             }
             // 检查附魔
-            if (requiredEnchantId != -1) {
-                bool         hasEnchant = false;
-                ItemEnchants enchants   = itemInSlot.constructItemEnchantsFromUserData();
-                for (const auto& enchant : enchants.getAllEnchants()) {
-                    if ((int)enchant.mEnchantType == requiredEnchantId && enchant.mLevel >= requiredEnchantLevel) {
-                        hasEnchant = true;
+            if (!requiredEnchants.empty() && requiredEnchants.is_array()) {
+                bool allEnchantsMatch = true;
+                ItemEnchants itemEnchants = itemInSlot.constructItemEnchantsFromUserData();
+                auto allItemEnchants = itemEnchants.getAllEnchants();
+
+                for (const auto& reqEnchant : requiredEnchants) {
+                    bool currentEnchantFound = false;
+                    int reqId = reqEnchant["id"];
+                    int reqLevel = reqEnchant["level"];
+                    for (const auto& itemEnchant : allItemEnchants) {
+                        if ((int)itemEnchant.mEnchantType == reqId && itemEnchant.mLevel >= reqLevel) {
+                            currentEnchantFound = true;
+                            break;
+                        }
+                    }
+                    if (!currentEnchantFound) {
+                        allEnchantsMatch = false;
                         break;
                     }
                 }
-                if (!hasEnchant) continue;
+                if (!allEnchantsMatch) continue;
             }
             totalPlayerCount += itemInSlot.mCount;
         }
@@ -401,9 +432,9 @@ void showRecycleFinalConfirmForm(
             // 重新获取委托条件，包括最大回收数量和当前已回收数量
             auto& db         = Sqlite3Wrapper::getInstance();
             auto  commission = db.query(
-                "SELECT min_durability, required_enchant_id, required_enchant_level, max_recycle_count, "
-                 "current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z "
-                 "= ? AND item_nbt = ?",
+                "SELECT min_durability, required_enchants, max_recycle_count, "
+                "current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z "
+                "= ? AND item_nbt = ?",
                 dimId,
                 pos.x,
                 pos.y,
@@ -414,11 +445,19 @@ void showRecycleFinalConfirmForm(
                 p.sendMessage("§c回收失败，无法找到回收委托。");
                 return;
             }
-            int minDurability        = std::stoi(commission[0][0]);
-            int requiredEnchantId    = std::stoi(commission[0][1]);
-            int requiredEnchantLevel = std::stoi(commission[0][2]);
-            int maxRecycleCount      = std::stoi(commission[0][3]);
-            int currentRecycledCount = std::stoi(commission[0][4]);
+            int minDurability = std::stoi(commission[0][0]);
+            std::string requiredEnchantsStr = commission[0][1];
+            int maxRecycleCount = std::stoi(commission[0][2]);
+            int currentRecycledCount = std::stoi(commission[0][3]);
+
+             nlohmann::json requiredEnchants;
+            if (!requiredEnchantsStr.empty()) {
+                try {
+                    requiredEnchants = nlohmann::json::parse(requiredEnchantsStr);
+                } catch (const std::exception& e) {
+                     logger.error("Failed to parse required_enchants JSON in showRecycleFinalConfirmForm: {}", e.what());
+                }
+            }
 
             // 检查是否达到最大回收数量
             if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
@@ -449,17 +488,26 @@ void showRecycleFinalConfirmForm(
                         int currentDurability = maxDamage - currentDamage;
                         if (currentDurability < minDurability) continue;
                     }
-                    if (requiredEnchantId != -1) {
-                        bool         hasEnchant = false;
-                        ItemEnchants enchants   = itemInSlot.constructItemEnchantsFromUserData();
-                        for (const auto& enchant : enchants.getAllEnchants()) {
-                            if ((int)enchant.mEnchantType == requiredEnchantId
-                                && enchant.mLevel >= requiredEnchantLevel) {
-                                hasEnchant = true;
+                    if (!requiredEnchants.empty() && requiredEnchants.is_array()) {
+                        bool allEnchantsMatch = true;
+                        ItemEnchants itemEnchants = itemInSlot.constructItemEnchantsFromUserData();
+                        auto allItemEnchants = itemEnchants.getAllEnchants();
+                        for (const auto& reqEnchant : requiredEnchants) {
+                            bool currentEnchantFound = false;
+                            int reqId = reqEnchant["id"];
+                            int reqLevel = reqEnchant["level"];
+                            for (const auto& itemEnchant : allItemEnchants) {
+                                if ((int)itemEnchant.mEnchantType == reqId && itemEnchant.mLevel >= reqLevel) {
+                                    currentEnchantFound = true;
+                                    break;
+                                }
+                            }
+                            if (!currentEnchantFound) {
+                                allEnchantsMatch = false;
                                 break;
                             }
                         }
-                        if (!hasEnchant) continue;
+                        if (!allEnchantsMatch) continue;
                     }
 
                     int countToRemove = std::min((int)itemInSlot.mCount, recycleCount - removedCount);
@@ -741,9 +789,9 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
         fm.appendInput("min_durability", "最低耐久度 (0为不限制)", "0");
     }
 
-    fm.appendInput("enchant_id", "要求附魔ID (留空或-1为不限制)", "-1");
-    fm.appendInput("enchant_level", "要求附魔等级 (0为不限制)", "0");
-    fm.appendLabel("附魔ID列表请参考Minecraft Wiki。例如：保护为0，锋利为9。");
+    fm.appendInput("required_enchants", "要求附魔 (格式: ID1:等级1,ID2:等级2...)", "");
+    fm.appendLabel("例如: 锋利V,耐久III 则输入 9:5,34:3");
+    fm.appendLabel("留空则不要求附魔。");
     fm.appendInput("max_recycle_count", "最大回收数量 (0为不限制)", "0"); // 新增最大回收数量输入框
 
 
@@ -778,25 +826,33 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     }
                 }
 
-                int enchantId = -1;
-                try {
-                    auto& enchantIdStr = std::get<std::string>(result.value().at("enchant_id"));
-                    if (!enchantIdStr.empty()) {
-                        enchantId = std::stoi(enchantIdStr);
+                std::string requiredEnchantsStr =
+                    std::get<std::string>(result.value().at("required_enchants"));
+                nlohmann::json enchantsJson = nlohmann::json::array();
+                if (!requiredEnchantsStr.empty()) {
+                    std::stringstream ss(requiredEnchantsStr);
+                    std::string       segment;
+                    while (std::getline(ss, segment, ',')) {
+                        std::stringstream segment_ss(segment);
+                        std::string       id_str, level_str;
+                        if (std::getline(segment_ss, id_str, ':') && std::getline(segment_ss, level_str)) {
+                            try {
+                                int id    = std::stoi(id_str);
+                                int level = std::stoi(level_str);
+                                nlohmann::json enchant;
+                                enchant["id"]    = id;
+                                enchant["level"] = level;
+                                enchantsJson.push_back(enchant);
+                            } catch (const std::exception& e) {
+                                p.sendMessage("§c附魔格式无效，请使用 ID:等级,ID:等级 的格式。");
+                                showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                                return;
+                            }
+                        }
                     }
-                } catch (...) {
-                    // Ignore if empty or not a number, default to -1
                 }
+                std::string enchantsJsonStr = enchantsJson.is_null() || enchantsJson.empty() ? "" : enchantsJson.dump();
 
-                int enchantLevel = 0;
-                if (enchantId != -1) {
-                    enchantLevel = std::stoi(std::get<std::string>(result.value().at("enchant_level")));
-                    if (enchantLevel < 0) {
-                        p.sendMessage("§c附魔等级不能为负数！");
-                        showSetRecycleItemPriceForm(p, item, pos, dimId, region);
-                        return;
-                    }
-                }
 
                 int maxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
                 if (maxRecycleCount < 0) {
@@ -818,17 +874,16 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
 
                 // 插入或更新到数据库
-                // 注意: 这需要数据库表 recycle_shop_items 包含 min_durability, required_enchant_id,
-                // required_enchant_level, max_recycle_count, current_recycled_count 列
+                // 注意: 这需要数据库表 recycle_shop_items 包含 min_durability, required_enchants,
+                // max_recycle_count, current_recycled_count 列
                 auto&       db  = Sqlite3Wrapper::getInstance();
                 std::string sql = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_nbt, price, "
-                                  "min_durability, required_enchant_id, required_enchant_level, max_recycle_count, "
+                                  "min_durability, required_enchants, max_recycle_count, "
                                   "current_recycled_count) "
-                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0) " // current_recycled_count 初始化为 0
+                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) " // current_recycled_count 初始化为 0
                                   "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_nbt) DO UPDATE SET price = "
-                                  "excluded.price, min_durability = excluded.min_durability, required_enchant_id = "
-                                  "excluded.required_enchant_id, required_enchant_level = "
-                                  "excluded.required_enchant_level, max_recycle_count = excluded.max_recycle_count;";
+                                  "excluded.price, min_durability = excluded.min_durability, required_enchants = "
+                                  "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count;";
 
                 if (db.execute(
                         sql,
@@ -839,8 +894,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         itemNbtStr,
                         price,
                         minDurability,
-                        enchantId,
-                        enchantLevel,
+                        enchantsJsonStr,
                         maxRecycleCount
                     )) {
                     p.sendMessage(

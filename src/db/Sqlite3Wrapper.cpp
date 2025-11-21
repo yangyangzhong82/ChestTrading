@@ -156,6 +156,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     bool has_min_durability_column = false;
     bool has_req_enchant_id_column = false;
     bool has_req_enchant_lvl_column = false;
+    bool has_required_enchants_column = false; // Add this
     bool has_max_recycle_count_column = false;
     bool has_current_recycled_count_column = false;
 
@@ -163,6 +164,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         if (row[1] == "min_durability") has_min_durability_column = true;
         if (row[1] == "required_enchant_id") has_req_enchant_id_column = true;
         if (row[1] == "required_enchant_level") has_req_enchant_lvl_column = true;
+        if (row[1] == "required_enchants") has_required_enchants_column = true; // Check this
         if (row[1] == "max_recycle_count") has_max_recycle_count_column = true;
         if (row[1] == "current_recycled_count") has_current_recycled_count_column = true;
     }
@@ -185,6 +187,13 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_level` 字段，正在添加...");
         if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_level INTEGER NOT NULL DEFAULT 0;")) {
             CT::logger.error("`required_enchant_level` 字段添加失败！");
+            return false;
+        }
+    }
+    if (!has_required_enchants_column) { // Add check for new column
+        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchants` 字段，正在添加...");
+        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchants TEXT;")) {
+            CT::logger.error("`required_enchants` 字段添加失败！");
             return false;
         }
     }
@@ -241,4 +250,18 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::st
         sqlite3_free(err_msg);
     }
     return results;
+}
+
+bool Sqlite3Wrapper::isColumnExists(const std::string& tableName, const std::string& columnName) {
+    if (!db) return false;
+
+    std::string sql = "PRAGMA table_info(" + tableName + ");";
+    std::vector<std::vector<std::string>> result = query_unsafe(sql);
+
+    for (const auto& row : result) {
+        if (row.size() > 1 && row[1] == columnName) { // row[1] 是列名
+            return true;
+        }
+    }
+    return false;
 }

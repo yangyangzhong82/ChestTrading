@@ -36,6 +36,9 @@ public:
     template<typename... Args>
     std::vector<std::vector<std::string>> query(const std::string& sql, Args&&... args);
 
+    // 检查列是否存在
+    bool isColumnExists(const std::string& tableName, const std::string& columnName);
+
 private:
     Sqlite3Wrapper();
     ~Sqlite3Wrapper();
