@@ -7,7 +7,8 @@
 #include <algorithm>
 
 #include "Config/ConfigManager.h"
-Sqlite3Wrapper::Sqlite3Wrapper() : db(nullptr) {}
+
+Sqlite3Wrapper::Sqlite3Wrapper() : db(nullptr), mThreadPool(nullptr) {}
 
 Sqlite3Wrapper::~Sqlite3Wrapper() {
     close();
@@ -445,6 +446,12 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;");
     }
 
+    // 初始化线程池
+    if (!mThreadPool) {
+        mThreadPool = std::make_unique<ThreadPool>(mThreadPoolSize);
+        CT::logger.info("数据库线程池已初始化，线程数: {}", mThreadPoolSize);
+    }
+
     return true;
 }
 
@@ -667,4 +674,36 @@ std::string Sqlite3Wrapper::getItemNbtById(int itemId) {
 
     CT::logger.warn("Item ID {} not found in item_definitions", itemId);
     return "";
+}
+
+// === 异步操作实现 ===
+
+void Sqlite3Wrapper::setThreadPoolSize(size_t size) {
+    mThreadPoolSize = size;
+}
+
+size_t Sqlite3Wrapper::getPendingAsyncTasks() const {
+    if (!mThreadPool) {
+        return 0;
+    }
+    return mThreadPool->getPendingTaskCount();
+}
+
+void Sqlite3Wrapper::waitForAllAsyncTasks() {
+    if (mThreadPool) {
+        mThreadPool->waitForAllTasks();
+    }
+}
+
+std::future<bool> Sqlite3Wrapper::executeBatchAsync(
+    const std::vector<std::string>& sqlStatements,
+    const std::vector<std::vector<Value>>& paramsList) {
+    
+    if (!mThreadPool) {
+        throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    
+    return mThreadPool->enqueue([this, sqlStatements, paramsList]() {
+        return this->executeBatch(sqlStatements, paramsList);
+    });
 }

@@ -9,6 +9,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <chrono>
+#include <future>
+#include "ThreadPool.h"
 
 class Sqlite3Wrapper {
 public:
@@ -63,6 +65,31 @@ public:
     // 根据 item_id 获取 item_nbt
     std::string getItemNbtById(int itemId);
 
+    // === 异步操作接口 ===
+    
+    // 异步执行 SQL 语句
+    template<typename... Args>
+    std::future<bool> executeAsync(const std::string& sql, Args&&... args);
+
+    // 异步查询
+    template<typename... Args>
+    std::future<std::vector<std::vector<std::string>>> queryAsync(const std::string& sql, Args&&... args);
+
+    // 异步批量操作
+    std::future<bool> executeBatchAsync(
+        const std::vector<std::string>& sqlStatements, 
+        const std::vector<std::vector<Value>>& paramsList
+    );
+
+    // 设置线程池大小（需要在 open 之前调用）
+    void setThreadPoolSize(size_t size);
+
+    // 获取线程池待处理任务数
+    size_t getPendingAsyncTasks() const;
+
+    // 等待所有异步任务完成
+    void waitForAllAsyncTasks();
+
     // 获取数据库统计信息
     struct DbStats {
         int cacheHits = 0;
@@ -92,6 +119,10 @@ private:
 
     // 统计信息
     mutable DbStats mStats;
+
+    // 线程池相关
+    std::unique_ptr<ThreadPool> mThreadPool;
+    size_t mThreadPoolSize = 4;  // 默认4个线程
 
     // 内部辅助函数,用于绑定参数
     template<size_t I = 1, typename T, typename... Args>
@@ -287,4 +318,39 @@ bool Sqlite3Wrapper::executeBatch(const std::vector<std::string>& sqlStatements,
         rollback();
         return false;
     }
+}
+
+// === 异步操作模板实现 ===
+
+template<typename... Args>
+std::future<bool> Sqlite3Wrapper::executeAsync(const std::string& sql, Args&&... args) {
+    if (!mThreadPool) {
+        throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    
+    // 捕获参数的副本，避免悬空引用
+    auto params = std::make_tuple(std::forward<Args>(args)...);
+    
+    return mThreadPool->enqueue([this, sql, params = std::move(params)]() {
+        return std::apply([this, &sql](auto&&... args) {
+            return this->execute(sql, std::forward<decltype(args)>(args)...);
+        }, params);
+    });
+}
+
+template<typename... Args>
+std::future<std::vector<std::vector<std::string>>> Sqlite3Wrapper::queryAsync(
+    const std::string& sql, Args&&... args) {
+    if (!mThreadPool) {
+        throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    
+    // 捕获参数的副本
+    auto params = std::make_tuple(std::forward<Args>(args)...);
+    
+    return mThreadPool->enqueue([this, sql, params = std::move(params)]() {
+        return std::apply([this, &sql](auto&&... args) {
+            return this->query(sql, std::forward<decltype(args)>(args)...);
+        }, params);
+    });
 }
