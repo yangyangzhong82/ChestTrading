@@ -12,6 +12,8 @@ bool reduceMoney(Player& player, int amount) { return LLMoney_Reduce(player.getX
 
 bool addMoney(Player& player, int amount) { return LLMoney_Add(player.getXuid(), amount); }
 
+bool addMoneyByXuid(const std::string& xuid, int amount) { return LLMoney_Add(xuid, amount); }
+
 int getMoney(Player& player) { return LLMoney_Get(player.getXuid()); }
 
 } // namespace Economy

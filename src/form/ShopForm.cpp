@@ -7,8 +7,9 @@
 #include "interaction/chestprotect.h" // 引入 chestprotect 以使用 ChestType
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/Bedrock.h" 
-#include "ll/api/thread/ServerThreadExecutor.h" 
+#include "ll/api/service/Bedrock.h"
+#include "ll/api/service/PlayerInfo.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/item/Item.h" 
 #include "mc/world/level/Level.h" 
@@ -509,6 +510,41 @@ void showShopItemBuyForm(
             }
 
             if (Economy::reduceMoney(p, totalPrice)) {
+                // 增加给店主加钱的逻辑
+                auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
+                if (isLocked && !ownerUuid.empty()) {
+                    auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
+                    if (ownerInfo) {
+                        if (Economy::addMoneyByXuid(ownerInfo->xuid, totalPrice)) {
+                            logger.info(
+                                "Successfully added {} money to shop owner {} (xuid: {}).",
+                                totalPrice,
+                                ownerInfo->name,
+                                ownerInfo->xuid
+                            );
+                        } else {
+                            logger.error(
+                                "Failed to add money to shop owner {} (xuid: {}).",
+                                ownerInfo->name,
+                                ownerInfo->xuid
+                            );
+                        }
+                    } else {
+                        logger.warn(
+                            "Could not find player info for shop owner with UUID {}, cannot add money.",
+                            ownerUuid
+                        );
+                    }
+                } else {
+                    logger.error(
+                        "Shop at pos ({},{},{}) dim {} is not locked or has no owner, cannot add money to owner.",
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        dimId
+                    );
+                }
+
                 logger.debug("showShopItemBuyForm: Successfully reduced money for player {}. Total price {}.", p.getRealName(), totalPrice);
                 auto baseItemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
                 if (!baseItemPtr) {

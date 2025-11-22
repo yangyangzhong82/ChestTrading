@@ -15,6 +15,9 @@ bool reduceMoney(Player& player, int amount);
 // 增加玩家金币
 bool addMoney(Player& player, int amount);
 
+// 通过XUID增加玩家金币
+bool addMoneyByXuid(const std::string& xuid, int amount);
+
 // 获取玩家金币数量
 int getMoney(Player& player);
 
