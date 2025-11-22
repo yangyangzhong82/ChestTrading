@@ -2,13 +2,13 @@
 #include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/Bedrock.h"    // 用于获取所有在线玩家
-#include "ll/api/service/PlayerInfo.h" // 用于通过UUID获取玩家名称
+#include "ll/api/service/Bedrock.h"    
+#include "ll/api/service/PlayerInfo.h" 
 #include "logger.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/Level.h"
-#include <algorithm> // For std::remove_if
+#include <algorithm> 
 #include <string>
 #include <vector>
 

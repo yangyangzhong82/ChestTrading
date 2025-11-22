@@ -1,23 +1,19 @@
 #include "ShopForm.h"
-#include "LockForm.h" // 因为需要调用 showChestLockForm
-#include "FormUtils.h" // 引入新的辅助工具
-// #include "Utils/ItemTextureManager.h" // 现在通过 FormUtils 间接包含
+#include "LockForm.h" 
+#include "FormUtils.h" 
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/chestprotect.h" // 引入 chestprotect 以使用 ChestType
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/Bedrock.h" // 用于获取Level对象
-#include "ll/api/thread/ServerThreadExecutor.h" // 用于异步回调到主线程
-// #include "logger.h" // logger 已在 FormUtils.h 中包含，避免重定义
+#include "ll/api/service/Bedrock.h" 
+#include "ll/api/thread/ServerThreadExecutor.h" 
 #include "mc/platform/UUID.h"
-#include "mc/world/item/Item.h" // 仍需要用于 ItemStack 的 getItem()
-#include "mc/world/level/Level.h" // 用于Level类型定义
+#include "mc/world/item/Item.h" 
+#include "mc/world/level/Level.h" 
 #include "mc/world/level/block/actor/ChestBlockActor.h"
-#include "mc/world/item/enchanting/ItemEnchants.h" // 仍需要用于 ItemStack 的 constructItemEnchantsFromUserData()
-// #include "mc/world/item/enchanting/Enchant.h" // 现在通过 NbtUtils 间接包含
-// #include "mc/world/item/enchanting/EnchantmentInstance.h" // 现在通过 ItemEnchants 间接包含
+#include "mc/world/item/enchanting/ItemEnchants.h" 
 
 namespace CT {
 

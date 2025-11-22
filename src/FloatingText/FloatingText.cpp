@@ -1,9 +1,8 @@
 #include "FloatingText/FloatingText.h"
 #include "Utils/NetworkPacket.h"
-#include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
+#include "db/Sqlite3Wrapper.h" 
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
-// #include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerJoinEvent.h"
 #include "ll/api/memory/Hook.h"

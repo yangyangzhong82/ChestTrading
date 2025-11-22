@@ -1,33 +1,30 @@
 #include "RecycleForm.h"
 #include "LLMoney.h"
 #include "LockForm.h"
-#include "FormUtils.h" // 引入新的辅助工具
-// #include "Utils/ItemTextureManager.h" // 现在通过 FormUtils 间接包含
+#include "FormUtils.h" 
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/Bedrock.h" // 用于获取Level对象
+#include "ll/api/service/Bedrock.h" 
 #include "ll/api/service/PlayerInfo.h"
-#include "ll/api/thread/ServerThreadExecutor.h" // 用于异步回调到主线程
-// #include "logger.h" // logger 已在 FormUtils.h 中包含，避免重定义
+#include "ll/api/thread/ServerThreadExecutor.h" 
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/PlayerInventory.h"
-#include "mc/world/item/Item.h" // 仍需要用于 ItemStack 的 getItem()
+#include "mc/world/item/Item.h" 
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
-#include "mc/world/item/enchanting/ItemEnchants.h" // 仍需要用于 ItemStack 的 constructItemEnchantsFromUserData()
-#include "mc/world/level/Level.h" // 用于Level类型定义
+#include "mc/world/item/enchanting/ItemEnchants.h" 
+#include "mc/world/level/Level.h" 
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "nlohmann/json.hpp"
 
 
 namespace CT {
 
-// using CT::NbtUtils::enchantToString; // 现在使用 FormUtils::getItemDisplayString 或 NbtUtils::enchantToString
 
 void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     showRecycleItemListForm(player, pos, dimId, region);
