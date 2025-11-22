@@ -57,6 +57,12 @@ public:
     // 检查列是否存在
     bool isColumnExists(const std::string& tableName, const std::string& columnName);
 
+    // 获取或创建 item_id（用于 item_definitions 表）
+    int getOrCreateItemId(const std::string& itemNbt);
+
+    // 根据 item_id 获取 item_nbt
+    std::string getItemNbtById(int itemId);
+
     // 获取数据库统计信息
     struct DbStats {
         int cacheHits = 0;

@@ -38,8 +38,9 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     // 1. 获取此回收箱的所有回收委托
     auto& db          = Sqlite3Wrapper::getInstance();
     auto  commissions = db.query(
-        "SELECT item_nbt, price, min_durability, required_enchant_id, required_enchant_level FROM recycle_shop_items "
-        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?",
+        "SELECT d.item_nbt, r.price, r.min_durability, r.required_enchants "
+        "FROM recycle_shop_items r JOIN item_definitions d ON r.item_id = d.item_id "
+        "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?",
         dimId,
         pos.x,
         pos.y,
@@ -51,9 +52,9 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     } else {
         fm.setContent("以下是该回收商店的所有回收委托：");
         for (const auto& row : commissions) {
-            std::string commissionNbtStr  = row[0];
-            int         price             = std::stoi(row[1]);
-            int         minDurability     = std::stoi(row[2]);
+            std::string commissionNbtStr    = row[0];
+            int         price               = std::stoi(row[1]);
+            int         minDurability       = std::stoi(row[2]);
             std::string requiredEnchantsStr = row[3];
 
             auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
@@ -160,14 +161,19 @@ void showRecycleConfirmForm(
     // 查找玩家背包中所有可回收的此种物品
     int   totalPlayerCount = 0;
     auto& db               = Sqlite3Wrapper::getInstance();
-    auto  commission       = db.query(
+    int   itemId           = db.getOrCreateItemId(commissionNbtStr);
+    if (itemId < 0) {
+        player.sendMessage("§c无法找到此回收委托的物品定义。");
+        return;
+    }
+    auto commission = db.query(
         "SELECT min_durability, required_enchants FROM recycle_shop_items WHERE dim_id = ? "
-        "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+        "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
         dimId,
         pos.x,
         pos.y,
         pos.z,
-        commissionNbtStr
+        itemId
     );
 
     if (commission.empty()) {
@@ -431,16 +437,21 @@ void showRecycleFinalConfirmForm(
             }
 
             // 重新获取委托条件，包括最大回收数量和当前已回收数量
-            auto& db         = Sqlite3Wrapper::getInstance();
-            auto  commission = db.query(
+            auto& db     = Sqlite3Wrapper::getInstance();
+            int   itemId = db.getOrCreateItemId(commissionNbtStr);
+            if (itemId < 0) {
+                p.sendMessage("§c回收失败，无法获取物品ID。");
+                return;
+            }
+            auto commission = db.query(
                 "SELECT min_durability, required_enchants, max_recycle_count, "
                 "current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z "
-                "= ? AND item_nbt = ?",
+                "= ? AND item_id = ?",
                 dimId,
                 pos.x,
                 pos.y,
                 pos.z,
-                commissionNbtStr
+                itemId
             );
             if (commission.empty()) {
                 p.sendMessage("§c回收失败，无法找到回收委托。");
@@ -536,24 +547,24 @@ void showRecycleFinalConfirmForm(
             // 5. 更新当前已回收数量
             db.execute(
                 "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? "
-                "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
                 recycleCount,
                 dimId,
                 pos.x,
                 pos.y,
                 pos.z,
-                commissionNbtStr
+                itemId
             );
 
             // 6. 记录回收事件
             db.execute(
-                "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_nbt, recycler_uuid, recycle_count, "
+                "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, "
                 "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 dimId,
                 pos.x,
                 pos.y,
                 pos.z,
-                commissionNbtStr,
+                itemId,
                 p.getUuid().asString(),
                 recycleCount,
                 (int)recyclePrice
@@ -652,15 +663,20 @@ void showCommissionDetailsForm(
     }
     ItemStack item = *itemPtr;
 
-    auto& db      = Sqlite3Wrapper::getInstance();
-    auto  records = db.query(
+    auto& db     = Sqlite3Wrapper::getInstance();
+    int   itemId = db.getOrCreateItemId(commissionNbtStr);
+    if (itemId < 0) {
+        player.sendMessage("§c无法加载回收记录。");
+        return;
+    }
+    auto records = db.query(
         "SELECT recycler_uuid, recycle_count, total_price, timestamp FROM recycle_records WHERE dim_id = ? AND pos_x "
-        "= ? AND pos_y = ? AND pos_z = ? AND item_nbt = ? ORDER BY timestamp DESC",
+        "= ? AND pos_y = ? AND pos_z = ? AND item_id = ? ORDER BY timestamp DESC",
         dimId,
         pos.x,
         pos.y,
         pos.z,
-        commissionNbtStr
+        itemId
     );
 
     if (records.empty()) {
@@ -698,8 +714,9 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
 
     auto& db          = Sqlite3Wrapper::getInstance();
     auto  commissions = db.query(
-        "SELECT item_nbt, price, max_recycle_count, current_recycled_count FROM recycle_shop_items WHERE dim_id = ? "
-        "AND pos_x = ? AND pos_y = ? AND pos_z = ?",
+        "SELECT d.item_nbt, r.price, r.max_recycle_count, r.current_recycled_count "
+        "FROM recycle_shop_items r JOIN item_definitions d ON r.item_id = d.item_id "
+        "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?",
         dimId,
         pos.x,
         pos.y,
@@ -875,14 +892,17 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
 
                 // 插入或更新到数据库
-                // 注意: 这需要数据库表 recycle_shop_items 包含 min_durability, required_enchants,
-                // max_recycle_count, current_recycled_count 列
-                auto&       db  = Sqlite3Wrapper::getInstance();
-                std::string sql = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_nbt, price, "
-                                  "min_durability, required_enchants, max_recycle_count, "
-                                  "current_recycled_count) "
-                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) " // current_recycled_count 初始化为 0
-                                  "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_nbt) DO UPDATE SET price = "
+                auto& db     = Sqlite3Wrapper::getInstance();
+                int   itemId = db.getOrCreateItemId(itemNbtStr);
+                if (itemId < 0) {
+                    p.sendMessage("§c回收委托设置失败！无法创建物品定义。");
+                    return;
+                }
+
+                std::string sql = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, "
+                                  "min_durability, required_enchants, max_recycle_count, current_recycled_count) "
+                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) "
+                                  "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = "
                                   "excluded.price, min_durability = excluded.min_durability, required_enchants = "
                                   "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count;";
 
@@ -892,7 +912,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         pos.x,
                         pos.y,
                         pos.z,
-                        itemNbtStr,
+                        itemId,
                         price,
                         minDurability,
                         enchantsJsonStr,

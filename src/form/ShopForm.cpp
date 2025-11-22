@@ -28,7 +28,9 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
-        "SELECT item_nbt, price, db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?",
+        "SELECT s.item_id, s.price, s.db_count, d.item_nbt FROM shop_items s "
+        "JOIN item_definitions d ON s.item_id = d.item_id "
+        "WHERE s.dim_id = ? AND s.pos_x = ? AND s.pos_y = ? AND s.pos_z = ?",
         dimId,
         pos.x,
         pos.y,
@@ -41,11 +43,12 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
     } else {
         logger.debug("showShopChestItemsForm: Found {} items in database for shop at pos ({},{},{}) dim {}.", results.size(), pos.x, pos.y, pos.z, dimId);
         for (const auto& row : results) {
-            std::string itemNbtStr = row[0];
+            int         itemId     = std::stoi(row[0]);
             int         price      = std::stoi(row[1]);
             int         dbCount    = std::stoi(row[2]); // 从数据库获取可售数量
+            std::string itemNbtStr = row[3];
 
-            logger.debug("showShopChestItemsForm: Processing item from DB: NBT='{}', Price={}, DB_Count={}", itemNbtStr, price, dbCount);
+            logger.debug("showShopChestItemsForm: Processing item from DB: ItemID={}, NBT='{}', Price={}, DB_Count={}", itemId, itemNbtStr, price, dbCount);
 
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             if (!itemPtr) {
@@ -135,13 +138,23 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
 
                 logger.debug("showShopItemPriceForm: Storing item '{}' with NBT: '{}', Price: {}, Initial DB_Count: {}.", item.getName(), itemNbtStr, price, dbCount);
 
-                auto&       db = Sqlite3Wrapper::getInstance();
+                auto& db = Sqlite3Wrapper::getInstance();
+                
+                // 获取或创建 item_id
+                int itemId = db.getOrCreateItemId(itemNbtStr);
+                if (itemId < 0) {
+                    p.sendMessage("§c物品价格和数量设置失败！无法创建物品定义。");
+                    logger.error("showShopItemPriceForm: Failed to get or create item_id for item '{}'.", item.getName());
+                    showShopChestManageForm(p, pos, dimId, region);
+                    return;
+                }
+                
                 std::string sql =
-                    "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_nbt, price, db_count) VALUES "
+                    "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count) VALUES "
                     "(?, ?, ?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_nbt) DO UPDATE SET price = excluded.price, db_count "
+                    "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = excluded.price, db_count "
                     "= excluded.db_count, slot = excluded.slot;";
-                if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemNbtStr, price, dbCount)) {
+                if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemId, price, dbCount)) {
                     p.sendMessage(
                         "§a物品价格和数量设置成功！价格: " + std::to_string(price)
                         + "，数量: " + std::to_string(dbCount)
@@ -162,11 +175,11 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
 }
 
 void showShopItemManageForm(
-    Player&            player,
+    Player& player,
     const std::string& itemNbtStr,
-    BlockPos           pos,
-    int                dimId,
-    BlockSource&       region
+    BlockPos pos,
+    int dimId,
+    BlockSource& region
 ) {
     ll::form::SimpleForm fm;
     fm.setTitle("管理商品");
@@ -181,15 +194,23 @@ void showShopItemManageForm(
 
     int totalCount = CT::FormUtils::countItemsInChest(region, pos, dimId, itemNbtStr);
     
-    auto& db      = Sqlite3Wrapper::getInstance();
-    auto  results = db.query(
-        "SELECT price, db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
-         "item_nbt = ?",
+    auto& db = Sqlite3Wrapper::getInstance();
+    
+    // 获取 item_id
+    int itemId = db.getOrCreateItemId(itemNbtStr);
+    if (itemId < 0) {
+        player.sendMessage("§c无法管理该物品，无法获取物品ID。");
+        showShopChestManageForm(player, pos, dimId, region);
+        return;
+    }
+    
+    auto results = db.query(
+        "SELECT price, db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
         dimId,
         pos.x,
         pos.y,
         pos.z,
-        itemNbtStr
+        itemId
     );
 
     std::string content = "你正在管理物品: " + std::string(item.getName()) + "\n";
@@ -208,15 +229,15 @@ void showShopItemManageForm(
         showShopItemPriceForm(p, item, pos, dimId, region);
     });
 
-    fm.appendButton("移除商品", [&fm, &player, pos, dimId, &region, itemNbtStr](Player& p) {
+    fm.appendButton("移除商品", [&fm, &player, pos, dimId, &region, itemId](Player& p) {
         auto& db = Sqlite3Wrapper::getInstance();
         if (db.execute(
-                "DELETE FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                "DELETE FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
                 dimId,
                 pos.x,
                 pos.y,
                 pos.z,
-                itemNbtStr
+                itemId
             )) {
             p.sendMessage("§a商品已成功移除！");
             FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
@@ -277,23 +298,33 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 std::get<1>(aggregatedItems[itemNbtStr]) += itemInSlot.mCount;
                 logger.debug("showShopChestManageForm: Item '{}' already aggregated. Updated total count to {}.", itemInSlot.getName(), std::get<1>(aggregatedItems[itemNbtStr]));
             } else {
-                auto& db      = Sqlite3Wrapper::getInstance();
-                auto  results = db.query(
-                    "SELECT price FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
-                     "item_nbt = ?",
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    itemNbtStr
-                );
+                auto& db     = Sqlite3Wrapper::getInstance();
+                int   itemId = db.getOrCreateItemId(itemNbtStr);
 
                 std::string priceStr = "§7未定价";
-                if (!results.empty()) {
-                    priceStr = "§a[已定价: " + results[0][0] + "]";
-                    logger.debug("showShopChestManageForm: Item '{}' found in DB with price {}.", itemInSlot.getName(), results[0][0]);
-                } else {
-                    logger.debug("showShopChestManageForm: Item '{}' not found in DB (no price set).", itemInSlot.getName());
+                if (itemId > 0) {
+                    auto results = db.query(
+                        "SELECT price FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
+                        "item_id = ?",
+                        dimId,
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        itemId
+                    );
+                    if (!results.empty()) {
+                        priceStr = "§a[已定价: " + results[0][0] + "]";
+                        logger.debug(
+                            "showShopChestManageForm: Item '{}' found in DB with price {}.",
+                            itemInSlot.getName(),
+                            results[0][0]
+                        );
+                    } else {
+                        logger.debug(
+                            "showShopChestManageForm: Item '{}' not found in DB (no price set).",
+                            itemInSlot.getName()
+                        );
+                    }
                 }
                 aggregatedItems[itemNbtStr] = std::make_tuple(itemInSlot, (int)itemInSlot.mCount, priceStr);
             }
@@ -370,17 +401,20 @@ void showShopItemBuyForm(
 
     fm.appendLabel("你正在购买物品: " + CT::FormUtils::getItemDisplayString(item, 0, true)); // 使用 FormUtils 显示物品信息
 
-    auto& db      = Sqlite3Wrapper::getInstance();
-    auto  results = db.query(
-        "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z,
-        itemNbtStr
-    );
-    if (!results.empty()) {
-        fm.appendLabel("剩余库存: §b" + results[0][0] + "§r");
+    auto& db     = Sqlite3Wrapper::getInstance();
+    int   itemId = db.getOrCreateItemId(itemNbtStr);
+    if (itemId > 0) {
+        auto results = db.query(
+            "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
+            dimId,
+            pos.x,
+            pos.y,
+            pos.z,
+            itemId
+        );
+        if (!results.empty()) {
+            fm.appendLabel("剩余库存: §b" + results[0][0] + "§r");
+        }
     }
 
     fm.appendLabel("单价: §6" + std::to_string(unitPrice) + "§r");
@@ -421,6 +455,18 @@ void showShopItemBuyForm(
             long long totalPrice = (long long)buyCount * unitPrice;
             logger.debug("showShopItemBuyForm: Player {} attempting to buy {} of item {} for total price {}.", p.getRealName(), buyCount, item.getName(), totalPrice);
 
+            auto& db     = Sqlite3Wrapper::getInstance();
+            int   itemId = db.getOrCreateItemId(itemNbtStr);
+            if (itemId < 0) {
+                p.sendMessage("§c购买失败，无法获取商品ID。");
+                logger.error(
+                    "showShopItemBuyForm: Failed to get or create item_id for item NBT {}.",
+                    itemNbtStr
+                );
+                showShopChestItemsForm(p, pos, dimId, region);
+                return;
+            }
+
             if (!Economy::hasMoney(p, totalPrice)) {
                 p.sendMessage("§c你的金币不足！需要 §6" + std::to_string(totalPrice) + "§c 金币。");
                 logger.warn("showShopItemBuyForm: Player {} has insufficient money. Needed {}, has {}.", p.getRealName(), totalPrice, Economy::getMoney(p));
@@ -428,14 +474,13 @@ void showShopItemBuyForm(
                 return;
             }
 
-            auto& db = Sqlite3Wrapper::getInstance();
-            auto  dbResults = db.query(
-                "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+            auto dbResults = db.query(
+                "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
                 dimId,
                 pos.x,
                 pos.y,
                 pos.z,
-                itemNbtStr
+                itemId
             );
 
             if (dbResults.empty()) {
@@ -536,24 +581,24 @@ void showShopItemBuyForm(
                 }
  
                 db.execute(
-                    "UPDATE shop_items SET db_count = db_count - ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_nbt = ?",
+                    "UPDATE shop_items SET db_count = db_count - ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
                     buyCount,
                     dimId,
                     pos.x,
                     pos.y,
                     pos.z,
-                    itemNbtStr
+                    itemId
                 );
                 logger.debug("showShopItemBuyForm: Updated database db_count for item {}. Reduced by {}.", item.getName(), buyCount);
 
                 db.execute(
-                    "INSERT INTO purchase_records (dim_id, pos_x, pos_y, pos_z, item_nbt, buyer_uuid, purchase_count, "
+                    "INSERT INTO purchase_records (dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, "
                     "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     dimId,
                     pos.x,
                     pos.y,
                     pos.z,
-                    itemNbtStr,
+                    itemId,
                     p.getUuid().asString(),
                     buyCount,
                     (int)totalPrice
@@ -579,8 +624,11 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
 
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  records = db.query(
-        "SELECT item_nbt, buyer_uuid, purchase_count, total_price, timestamp FROM purchase_records WHERE dim_id = ? "
-        "AND pos_x = ? AND pos_y = ? AND pos_z = ? ORDER BY timestamp DESC",
+        "SELECT p.item_id, p.buyer_uuid, p.purchase_count, p.total_price, p.timestamp, d.item_nbt "
+        "FROM purchase_records p "
+        "JOIN item_definitions d ON p.item_id = d.item_id "
+        "WHERE p.dim_id = ? AND p.pos_x = ? AND p.pos_y = ? AND p.pos_z = ? "
+        "ORDER BY p.timestamp DESC",
         dimId,
         pos.x,
         pos.y,
@@ -592,13 +640,14 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
     } else {
         std::string content = "§a最近的购买记录:\n";
         for (const auto& row : records) {
-            std::string itemNbtStr     = row[0];
+            // int itemId             = std::stoi(row[0]);
             std::string buyerUuid      = row[1];
             std::string purchaseCount  = row[2];
             std::string totalPrice     = row[3];
             std::string timestamp      = row[4];
+            std::string itemNbtStr     = row[5];
 
-            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+            auto        itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             std::string itemName = "未知物品";
             if (itemPtr) {
                 itemName = itemPtr->getName();

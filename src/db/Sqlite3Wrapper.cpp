@@ -91,20 +91,94 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         return false;
     }
 
-    const char* create_shop_items_table = "CREATE TABLE IF NOT EXISTS shop_items ("
-                                          "dim_id INTEGER NOT NULL,"
-                                          "pos_x INTEGER NOT NULL,"
-                                          "pos_y INTEGER NOT NULL,"
-                                          "pos_z INTEGER NOT NULL,"
-                                          "slot INTEGER NOT NULL,"
-                                          "item_nbt TEXT NOT NULL,"
-                                          "price INTEGER NOT NULL,"
-                                          "db_count INTEGER NOT NULL DEFAULT 0,"
-                                          "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt),"
-                                          "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
-                                          "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
-    if (!execute_unsafe(create_shop_items_table)) {
+    // 创建 item_definitions 表，用于存储唯一的 item_nbt 并映射到 item_id
+    const char* create_item_definitions_table = "CREATE TABLE IF NOT EXISTS item_definitions ("
+                                                "item_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                "item_nbt TEXT NOT NULL UNIQUE);";
+    if (!execute_unsafe(create_item_definitions_table)) {
         return false;
+    }
+
+    // 检查旧的 shop_items 表是否存在且包含 item_nbt 列
+    std::vector<std::vector<std::string>> shop_tables_info = query_unsafe("PRAGMA table_info(shop_items);");
+    bool has_old_item_nbt_column = false;
+    bool has_new_item_id_column = false;
+    
+    for (const auto& row : shop_tables_info) {
+        if (row.size() > 1) {
+            if (row[1] == "item_nbt") has_old_item_nbt_column = true;
+            if (row[1] == "item_id") has_new_item_id_column = true;
+        }
+    }
+
+    // 如果表存在且使用旧结构，需要迁移数据
+    if (!shop_tables_info.empty() && has_old_item_nbt_column && !has_new_item_id_column) {
+        CT::logger.info("检测到旧的 shop_items 表结构，开始迁移到新结构...");
+        
+        // 1. 将所有唯一的 item_nbt 插入到 item_definitions 表
+        if (!execute_unsafe("INSERT OR IGNORE INTO item_definitions (item_nbt) SELECT DISTINCT item_nbt FROM shop_items;")) {
+            CT::logger.error("迁移失败：无法插入 item_definitions");
+            return false;
+        }
+        
+        // 2. 创建新的 shop_items 表
+        if (!execute_unsafe("ALTER TABLE shop_items RENAME TO shop_items_old;")) {
+            CT::logger.error("迁移失败：无法重命名旧表");
+            return false;
+        }
+        
+        const char* create_new_shop_items = "CREATE TABLE shop_items ("
+                                           "dim_id INTEGER NOT NULL,"
+                                           "pos_x INTEGER NOT NULL,"
+                                           "pos_y INTEGER NOT NULL,"
+                                           "pos_z INTEGER NOT NULL,"
+                                           "slot INTEGER NOT NULL,"
+                                           "item_id INTEGER NOT NULL,"
+                                           "price INTEGER NOT NULL,"
+                                           "db_count INTEGER NOT NULL DEFAULT 0,"
+                                           "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
+                                           "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
+                                           "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+                                           "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_new_shop_items)) {
+            CT::logger.error("迁移失败：无法创建新表");
+            return false;
+        }
+        
+        // 3. 迁移数据
+        const char* migrate_data = "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count) "
+                                  "SELECT o.dim_id, o.pos_x, o.pos_y, o.pos_z, o.slot, d.item_id, o.price, o.db_count "
+                                  "FROM shop_items_old o "
+                                  "JOIN item_definitions d ON o.item_nbt = d.item_nbt;";
+        if (!execute_unsafe(migrate_data)) {
+            CT::logger.error("迁移失败：无法迁移数据");
+            return false;
+        }
+        
+        // 4. 删除旧表
+        if (!execute_unsafe("DROP TABLE shop_items_old;")) {
+            CT::logger.warn("警告：无法删除旧表 shop_items_old，请手动删除");
+        }
+        
+        CT::logger.info("shop_items 表迁移成功！");
+    } else if (shop_tables_info.empty()) {
+        // 表不存在，创建新结构
+        const char* create_shop_items_table = "CREATE TABLE IF NOT EXISTS shop_items ("
+                                             "dim_id INTEGER NOT NULL,"
+                                             "pos_x INTEGER NOT NULL,"
+                                             "pos_y INTEGER NOT NULL,"
+                                             "pos_z INTEGER NOT NULL,"
+                                             "slot INTEGER NOT NULL,"
+                                             "item_id INTEGER NOT NULL,"
+                                             "price INTEGER NOT NULL,"
+                                             "db_count INTEGER NOT NULL DEFAULT 0,"
+                                             "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
+                                             "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
+                                             "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+                                             "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_shop_items_table)) {
+            return false;
+        }
     }
 
     std::vector<std::vector<std::string>> tables_info = query_unsafe("PRAGMA table_info(shop_items);");
@@ -126,57 +200,215 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         }
     }
 
-    const char* create_recycle_shop_items_table = "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
+    // 检查 recycle_shop_items 表结构
+    std::vector<std::vector<std::string>> recycle_shop_info = query_unsafe("PRAGMA table_info(recycle_shop_items);");
+    bool has_item_nbt_in_recycle = false;
+    bool has_item_id_in_recycle = false;
+
+    for (const auto& row : recycle_shop_info) {
+        if (row.size() > 1) {
+            if (row[1] == "item_nbt") has_item_nbt_in_recycle = true;
+            if (row[1] == "item_id") has_item_id_in_recycle = true;
+        }
+    }
+
+    // 如果表存在且使用旧结构，需要迁移
+    if (!recycle_shop_info.empty() && has_item_nbt_in_recycle && !has_item_id_in_recycle) {
+        CT::logger.info("检测到旧的 recycle_shop_items 表结构，开始迁移...");
+
+        execute_unsafe("INSERT OR IGNORE INTO item_definitions (item_nbt) SELECT DISTINCT item_nbt FROM recycle_shop_items;");
+        execute_unsafe("ALTER TABLE recycle_shop_items RENAME TO recycle_shop_items_old;");
+
+        const char* create_new_recycle_shop_items = "CREATE TABLE recycle_shop_items ("
+                                                    "dim_id INTEGER NOT NULL,"
+                                                    "pos_x INTEGER NOT NULL,"
+                                                    "pos_y INTEGER NOT NULL,"
+                                                    "pos_z INTEGER NOT NULL,"
+                                                    "item_id INTEGER NOT NULL,"
+                                                    "price INTEGER NOT NULL,"
+                                                    "min_durability INTEGER NOT NULL DEFAULT 0,"
+                                                    "required_enchants TEXT NOT NULL DEFAULT '',"
+                                                    "max_recycle_count INTEGER NOT NULL DEFAULT 0,"
+                                                    "current_recycled_count INTEGER NOT NULL DEFAULT 0,"
+                                                    "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
+                                                    "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+                                                    "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_new_recycle_shop_items)) {
+            CT::logger.error("迁移失败：无法创建新 recycle_shop_items 表");
+            return false;
+        }
+        
+        // 迁移数据
+        const char* migrate_recycle_data = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, min_durability, required_enchants, max_recycle_count, current_recycled_count) "
+                                           "SELECT o.dim_id, o.pos_x, o.pos_y, o.pos_z, d.item_id, o.price, o.min_durability, '', 0, 0 "
+                                           "FROM recycle_shop_items_old o "
+                                           "JOIN item_definitions d ON o.item_nbt = d.item_nbt;";
+        if (!execute_unsafe(migrate_recycle_data)) {
+            CT::logger.error("迁移失败：无法迁移 recycle_shop_items 数据");
+            return false;
+        }
+
+        execute_unsafe("DROP TABLE recycle_shop_items_old;");
+        CT::logger.info("recycle_shop_items 表迁移成功！");
+    } else if (recycle_shop_info.empty()) {
+        const char* create_recycle_shop_items_table = "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
+                                                      "dim_id INTEGER NOT NULL,"
+                                                      "pos_x INTEGER NOT NULL,"
+                                                      "pos_y INTEGER NOT NULL,"
+                                                      "pos_z INTEGER NOT NULL,"
+                                                      "item_id INTEGER NOT NULL,"
+                                                      "price INTEGER NOT NULL,"
+                                                      "min_durability INTEGER NOT NULL DEFAULT 0,"
+                                                      "required_enchants TEXT NOT NULL DEFAULT '',"
+                                                      "max_recycle_count INTEGER NOT NULL DEFAULT 0,"
+                                                      "current_recycled_count INTEGER NOT NULL DEFAULT 0,"
+                                                      "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
+                                                      "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
+                                                      "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+                                                      "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_recycle_shop_items_table)) {
+            return false;
+        }
+    }
+
+    // 检查 recycle_records 表结构
+    std::vector<std::vector<std::string>> recycle_records_info = query_unsafe("PRAGMA table_info(recycle_records);");
+    bool has_item_nbt_in_recycle_records = false;
+    bool has_item_id_in_recycle_records = false;
+
+    for (const auto& row : recycle_records_info) {
+        if (row.size() > 1) {
+            if (row[1] == "item_nbt") has_item_nbt_in_recycle_records = true;
+            if (row[1] == "item_id") has_item_id_in_recycle_records = true;
+        }
+    }
+
+    if (!recycle_records_info.empty() && has_item_nbt_in_recycle_records && !has_item_id_in_recycle_records) {
+        CT::logger.info("检测到旧的 recycle_records 表结构，开始迁移...");
+
+        execute_unsafe("ALTER TABLE recycle_records RENAME TO recycle_records_old;");
+
+        const char* create_new_recycle_records = "CREATE TABLE recycle_records ("
+                                                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                 "dim_id INTEGER NOT NULL,"
+                                                 "pos_x INTEGER NOT NULL,"
+                                                 "pos_y INTEGER NOT NULL,"
+                                                 "pos_z INTEGER NOT NULL,"
+                                                 "item_id INTEGER NOT NULL,"
+                                                 "recycler_uuid TEXT NOT NULL,"
+                                                 "recycle_count INTEGER NOT NULL,"
+                                                 "total_price INTEGER NOT NULL,"
+                                                 "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                                 "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES "
+                                                 "recycle_shop_items(dim_id, pos_x, pos_y, pos_z, item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_new_recycle_records)) {
+            CT::logger.error("迁移失败：无法创建新 recycle_records 表");
+            return false;
+        }
+        
+        const char* migrate_recycle_records_data = "INSERT INTO recycle_records (id, dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, total_price, timestamp) "
+                                                   "SELECT o.id, o.dim_id, o.pos_x, o.pos_y, o.pos_z, d.item_id, o.recycler_uuid, o.recycle_count, o.total_price, o.timestamp "
+                                                   "FROM recycle_records_old o "
+                                                   "JOIN item_definitions d ON o.item_nbt = d.item_nbt;";
+        if (!execute_unsafe(migrate_recycle_records_data)) {
+            CT::logger.error("迁移失败：无法迁移 recycle_records 数据");
+            return false;
+        }
+
+        execute_unsafe("DROP TABLE recycle_records_old;");
+        CT::logger.info("recycle_records 表迁移成功！");
+    } else if (recycle_records_info.empty()) {
+        const char* create_recycle_records_table = "CREATE TABLE IF NOT EXISTS recycle_records ("
+                                                   "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                   "dim_id INTEGER NOT NULL,"
+                                                   "pos_x INTEGER NOT NULL,"
+                                                   "pos_y INTEGER NOT NULL,"
+                                                   "pos_z INTEGER NOT NULL,"
+                                                   "item_id INTEGER NOT NULL,"
+                                                   "recycler_uuid TEXT NOT NULL,"
+                                                   "recycle_count INTEGER NOT NULL,"
+                                                   "total_price INTEGER NOT NULL,"
+                                                   "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                                   "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES "
+                                                   "recycle_shop_items(dim_id, pos_x, pos_y, pos_z, item_id) ON DELETE "
+                                                   "CASCADE);";
+        if (!execute_unsafe(create_recycle_records_table)) {
+            return false;
+        }
+    }
+
+    // 检查 purchase_records 表结构
+    std::vector<std::vector<std::string>> purchase_records_info = query_unsafe("PRAGMA table_info(purchase_records);");
+    bool has_item_nbt_in_purchase = false;
+    bool has_item_id_in_purchase = false;
+    
+    for (const auto& row : purchase_records_info) {
+        if (row.size() > 1) {
+            if (row[1] == "item_nbt") has_item_nbt_in_purchase = true;
+            if (row[1] == "item_id") has_item_id_in_purchase = true;
+        }
+    }
+
+    // 如果表存在且使用旧结构，需要迁移
+    if (!purchase_records_info.empty() && has_item_nbt_in_purchase && !has_item_id_in_purchase) {
+        CT::logger.info("检测到旧的 purchase_records 表结构，开始迁移...");
+        
+        if (!execute_unsafe("ALTER TABLE purchase_records RENAME TO purchase_records_old;")) {
+            CT::logger.error("迁移失败：无法重命名 purchase_records");
+            return false;
+        }
+        
+        const char* create_new_purchase_records = "CREATE TABLE purchase_records ("
+                                                  "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                                                   "dim_id INTEGER NOT NULL,"
                                                   "pos_x INTEGER NOT NULL,"
                                                   "pos_y INTEGER NOT NULL,"
                                                   "pos_z INTEGER NOT NULL,"
-                                                  "item_nbt TEXT NOT NULL,"
-                                                  "price INTEGER NOT NULL,"
-                                                  "min_durability INTEGER NOT NULL DEFAULT 0,"
-                                                  "required_enchant_id INTEGER NOT NULL DEFAULT -1,"
-                                                  "required_enchant_level INTEGER NOT NULL DEFAULT 0,"
-                                                  "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_nbt),"
-                                                  "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES "
-                                                  "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
-    if (!execute_unsafe(create_recycle_shop_items_table)) {
-        return false;
-    }
-
-    const char* create_recycle_records_table = "CREATE TABLE IF NOT EXISTS recycle_records ("
-                                               "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                                               "dim_id INTEGER NOT NULL,"
-                                               "pos_x INTEGER NOT NULL,"
-                                               "pos_y INTEGER NOT NULL,"
-                                               "pos_z INTEGER NOT NULL,"
-                                               "item_nbt TEXT NOT NULL,"
-                                               "recycler_uuid TEXT NOT NULL,"
-                                               "recycle_count INTEGER NOT NULL,"
-                                               "total_price INTEGER NOT NULL,"
-                                               "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
-                                               "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_nbt) REFERENCES "
-                                               "recycle_shop_items(dim_id, pos_x, pos_y, pos_z, item_nbt) ON DELETE "
-                                               "CASCADE);";
-    if (!execute_unsafe(create_recycle_records_table)) {
-        return false;
-    }
-
-    const char* create_purchase_records_table = "CREATE TABLE IF NOT EXISTS purchase_records ("
-                                                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                                                "dim_id INTEGER NOT NULL,"
-                                                "pos_x INTEGER NOT NULL,"
-                                                "pos_y INTEGER NOT NULL,"
-                                                "pos_z INTEGER NOT NULL,"
-                                                "item_nbt TEXT NOT NULL,"
-                                                "buyer_uuid TEXT NOT NULL,"
-                                                "purchase_count INTEGER NOT NULL,"
-                                                "total_price INTEGER NOT NULL,"
-                                                "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
-                                                "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_nbt) REFERENCES "
-                                                "shop_items(dim_id, pos_x, pos_y, pos_z, item_nbt) ON DELETE "
-                                                "CASCADE);";
-    if (!execute_unsafe(create_purchase_records_table)) {
-        return false;
+                                                  "item_id INTEGER NOT NULL,"
+                                                  "buyer_uuid TEXT NOT NULL,"
+                                                  "purchase_count INTEGER NOT NULL,"
+                                                  "total_price INTEGER NOT NULL,"
+                                                  "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                                  "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES "
+                                                  "shop_items(dim_id, pos_x, pos_y, pos_z, item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_new_purchase_records)) {
+            CT::logger.error("迁移失败：无法创建新 purchase_records 表");
+            return false;
+        }
+        
+        // 迁移数据
+        const char* migrate_purchase_data = "INSERT INTO purchase_records (id, dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, total_price, timestamp) "
+                                           "SELECT o.id, o.dim_id, o.pos_x, o.pos_y, o.pos_z, d.item_id, o.buyer_uuid, o.purchase_count, o.total_price, o.timestamp "
+                                           "FROM purchase_records_old o "
+                                           "JOIN item_definitions d ON o.item_nbt = d.item_nbt;";
+        if (!execute_unsafe(migrate_purchase_data)) {
+            CT::logger.error("迁移失败：无法迁移 purchase_records 数据");
+            return false;
+        }
+        
+        if (!execute_unsafe("DROP TABLE purchase_records_old;")) {
+            CT::logger.warn("警告：无法删除旧表 purchase_records_old");
+        }
+        
+        CT::logger.info("purchase_records 表迁移成功！");
+    } else if (purchase_records_info.empty()) {
+        // 表不存在，创建新结构
+        const char* create_purchase_records_table = "CREATE TABLE IF NOT EXISTS purchase_records ("
+                                                    "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                    "dim_id INTEGER NOT NULL,"
+                                                    "pos_x INTEGER NOT NULL,"
+                                                    "pos_y INTEGER NOT NULL,"
+                                                    "pos_z INTEGER NOT NULL,"
+                                                    "item_id INTEGER NOT NULL,"
+                                                    "buyer_uuid TEXT NOT NULL,"
+                                                    "purchase_count INTEGER NOT NULL,"
+                                                    "total_price INTEGER NOT NULL,"
+                                                    "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
+                                                    "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES "
+                                                    "shop_items(dim_id, pos_x, pos_y, pos_z, item_id) ON DELETE CASCADE);";
+        if (!execute_unsafe(create_purchase_records_table)) {
+            return false;
+        }
     }
 
     // 创建空间索引以优化箱子位置查询
@@ -202,41 +434,15 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         CT::logger.warn("无法创建商店物品位置索引");
     }
 
-    std::vector<std::vector<std::string>> recycle_tables_info = query_unsafe("PRAGMA table_info(recycle_shop_items);");
-    bool has_min_durability_column = false;
-    bool has_req_enchant_id_column = false;
-    bool has_req_enchant_lvl_column = false;
-
-    for (const auto& row : recycle_tables_info) {
-        if (row.size() > 1) {
-            if (row[1] == "min_durability") has_min_durability_column = true;
-            if (row[1] == "required_enchant_id") has_req_enchant_id_column = true;
-            if (row[1] == "required_enchant_level") has_req_enchant_lvl_column = true;
-        }
+    // 检查并添加新列到 recycle_shop_items
+    if (!isColumnExists("recycle_shop_items", "required_enchants")) {
+        execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchants TEXT NOT NULL DEFAULT '';");
     }
-
-    if (!has_min_durability_column) {
-        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `min_durability` 字段，正在添加...");
-        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN min_durability INTEGER NOT NULL DEFAULT 0;")) {
-            CT::logger.error("`min_durability` 字段添加失败！");
-            return false;
-        }
+    if (!isColumnExists("recycle_shop_items", "max_recycle_count")) {
+        execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN max_recycle_count INTEGER NOT NULL DEFAULT 0;");
     }
-
-    if (!has_req_enchant_id_column) {
-        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_id` 字段，正在添加...");
-        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_id INTEGER NOT NULL DEFAULT -1;")) {
-            CT::logger.error("`required_enchant_id` 字段添加失败！");
-            return false;
-        }
-    }
-
-    if (!has_req_enchant_lvl_column) {
-        CT::logger.info("检测到 `recycle_shop_items` 表缺少 `required_enchant_level` 字段，正在添加...");
-        if (!execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchant_level INTEGER NOT NULL DEFAULT 0;")) {
-            CT::logger.error("`required_enchant_level` 字段添加失败！");
-            return false;
-        }
+    if (!isColumnExists("recycle_shop_items", "current_recycled_count")) {
+        execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;");
     }
 
     return true;
@@ -422,4 +628,43 @@ void Sqlite3Wrapper::setCachedResult(const std::string& key, const std::vector<s
         result,
         std::chrono::steady_clock::now()
     };
+}
+
+int Sqlite3Wrapper::getOrCreateItemId(const std::string& itemNbt) {
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
+    
+    if (!db) return -1;
+
+    // 首先尝试查找是否已存在
+    auto results = query("SELECT item_id FROM item_definitions WHERE item_nbt = ?", itemNbt);
+    
+    if (!results.empty()) {
+        // 已存在，返回 item_id
+        return std::stoi(results[0][0]);
+    }
+
+    // 不存在，插入新记录
+    if (execute("INSERT INTO item_definitions (item_nbt) VALUES (?)", itemNbt)) {
+        // 获取刚插入的 item_id
+        long long lastId = sqlite3_last_insert_rowid(db);
+        return static_cast<int>(lastId);
+    }
+
+    CT::logger.error("Failed to insert item_nbt into item_definitions");
+    return -1;
+}
+
+std::string Sqlite3Wrapper::getItemNbtById(int itemId) {
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
+    
+    if (!db) return "";
+
+    auto results = query("SELECT item_nbt FROM item_definitions WHERE item_id = ?", itemId);
+    
+    if (!results.empty()) {
+        return results[0][0];
+    }
+
+    CT::logger.warn("Item ID {} not found in item_definitions", itemId);
+    return "";
 }
