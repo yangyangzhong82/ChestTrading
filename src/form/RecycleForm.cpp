@@ -1,7 +1,8 @@
 #include "RecycleForm.h"
 #include "LLMoney.h"
 #include "LockForm.h"
-#include "Utils/ItemTextureManager.h"
+#include "FormUtils.h" // 引入新的辅助工具
+// #include "Utils/ItemTextureManager.h" // 现在通过 FormUtils 间接包含
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
@@ -9,21 +10,21 @@
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/PlayerInfo.h"
-#include "logger.h"
+// #include "logger.h" // logger 已在 FormUtils.h 中包含，避免重定义
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/PlayerInventory.h"
-#include "mc/world/item/Item.h"
+#include "mc/world/item/Item.h" // 仍需要用于 ItemStack 的 getItem()
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
-#include "mc/world/item/enchanting/ItemEnchants.h"
+#include "mc/world/item/enchanting/ItemEnchants.h" // 仍需要用于 ItemStack 的 constructItemEnchantsFromUserData()
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "nlohmann/json.hpp"
 
 
 namespace CT {
 
-using CT::NbtUtils::enchantToString;
+// using CT::NbtUtils::enchantToString; // 现在使用 FormUtils::getItemDisplayString 或 NbtUtils::enchantToString
 
 void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     showRecycleItemListForm(player, pos, dimId, region);
@@ -37,7 +38,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     // 1. 获取此回收箱的所有回收委托
     auto& db          = Sqlite3Wrapper::getInstance();
     auto  commissions = db.query(
-        "SELECT item_nbt, price, min_durability, required_enchants FROM recycle_shop_items "
+        "SELECT item_nbt, price, min_durability, required_enchant_id, required_enchant_level FROM recycle_shop_items "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?",
         dimId,
         pos.x,
@@ -88,7 +89,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                         for (const auto& enchant : enchants) {
                             int id    = enchant["id"];
                             int level = enchant["level"];
-                            itemInfo += enchantToString((Enchant::Type)id) + " " + std::to_string(level) + " ";
+                            itemInfo += NbtUtils::enchantToString((Enchant::Type)id) + " " + std::to_string(level) + " ";
                         }
                         itemInfo += "§r";
                     }
@@ -258,7 +259,7 @@ void showRecycleConfirmForm(
         if (!enchantList.empty()) {
             std::string enchantText = "§d附魔: ";
             for (const auto& enchant : enchantList) {
-                enchantText += enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+                enchantText += NbtUtils::enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
             }
             fm.appendLabel(enchantText);
         }

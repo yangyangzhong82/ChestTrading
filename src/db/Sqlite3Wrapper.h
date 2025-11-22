@@ -71,7 +71,7 @@ private:
     ~Sqlite3Wrapper();
 
     sqlite3* db;
-    std::mutex mDbMutex;  // 数据库操作互斥锁
+    std::recursive_mutex mDbMutex; // 数据库操作互斥锁
     bool mInTransaction = false;
 
     // 查询缓存相关
@@ -117,7 +117,7 @@ private:
 
 template<typename... Args>
 bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     
     if (!db) return false;
 
@@ -137,6 +137,11 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     }
 
     sqlite3_finalize(stmt);
+
+    if (result) {
+        clearCache(); // 成功执行后清除缓存
+    }
+
     return result;
 }
 
@@ -159,7 +164,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
 
     mStats.cacheMisses++;
     
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     
     if (!db) return results;
 
@@ -232,7 +237,7 @@ bool Sqlite3Wrapper::executeBatch(const std::vector<std::string>& sqlStatements,
         const auto& sql = sqlStatements[i];
         const auto& params = paramsList[i];
 
-        std::lock_guard<std::mutex> lock(mDbMutex);
+        std::lock_guard<std::recursive_mutex> lock(mDbMutex);
         
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {

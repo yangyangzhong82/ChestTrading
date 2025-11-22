@@ -14,6 +14,7 @@ namespace CT {
 
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
+    logger.debug("getChestDetails: Checking chest at pos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, dimId);
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
@@ -31,6 +32,13 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
         isLocked  = true;
         ownerUuid = results[0][0];
         chestType = static_cast<ChestType>(std::stoi(results[0][1]));
+        logger.debug(
+            "getChestDetails: Found primary chest part. Owner: {}, Type: {}.",
+            ownerUuid,
+            static_cast<int>(chestType)
+        );
+    } else {
+        logger.debug("getChestDetails: Primary chest part not found in DB.");
     }
 
     // 检查是否是双箱子
@@ -39,6 +47,7 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
         auto chest = static_cast<class ChestBlockActor*>(blockActor);
         if (chest->mLargeChestPaired) {
             BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
+            logger.debug("getChestDetails: Chest is large. Checking paired chest at ({}, {}, {}).", pairedChestPos.x, pairedChestPos.y, pairedChestPos.z);
             std::vector<std::vector<std::string>> pairedResults = db.query(
                 "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
                 dimId,
@@ -49,33 +58,26 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 
             if (!pairedResults.empty() && pairedResults[0].size() >= 2) {
                 // 如果配对箱子被锁定，并且当前箱子未被锁定，则更新为配对箱子的锁定信息
-                if (!isLocked) {
-                    isLocked  = true;
-                    ownerUuid = pairedResults[0][0];
-                    chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
-                }
+                isLocked  = true;
+                ownerUuid = pairedResults[0][0];
+                chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
+                logger.debug(
+                    "getChestDetails: Found paired chest part. Overriding with Owner: {}, Type: {}.",
+                    ownerUuid,
+                    static_cast<int>(chestType)
+                );
+            } else {
+                logger.debug("getChestDetails: Paired chest part not found in DB.");
             }
         }
     }
-    return {isLocked, ownerUuid, chestType};
-}
-
-std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId) {
-    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
-    std::vector<std::vector<std::string>> results = db.query(
-        "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z
+    logger.debug(
+        "getChestDetails: Final result - isLocked: {}, ownerUuid: '{}', chestType: {}.",
+        isLocked,
+        ownerUuid,
+        static_cast<int>(chestType)
     );
-
-    if (!results.empty() && results[0].size() >= 2) {
-        std::string playerUuid = results[0][0];
-        ChestType   chestType  = static_cast<ChestType>(std::stoi(results[0][1]));
-        return {true, playerUuid, chestType}; // 箱子已设置
-    }
-    return {false, "", ChestType::Locked}; // 箱子未设置，返回默认值
+    return {isLocked, ownerUuid, chestType};
 }
 
 bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region, ChestType type) {

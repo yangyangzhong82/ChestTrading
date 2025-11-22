@@ -148,6 +148,13 @@ std::unique_ptr<CompoundTag> getBlockEntityNbt(BlockActor* blockEntity);
   */
  std::string getBundleItems(const CompoundTag& bundleNbt);
 
+ /**
+  * @brief 清理物品NBT，移除数量和损坏标签，以便进行物品类型聚合和数据库存储/比较。
+  * @param itemNbt 原始的物品CompoundTag。
+  * @return 清理后的CompoundTag的深拷贝。
+  */
+ std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt);
+
  std::string enchantToString(const Enchant::Type type);
 
  } // namespace CT::NbtUtils

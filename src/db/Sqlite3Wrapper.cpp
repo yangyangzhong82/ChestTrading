@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <algorithm>
 
+#include "Config/ConfigManager.h"
 Sqlite3Wrapper::Sqlite3Wrapper() : db(nullptr) {}
 
 Sqlite3Wrapper::~Sqlite3Wrapper() {
@@ -13,7 +14,7 @@ Sqlite3Wrapper::~Sqlite3Wrapper() {
 }
 
 bool Sqlite3Wrapper::open(const std::string& db_path) {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     
     if (db) {
         sqlite3_close(db);
@@ -25,11 +26,23 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         return false;
     }
 
-    // 启用 WAL 模式以提高并发性能和安全性
+    // 根据配置决定是否启用 WAL 模式以提高并发性能和安全性
     char* err_msg = nullptr;
-    if (sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
-        CT::logger.warn("无法启用 WAL 模式: {}", err_msg ? err_msg : "未知错误");
-        if (err_msg) sqlite3_free(err_msg);
+    if (CT::ConfigManager::getInstance().get().enableWalMode) {
+        if (sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+            CT::logger.warn("无法启用 WAL 模式: {}", err_msg ? err_msg : "未知错误");
+            if (err_msg) sqlite3_free(err_msg);
+        } else {
+            CT::logger.info("WAL 模式已启用.");
+        }
+    } else {
+        // 如果WAL模式未启用，确保使用默认的 delete 模式
+        if (sqlite3_exec(db, "PRAGMA journal_mode=DELETE;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+            CT::logger.warn("无法设置为 DELETE 模式: {}", err_msg ? err_msg : "未知错误");
+            if (err_msg) sqlite3_free(err_msg);
+        } else {
+            CT::logger.info("WAL 模式未启用, 使用 DELETE 模式.");
+        }
     }
 
     // 启用外键约束
@@ -207,7 +220,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 }
 
 void Sqlite3Wrapper::close() {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     if (db) {
         sqlite3_close(db);
         db = nullptr;
@@ -216,7 +229,7 @@ void Sqlite3Wrapper::close() {
 }
 
 bool Sqlite3Wrapper::execute_unsafe(const std::string& sql) {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     char* err_msg = nullptr;
     if (sqlite3_exec(db, sql.c_str(), 0, 0, &err_msg) != SQLITE_OK) {
         std::cerr << "SQL error: " << err_msg << std::endl;
@@ -239,7 +252,7 @@ static int callback(void* data, int argc, char** argv, char** azColName) {
 
 std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::string& sql) {
     std::vector<std::vector<std::string>> results;
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     char* err_msg = nullptr;
     if (sqlite3_exec(db, sql.c_str(), callback, &results, &err_msg) != SQLITE_OK) {
         std::cerr << "SQL error: " << err_msg << std::endl;
@@ -249,7 +262,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::st
 }
 
 bool Sqlite3Wrapper::beginTransaction() {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     if (mInTransaction) {
         return true;
     }
@@ -269,7 +282,7 @@ bool Sqlite3Wrapper::beginTransaction() {
 }
 
 bool Sqlite3Wrapper::commit() {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     if (!mInTransaction || !db) {
         return false;
     }
@@ -287,7 +300,7 @@ bool Sqlite3Wrapper::commit() {
 }
 
 bool Sqlite3Wrapper::rollback() {
-    std::lock_guard<std::mutex> lock(mDbMutex);
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     if (!mInTransaction || !db) {
         return false;
     }

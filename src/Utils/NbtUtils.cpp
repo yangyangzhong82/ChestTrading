@@ -563,4 +563,15 @@ std::string getBundleItems(const CompoundTag& bundleNbt) {
 }
 
 
+std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt) {
+    auto cleanedNbt = itemNbt.clone();
+    if (cleanedNbt->contains("Count")) {
+        cleanedNbt->erase("Count");
+    }
+    if (cleanedNbt->contains("Damage")) { // 移除损坏标签
+        cleanedNbt->erase("Damage");
+    }
+    return cleanedNbt;
+}
+
 } // namespace CT::NbtUtils

@@ -50,7 +50,7 @@ bool Entry::enable() {
     registerEventListener();
     registerPlayerConnectionListener(); // 注册玩家连接事件
 
-    std::string db_path = "ChestTrading.db"; // 数据库文件路径
+    std::string db_path = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
     if (db.open(db_path)) {
         getSelf().getLogger().info("Successfully opened database: " + db_path);
         
