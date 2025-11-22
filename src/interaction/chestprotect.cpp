@@ -12,9 +12,94 @@
 
 namespace CT {
 
+// ========== ChestCacheManager 实现 ==========
+
+bool ChestCacheManager::getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEntry& entry) {
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    
+    PositionKey key{dimId, pos.x, pos.y, pos.z};
+    auto it = mCache.find(key);
+    
+    if (it == mCache.end()) {
+        return false;
+    }
+    
+    // 检查缓存是否过期
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
+    
+    if (elapsed > mCacheTimeoutSeconds) {
+        mCache.erase(it);
+        return false;
+    }
+    
+    entry = it->second;
+    return true;
+}
+
+void ChestCacheManager::setCachedChestInfo(BlockPos pos, int dimId, const ChestCacheEntry& entry) {
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    
+    PositionKey key{dimId, pos.x, pos.y, pos.z};
+    mCache[key] = entry;
+}
+
+void ChestCacheManager::invalidateCache(BlockPos pos, int dimId) {
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    
+    PositionKey key{dimId, pos.x, pos.y, pos.z};
+    mCache.erase(key);
+}
+
+void ChestCacheManager::clearAllCache() {
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    mCache.clear();
+    logger.info("箱子缓存已清空");
+}
+
+void ChestCacheManager::setCacheTimeout(int seconds) {
+    mCacheTimeoutSeconds = seconds;
+    logger.info("箱子缓存超时时间已设置为 {} 秒", seconds);
+}
+
+void ChestCacheManager::cleanupExpiredCache() {
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    
+    auto now = std::chrono::steady_clock::now();
+    size_t removedCount = 0;
+    
+    for (auto it = mCache.begin(); it != mCache.end();) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
+        if (elapsed > mCacheTimeoutSeconds) {
+            it = mCache.erase(it);
+            removedCount++;
+        } else {
+            ++it;
+        }
+    }
+    
+    if (removedCount > 0) {
+        logger.debug("清理了 {} 个过期的箱子缓存条目", removedCount);
+    }
+}
+
+// ========== 箱子保护功能实现 ==========
+
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
     logger.debug("getChestDetails: Checking chest at pos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, dimId);
+    
+    // 首先尝试从缓存获取
+    ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
+    ChestCacheEntry cacheEntry;
+    
+    if (cacheManager.getCachedChestInfo(pos, dimId, cacheEntry)) {
+        logger.debug("getChestDetails: Cache hit for pos ({}, {}, {})", pos.x, pos.y, pos.z);
+        return {cacheEntry.isLocked, cacheEntry.ownerUuid, cacheEntry.chestType};
+    }
+    
+    logger.debug("getChestDetails: Cache miss, querying database");
+    
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
@@ -43,34 +128,52 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 
     // 检查是否是双箱子
     auto* blockActor = region.getBlockEntity(pos);
-    if (blockActor && blockActor->mType == BlockActorType::Chest) { // 检查 blockActor 是否为 ChestBlockActor
+    if (blockActor && blockActor->mType == BlockActorType::Chest) {
         auto chest = static_cast<class ChestBlockActor*>(blockActor);
         if (chest->mLargeChestPaired) {
             BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
             logger.debug("getChestDetails: Chest is large. Checking paired chest at ({}, {}, {}).", pairedChestPos.x, pairedChestPos.y, pairedChestPos.z);
-            std::vector<std::vector<std::string>> pairedResults = db.query(
-                "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                dimId,
-                pairedChestPos.x,
-                pairedChestPos.y,
-                pairedChestPos.z
-            );
-
-            if (!pairedResults.empty() && pairedResults[0].size() >= 2) {
-                // 如果配对箱子被锁定，并且当前箱子未被锁定，则更新为配对箱子的锁定信息
-                isLocked  = true;
-                ownerUuid = pairedResults[0][0];
-                chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
-                logger.debug(
-                    "getChestDetails: Found paired chest part. Overriding with Owner: {}, Type: {}.",
-                    ownerUuid,
-                    static_cast<int>(chestType)
-                );
+            
+            // 也尝试从缓存获取配对箱子信息
+            ChestCacheEntry pairedCacheEntry;
+            if (cacheManager.getCachedChestInfo(pairedChestPos, dimId, pairedCacheEntry)) {
+                if (pairedCacheEntry.isLocked) {
+                    isLocked  = true;
+                    ownerUuid = pairedCacheEntry.ownerUuid;
+                    chestType = pairedCacheEntry.chestType;
+                    logger.debug("getChestDetails: Found paired chest in cache. Owner: {}, Type: {}.", ownerUuid, static_cast<int>(chestType));
+                }
             } else {
-                logger.debug("getChestDetails: Paired chest part not found in DB.");
+                std::vector<std::vector<std::string>> pairedResults = db.query(
+                    "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                    dimId,
+                    pairedChestPos.x,
+                    pairedChestPos.y,
+                    pairedChestPos.z
+                );
+
+                if (!pairedResults.empty() && pairedResults[0].size() >= 2) {
+                    isLocked  = true;
+                    ownerUuid = pairedResults[0][0];
+                    chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
+                    logger.debug(
+                        "getChestDetails: Found paired chest part. Overriding with Owner: {}, Type: {}.",
+                        ownerUuid,
+                        static_cast<int>(chestType)
+                    );
+                    
+                    // 缓存配对箱子信息
+                    cacheManager.setCachedChestInfo(pairedChestPos, dimId, ChestCacheEntry(isLocked, ownerUuid, chestType));
+                } else {
+                    logger.debug("getChestDetails: Paired chest part not found in DB.");
+                }
             }
         }
     }
+    
+    // 缓存查询结果
+    cacheManager.setCachedChestInfo(pos, dimId, ChestCacheEntry(isLocked, ownerUuid, chestType));
+    
     logger.debug(
         "getChestDetails: Final result - isLocked: {}, ownerUuid: '{}', chestType: {}.",
         isLocked,
@@ -93,6 +196,10 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
     );
 
     if (success) {
+        // 使缓存失效
+        ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
+        cacheManager.invalidateCache(pos, dimId);
+        
         // 根据箱子类型生成悬浮字文本
         std::string text;
         std::string ownerName = player_uuid; // 默认使用 UUID
@@ -142,6 +249,9 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
                     static_cast<int>(type)
                 );
                 FloatingTextManager::getInstance().addOrUpdateFloatingText(pairedChestPos, dimId, player_uuid, text, type);
+                
+                // 使配对箱子的缓存失效
+                cacheManager.invalidateCache(pairedChestPos, dimId);
 
                 // 如果是商店或回收商店，更新配对箱子的物品列表
                 if (type == ChestType::Shop || type == ChestType::RecycleShop) {
@@ -164,6 +274,10 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     );
 
     if (success) {
+        // 使缓存失效
+        ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
+        cacheManager.invalidateCache(pos, dimId);
+        
         FloatingTextManager::getInstance().removeFloatingText(pos, dimId);
 
         auto* blockActor = region.getBlockEntity(pos);
@@ -178,6 +292,10 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
                     pairedChestPos.y,
                     pairedChestPos.z
                 );
+                
+                // 使配对箱子的缓存失效
+                cacheManager.invalidateCache(pairedChestPos, dimId);
+                
                 FloatingTextManager::getInstance().removeFloatingText(pairedChestPos, dimId);
             }
         }

@@ -179,6 +179,29 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         return false;
     }
 
+    // 创建空间索引以优化箱子位置查询
+    const char* create_chests_spatial_index = "CREATE INDEX IF NOT EXISTS idx_chests_position "
+                                              "ON chests(dim_id, pos_x, pos_y, pos_z);";
+    if (!execute_unsafe(create_chests_spatial_index)) {
+        CT::logger.warn("无法创建箱子位置索引，查询性能可能受影响");
+    } else {
+        CT::logger.info("箱子位置索引创建成功");
+    }
+
+    // 为 shared_chests 创建索引
+    const char* create_shared_chests_index = "CREATE INDEX IF NOT EXISTS idx_shared_chests_position "
+                                            "ON shared_chests(dim_id, pos_x, pos_y, pos_z);";
+    if (!execute_unsafe(create_shared_chests_index)) {
+        CT::logger.warn("无法创建共享箱子位置索引");
+    }
+
+    // 为 shop_items 创建索引
+    const char* create_shop_items_index = "CREATE INDEX IF NOT EXISTS idx_shop_items_position "
+                                         "ON shop_items(dim_id, pos_x, pos_y, pos_z);";
+    if (!execute_unsafe(create_shop_items_index)) {
+        CT::logger.warn("无法创建商店物品位置索引");
+    }
+
     std::vector<std::vector<std::string>> recycle_tables_info = query_unsafe("PRAGMA table_info(recycle_shop_items);");
     bool has_min_durability_column = false;
     bool has_req_enchant_id_column = false;
