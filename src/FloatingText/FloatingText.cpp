@@ -186,12 +186,12 @@ void FloatingTextManager::loadAllLockedChests() {
                 std::vector<std::vector<std::string>> itemResults;
                 if (chestType == ChestType::Shop) {
                     itemResults = db.query(
-                        "SELECT item_nbt FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                        "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
                         dimId, posX, posY, posZ
                     );
                 } else { // RecycleShop
                     itemResults = db.query(
-                        "SELECT item_nbt FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                        "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
                         dimId, posX, posY, posZ
                     );
                 }
@@ -281,12 +281,12 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 
         if (type == ChestType::Shop) {
             itemResults = db.query(
-                "SELECT item_nbt FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
                 dimId, pos.x, pos.y, pos.z
             );
         } else { // RecycleShop
             itemResults = db.query(
-                "SELECT item_nbt FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
                 dimId, pos.x, pos.y, pos.z
             );
         }
