@@ -103,6 +103,9 @@ private:
     Sqlite3Wrapper();
     ~Sqlite3Wrapper();
 
+    // 初始化数据库表结构
+    bool initializeSchema();
+
     sqlite3* db;
     std::recursive_mutex mDbMutex; // 数据库操作互斥锁
     bool mInTransaction = false;
