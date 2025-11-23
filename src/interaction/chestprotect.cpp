@@ -303,29 +303,41 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     return success;
 }
 
-bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId) {
+bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region) {
     Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
     bool            success = db.execute(
-        "INSERT OR REPLACE INTO shared_chests (player_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?);",
+        "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?, ?);",
         shared_player_uuid,
+        owner_uuid,
         static_cast<int>(dimId),
         pos.x,
         pos.y,
         pos.z
     );
 
-    if (success) {
+    if (success && region) {
         // 检查是否是双箱子，如果是，也为配对的箱子添加分享玩家
-        // 注意：这里需要获取 BlockSource，但当前函数签名中没有。
-        // 考虑到这个函数可能在没有 BlockSource 的情况下被调用，
-        // 暂时不处理双箱子，或者在调用处传入 BlockSource。
-        // 为了简化，这里假设只处理单个箱子。
-        // 如果需要处理双箱子，需要修改函数签名或在调用处获取 BlockSource。
+        auto* blockActor = region->getBlockEntity(pos);
+        if (blockActor && blockActor->mType == BlockActorType::Chest) {
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+            if (chest->mLargeChestPaired) {
+                BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
+                db.execute(
+                    "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?, ?);",
+                    shared_player_uuid,
+                    owner_uuid,
+                    static_cast<int>(dimId),
+                    pairedChestPos.x,
+                    pairedChestPos.y,
+                    pairedChestPos.z
+                );
+            }
+        }
     }
     return success;
 }
 
-bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId) {
+bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region) {
     Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
     bool            success = db.execute(
         "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
@@ -336,10 +348,44 @@ bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int
         pos.z
     );
 
-    if (success) {
-        // 同上，如果需要处理双箱子，需要修改函数签名或在调用处获取 BlockSource。
+    if (success && region) {
+        // 检查是否是双箱子，如果是，也移除配对箱子的分享玩家
+        auto* blockActor = region->getBlockEntity(pos);
+        if (blockActor && blockActor->mType == BlockActorType::Chest) {
+            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+            if (chest->mLargeChestPaired) {
+                BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
+                db.execute(
+                    "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                    shared_player_uuid,
+                    static_cast<int>(dimId),
+                    pairedChestPos.x,
+                    pairedChestPos.y,
+                    pairedChestPos.z
+                );
+            }
+        }
     }
     return success;
+}
+
+std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId) {
+    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
+    std::vector<std::vector<std::string>> results = db.query(
+        "SELECT player_uuid, owner_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        static_cast<int>(dimId),
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    std::vector<std::pair<std::string, std::string>> sharedPlayers;
+    for (const auto& row : results) {
+        if (row.size() >= 2) {
+            sharedPlayers.push_back({row[0], row[1]});  // {player_uuid, owner_uuid}
+        }
+    }
+    return sharedPlayers;
 }
 
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {

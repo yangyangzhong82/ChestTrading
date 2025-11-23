@@ -60,13 +60,14 @@ void showShareForm(
     fm.setTitle("箱子分享管理");
 
     std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId);
+    std::string ownerName = getPlayerNameFromUuid(ownerUuid);
 
-    std::string content = "当前已分享的玩家：\n";
+    std::string content = "§e箱子主人: " + ownerName + "§r\n\n当前已分享的玩家：\n";
     if (sharedPlayers.empty()) {
         content += "无\n";
     } else {
         for (const std::string& sharedPlayerUuid : sharedPlayers) {
-            content += "- " + getPlayerNameFromUuid(sharedPlayerUuid) + " (" + sharedPlayerUuid + ")\n";
+            content += "- " + getPlayerNameFromUuid(sharedPlayerUuid) + "\n";
         }
     }
     fm.setContent(content);
@@ -117,12 +118,12 @@ void showAddOfflineShareForm(
             if (res->count(OFFLINE_PLAYER_INPUT_KEY)) {
                 const auto& offlinePlayerNameResult = res->at(OFFLINE_PLAYER_INPUT_KEY);
                 if (std::holds_alternative<std::string>(offlinePlayerNameResult)) {
-                    std::string offlinePlayerName = std::get<std::string>(offlinePlayerNameResult);
+                        std::string offlinePlayerName = std::get<std::string>(offlinePlayerNameResult);
                     if (!offlinePlayerName.empty()) {
                         auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(offlinePlayerName);
                         if (playerInfo) {
                             std::string offlinePlayerUuid = playerInfo->uuid.asString();
-                            if (addSharedPlayer(ownerUuid, offlinePlayerUuid, pos, dimId)) {
+                            if (addSharedPlayer(ownerUuid, offlinePlayerUuid, pos, dimId, &region)) {
                                 p.sendMessage("§a成功添加离线玩家 " + offlinePlayerName + " 到分享列表！");
                                 logger.info(
                                     "玩家 {} 成功将箱子 ({}, {}, {}) in dim {} 分享给离线玩家 {} ({}).",
@@ -243,7 +244,7 @@ void showAddShareForm(
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string onlinePlayerName = getPlayerNameFromUuid(onlinePlayerUuid);
                         // 添加分享玩家
-                        if (addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId)) {
+                        if (addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId, &region)) {
                             p.sendMessage("§a成功添加玩家 " + onlinePlayerName + " 到分享列表！");
                             logger.debug(
                                 "玩家 {} 成功将箱子 ({}, {}, {}) in dim {} 分享给玩家 {} ({}).",
@@ -353,7 +354,7 @@ void showRemoveShareForm(
                     const auto& toggleResult = res->at(sharedPlayerUuid);
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string sharedPlayerName = getPlayerNameFromUuid(sharedPlayerUuid);
-                        if (removeSharedPlayer(sharedPlayerUuid, pos, dimId)) {
+                        if (removeSharedPlayer(sharedPlayerUuid, pos, dimId, &region)) {
                             p.sendMessage("§a成功从分享列表移除玩家 " + sharedPlayerName + "！");
                             logger.info(
                                 "玩家 {} 成功从箱子 ({}, {}, {}) in dim {} 移除分享玩家 {} ({}).",

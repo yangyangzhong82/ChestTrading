@@ -60,9 +60,11 @@ void showChestLockForm(
                 }
             });
 
-            fm.appendButton("分享箱子", [pos, dimId, ownerUuid, &region](Player& p) {
-                showShareForm(p, pos, dimId, ownerUuid, region);
-            });
+            if (chestType == ChestType::Locked) {
+                fm.appendButton("分享箱子", [pos, dimId, ownerUuid, &region](Player& p) {
+                    showShareForm(p, pos, dimId, ownerUuid, region);
+                });
+            }
 
             if (chestType == ChestType::Shop) {
                 fm.appendButton("管理商店物品", [&player, pos, dimId, &region](Player& p) {

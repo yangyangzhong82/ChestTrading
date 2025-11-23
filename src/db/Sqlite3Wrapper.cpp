@@ -82,6 +82,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 
     const char* create_shared_chests_table = "CREATE TABLE IF NOT EXISTS shared_chests ("
                                              "player_uuid TEXT NOT NULL,"
+                                             "owner_uuid TEXT NOT NULL,"
                                              "dim_id INTEGER NOT NULL,"
                                              "pos_x INTEGER NOT NULL,"
                                              "pos_y INTEGER NOT NULL,"
@@ -90,6 +91,17 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
                                              "chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);";
     if (!execute_unsafe(create_shared_chests_table)) {
         return false;
+    }
+
+    // 检查 shared_chests 表是否有 owner_uuid 字段，如果没有则添加
+    if (!isColumnExists("shared_chests", "owner_uuid")) {
+        CT::logger.info("检测到 `shared_chests` 表缺少 `owner_uuid` 字段，正在添加...");
+        if (execute_unsafe("ALTER TABLE shared_chests ADD COLUMN owner_uuid TEXT NOT NULL DEFAULT '';")) {
+            CT::logger.info("`owner_uuid` 字段添加成功！");
+        } else {
+            CT::logger.error("`owner_uuid` 字段添加失败！");
+            return false;
+        }
     }
 
     // 创建 item_definitions 表，用于存储唯一的 item_nbt 并映射到 item_id

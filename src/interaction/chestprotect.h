@@ -91,12 +91,15 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
 bool removeChest(BlockPos pos, int dimId, BlockSource& region);
 
 // 添加分享玩家
-bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId);
+bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region = nullptr);
 
 // 移除分享玩家
-bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId);
+bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region = nullptr);
 
-// 获取所有分享玩家
+// 获取所有分享玩家（包含主人信息）
+std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId);
+
+// 获取所有分享玩家（仅玩家UUID）
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId);
 
 } // namespace CT

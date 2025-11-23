@@ -14,10 +14,10 @@ private:
     ItemTextureManager() = default; // 私有构造函数
 
 public:
-    static ItemTextureManager& getInstance(); // 单例模式
+    static ItemTextureManager& getInstance(); 
 
     bool loadTextures(const std::string& filePath);
-    bool loadTextures(const std::vector<std::string>& filePaths); // 新增：支持加载多个文件
+    bool loadTextures(const std::vector<std::string>& filePaths); 
     std::string getTexture(const std::string& itemName) const;
 
 private:
