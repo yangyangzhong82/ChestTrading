@@ -1,25 +1,26 @@
 #include "FloatingText/FloatingText.h"
+#include "Utils/NbtUtils.h"
 #include "Utils/NetworkPacket.h"
-#include "db/Sqlite3Wrapper.h" 
+#include "db/Sqlite3Wrapper.h"
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
+#include "ll/api/base/Meta.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerJoinEvent.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
+#include "mc/nbt/CompoundTag.h"
+#include "mc/network/MinecraftPacketIds.h"
+#include "mc/network/packet/AddItemActorPacket.h"
+#include "mc/world/actor/DataItem.h"
 #include "mc/world/actor/player/Player.h"
+#include "mc/world/item/ItemStack.h"
+#include "mc/world/item/NetworkItemStackDescriptor.h"
+#include "mc/world/level/ChangeDimensionRequest.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include "mc\network\LoopbackPacketSender.h"
-#include "mc/network/MinecraftPacketIds.h"
-#include "mc/network/packet/AddItemActorPacket.h"
-#include "mc/world/item/NetworkItemStackDescriptor.h"
-#include "mc/world/actor/DataItem.h" 
-#include "mc/nbt/CompoundTag.h"    
-#include "ll/api/base/Meta.h"       
-#include "Utils/NetworkPacket.h"
-#include "mc/world/item/ItemStack.h" 
-#include "Utils/NbtUtils.h"      
+
 namespace CT {
 
 // 获取单例实例
@@ -88,6 +89,24 @@ void FloatingTextManager::removeAllFloatingTexts(Player& player) {
     for (auto const& [key, ft] : mFloatingTexts) {
         if (ft.debugText) {
             debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
+        }
+    }
+}
+
+// 为特定玩家移除特定维度的所有悬浮字
+void FloatingTextManager::removeAllFloatingTexts(Player& player, DimensionType dimension) {
+    for (auto const& [key, ft] : mFloatingTexts) {
+        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
+            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
+        }
+    }
+}
+
+// 为特定玩家绘制特定维度的所有悬浮字
+void FloatingTextManager::drawAllFloatingTexts(Player& player, DimensionType dimension) {
+    for (auto const& [key, ft] : mFloatingTexts) {
+        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
+            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, player);
         }
     }
 }
@@ -353,4 +372,27 @@ void registerPlayerConnectionListener() {
 }
 
 
+//玩家跨维度
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    PlayerChangeDimensionHook5,
+    ll::memory::HookPriority::Normal,
+    Level,
+    &Level::$requestPlayerChangeDimension,
+    void,
+    Player&                  player,
+    ChangeDimensionRequest&& changeRequest
+) {
+    auto fromDim = changeRequest.mFromDimensionId.get();
+    auto toDim   = changeRequest.mToDimensionId.get();
+
+    // 在玩家切换维度之前调用原始函数
+    origin(player, std::move(changeRequest));
+
+    // 切换维度后，更新悬浮字
+    // 使用异步任务确保在正确的时机执行
+    ll::thread::ServerThreadExecutor::getDefault().execute([&player, fromDim, toDim]() {
+        FloatingTextManager::getInstance().removeAllFloatingTexts(player, fromDim);
+        FloatingTextManager::getInstance().drawAllFloatingTexts(player, toDim);
+    });
+}
 }

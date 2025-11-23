@@ -143,6 +143,9 @@ private:
     // 存储结果到缓存
     void setCachedResult(const std::string& key, const std::vector<std::vector<std::string>>& result);
 
+    // 判断查询是否应跳过缓存
+    bool shouldSkipCache(const std::string& sql);
+
     // 执行准备好的语句
     template<typename... Args>
     bool executeStatement(sqlite3_stmt* stmt, Args&&... args);
@@ -188,24 +191,26 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
 template<typename... Args>
 std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& sql, Args&&... args) {
     std::vector<std::vector<std::string>> results;
-    
-    // 生成缓存键
-    std::vector<Value> params;
-    if constexpr (sizeof...(args) > 0) {
-        params = {Value(std::forward<Args>(args))...};
-    }
-    std::string cacheKey = generateCacheKey(sql, params);
 
-    // 尝试从缓存获取
-    if (mCacheEnabled && getCachedResult(cacheKey, results)) {
-        mStats.cacheHits++;
-        return results;
+    const bool skipCache = shouldSkipCache(sql);
+    std::string cacheKey;
+
+    if (mCacheEnabled && !skipCache) {
+        std::vector<Value> params;
+        if constexpr (sizeof...(args) > 0) {
+            params = {Value(std::forward<Args>(args))...};
+        }
+        cacheKey = generateCacheKey(sql, params);
+
+        if (getCachedResult(cacheKey, results)) {
+            mStats.cacheHits++;
+            return results;
+        }
     }
 
     mStats.cacheMisses++;
-    
+
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    
     if (!db) return results;
 
     mStats.queryCount++;
@@ -230,8 +235,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
 
     sqlite3_finalize(stmt);
 
-    // 存储到缓存
-    if (mCacheEnabled) {
+    if (mCacheEnabled && !skipCache) {
         setCachedResult(cacheKey, results);
     }
 

@@ -76,6 +76,12 @@ public:
     // 移除所有悬浮字给特定玩家
     void removeAllFloatingTexts(Player& player);
 
+    // 为特定玩家移除特定维度的所有悬浮字
+    void removeAllFloatingTexts(Player& player, DimensionType dimension);
+
+    // 为特定玩家绘制特定维度的所有悬浮字
+    void drawAllFloatingTexts(Player& player, DimensionType dimension);
+
     // 绘制所有悬浮字给特定维度
     void drawAllFloatingTexts(DimensionType dimension);
 
