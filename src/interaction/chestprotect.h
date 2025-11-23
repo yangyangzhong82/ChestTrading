@@ -3,6 +3,7 @@
 #include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
+class BlockSource;
 #include <string>
 #include <tuple>
 #include <utility> // For std::pair
@@ -101,5 +102,11 @@ std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(Block
 
 // 获取所有分享玩家（仅玩家UUID）
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId);
+
+namespace internal {
+// 获取箱子的主方块位置，对于双联箱，这总是一个确定的方块
+BlockPos GetMainChestPos(BlockPos pos, BlockSource& region);
+} // namespace internal
+
 
 } // namespace CT

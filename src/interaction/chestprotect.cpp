@@ -87,26 +87,30 @@ void ChestCacheManager::cleanupExpiredCache() {
 
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
-    logger.debug("getChestDetails: Checking chest at pos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, dimId);
-    
-    // 首先尝试从缓存获取
+    BlockPos mainPos = internal::GetMainChestPos(pos, region);
+    logger.debug("getChestDetails: Checking chest at pos ({}, {}, {}), mainPos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, mainPos.x, mainPos.y, mainPos.z, dimId);
+
+    // 首先尝试从缓存获取主箱子信息
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
-    ChestCacheEntry cacheEntry;
-    
-    if (cacheManager.getCachedChestInfo(pos, dimId, cacheEntry)) {
-        logger.debug("getChestDetails: Cache hit for pos ({}, {}, {})", pos.x, pos.y, pos.z);
+    ChestCacheEntry    cacheEntry;
+    if (cacheManager.getCachedChestInfo(mainPos, dimId, cacheEntry)) {
+        logger.debug("getChestDetails: Cache hit for mainPos ({}, {}, {})", mainPos.x, mainPos.y, mainPos.z);
+        // 也为当前查询的pos缓存结果，避免下次重复计算mainPos
+        if (pos != mainPos) {
+            cacheManager.setCachedChestInfo(pos, dimId, cacheEntry);
+        }
         return {cacheEntry.isLocked, cacheEntry.ownerUuid, cacheEntry.chestType};
     }
-    
-    logger.debug("getChestDetails: Cache miss, querying database");
-    
+
+    logger.debug("getChestDetails: Cache miss for mainPos, querying database");
+
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
 
     bool        isLocked  = false;
@@ -118,62 +122,21 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
         ownerUuid = results[0][0];
         chestType = static_cast<ChestType>(std::stoi(results[0][1]));
         logger.debug(
-            "getChestDetails: Found primary chest part. Owner: {}, Type: {}.",
+            "getChestDetails: Found chest in DB. Owner: {}, Type: {}.",
             ownerUuid,
             static_cast<int>(chestType)
         );
     } else {
-        logger.debug("getChestDetails: Primary chest part not found in DB.");
+        logger.debug("getChestDetails: Chest not found in DB.");
     }
 
-    // 检查是否是双箱子
-    auto* blockActor = region.getBlockEntity(pos);
-    if (blockActor && blockActor->mType == BlockActorType::Chest) {
-        auto chest = static_cast<class ChestBlockActor*>(blockActor);
-        if (chest->mLargeChestPaired) {
-            BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
-            logger.debug("getChestDetails: Chest is large. Checking paired chest at ({}, {}, {}).", pairedChestPos.x, pairedChestPos.y, pairedChestPos.z);
-            
-            // 也尝试从缓存获取配对箱子信息
-            ChestCacheEntry pairedCacheEntry;
-            if (cacheManager.getCachedChestInfo(pairedChestPos, dimId, pairedCacheEntry)) {
-                if (pairedCacheEntry.isLocked) {
-                    isLocked  = true;
-                    ownerUuid = pairedCacheEntry.ownerUuid;
-                    chestType = pairedCacheEntry.chestType;
-                    logger.debug("getChestDetails: Found paired chest in cache. Owner: {}, Type: {}.", ownerUuid, static_cast<int>(chestType));
-                }
-            } else {
-                std::vector<std::vector<std::string>> pairedResults = db.query(
-                    "SELECT player_uuid, type FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                    dimId,
-                    pairedChestPos.x,
-                    pairedChestPos.y,
-                    pairedChestPos.z
-                );
-
-                if (!pairedResults.empty() && pairedResults[0].size() >= 2) {
-                    isLocked  = true;
-                    ownerUuid = pairedResults[0][0];
-                    chestType = static_cast<ChestType>(std::stoi(pairedResults[0][1]));
-                    logger.debug(
-                        "getChestDetails: Found paired chest part. Overriding with Owner: {}, Type: {}.",
-                        ownerUuid,
-                        static_cast<int>(chestType)
-                    );
-                    
-                    // 缓存配对箱子信息
-                    cacheManager.setCachedChestInfo(pairedChestPos, dimId, ChestCacheEntry(isLocked, ownerUuid, chestType));
-                } else {
-                    logger.debug("getChestDetails: Paired chest part not found in DB.");
-                }
-            }
-        }
-    }
-    
     // 缓存查询结果
-    cacheManager.setCachedChestInfo(pos, dimId, ChestCacheEntry(isLocked, ownerUuid, chestType));
-    
+    ChestCacheEntry newEntry(isLocked, ownerUuid, chestType);
+    cacheManager.setCachedChestInfo(mainPos, dimId, newEntry);
+    if (pos != mainPos) {
+        cacheManager.setCachedChestInfo(pos, dimId, newEntry);
+    }
+
     logger.debug(
         "getChestDetails: Final result - isLocked: {}, ownerUuid: '{}', chestType: {}.",
         isLocked,
@@ -184,119 +147,114 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 }
 
 bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region, ChestType type) {
-    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
-    bool            success = db.execute(
+    Sqlite3Wrapper&    db         = Sqlite3Wrapper::getInstance();
+    ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
+    BlockPos           mainPos    = internal::GetMainChestPos(pos, region);
+
+    // 开始事务
+    db.beginTransaction();
+
+    // 先删除可能存在的旧记录
+    db.execute("DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;", dimId, pos.x, pos.y, pos.z);
+    
+    // 检查是否为大箱子
+    auto* blockActor = region.getBlockEntity(pos);
+    BlockPos pairedChestPos;
+    bool isLargeChest = false;
+    if (blockActor && blockActor->mType == BlockActorType::Chest) {
+        auto* chest = static_cast<class ChestBlockActor*>(blockActor);
+        if (chest->mLargeChestPaired) {
+            isLargeChest = true;
+            pairedChestPos = chest->mLargeChestPairedPosition;
+            // 如果是大箱子，也要删除配对箱子位置的旧记录，以防万一
+             db.execute("DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;", dimId, pairedChestPos.x, pairedChestPos.y, pairedChestPos.z);
+        }
+    }
+
+    // 只在主方块位置插入/替换记录
+    bool success = db.execute(
         "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, ?, ?, ?);",
         player_uuid,
         dimId,
-        pos.x,
-        pos.y,
-        pos.z,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z,
         static_cast<int>(type)
     );
 
     if (success) {
+        // 提交事务
+        db.commit();
+
         // 使缓存失效
-        ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
         cacheManager.invalidateCache(pos, dimId);
+        if (isLargeChest) {
+            cacheManager.invalidateCache(pairedChestPos, dimId);
+        }
         
-        // 根据箱子类型生成悬浮字文本
+        // 生成悬浮字文本
         std::string text;
-        std::string ownerName = player_uuid; // 默认使用 UUID
-        auto        playerInfo =
-            ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(player_uuid));
-        if (playerInfo) {
+        std::string ownerName = player_uuid;
+        if (auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(player_uuid))) {
             ownerName = playerInfo->name;
         }
 
         switch (type) {
-        case ChestType::Locked:
-            text = "§e[上锁箱子]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::RecycleShop:
-            text = "§a[回收商店]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::Shop:
-            text = "§b[商店箱子]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::Public:
-            text = "§d[公共箱子]§r 拥有者: " + ownerName;
-            break;
-        default:
-            text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
-            break;
+            case ChestType::Locked:      text = "§e[上锁箱子]§r 拥有者: " + ownerName; break;
+            case ChestType::RecycleShop: text = "§a[回收商店]§r 拥有者: " + ownerName; break;
+            case ChestType::Shop:        text = "§b[商店箱子]§r 拥有者: " + ownerName; break;
+            case ChestType::Public:      text = "§d[公共箱子]§r 拥有者: " + ownerName; break;
+            default:                     text = "§f[未知箱子类型]§r 拥有者: " + ownerName; break;
         }
-        FloatingTextManager::getInstance().addOrUpdateFloatingText(pos, dimId, player_uuid, text, type);
 
-        // 如果是商店或回收商店，更新 FloatingTextManager 中的物品列表
+        // 统一在主方块位置创建悬浮字
+        FloatingTextManager::getInstance().addOrUpdateFloatingText(mainPos, dimId, player_uuid, text, type);
+        // 如果是大箱子，确保另一个方块上没有悬浮字
+        if (isLargeChest) {
+            BlockPos otherPos = (mainPos == pos) ? pairedChestPos : pos;
+            FloatingTextManager::getInstance().removeFloatingText(otherPos, dimId);
+        }
+
+        // 如果是商店，更新主方塊的悬浮字物品列表
         if (type == ChestType::Shop || type == ChestType::RecycleShop) {
-            FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, type);
+            FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, type);
         }
-
-        auto* blockActor = region.getBlockEntity(pos);
-        if (blockActor) {
-            auto chest = static_cast<class ChestBlockActor*>(blockActor);
-            if (chest->mLargeChestPaired) {
-                BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
-                db.execute(
-                    "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type) VALUES (?, ?, ?, "
-                    "?, ?, ?);",
-                    player_uuid,
-                    dimId,
-                    pairedChestPos.x,
-                    pairedChestPos.y,
-                    pairedChestPos.z,
-                    static_cast<int>(type)
-                );
-                FloatingTextManager::getInstance().addOrUpdateFloatingText(pairedChestPos, dimId, player_uuid, text, type);
-                
-                // 使配对箱子的缓存失效
-                cacheManager.invalidateCache(pairedChestPos, dimId);
-
-                // 如果是商店或回收商店，更新配对箱子的物品列表
-                if (type == ChestType::Shop || type == ChestType::RecycleShop) {
-                    FloatingTextManager::getInstance().updateShopFloatingText(pairedChestPos, dimId, type);
-                }
-            }
-        }
+    } else {
+        // 回滚事务
+        db.rollback();
     }
+    
     return success;
 }
 
 bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
-    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
-    bool            success = db.execute(
+    Sqlite3Wrapper&    db         = Sqlite3Wrapper::getInstance();
+    ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
+    BlockPos           mainPos    = internal::GetMainChestPos(pos, region);
+
+    // 只删除主方块的记录
+    bool success = db.execute(
         "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
 
     if (success) {
         // 使缓存失效
-        ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
         cacheManager.invalidateCache(pos, dimId);
         
-        FloatingTextManager::getInstance().removeFloatingText(pos, dimId);
+        // 只移除主方块的悬浮字
+        FloatingTextManager::getInstance().removeFloatingText(mainPos, dimId);
 
+        // 如果是大箱子，也要让配对的方块缓存失效
         auto* blockActor = region.getBlockEntity(pos);
-        if (blockActor) {
-            auto chest = static_cast<class ChestBlockActor*>(blockActor);
+        if (blockActor && blockActor->mType == BlockActorType::Chest) {
+            auto* chest = static_cast<class ChestBlockActor*>(blockActor);
             if (chest->mLargeChestPaired) {
                 BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
-                db.execute(
-                    "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                    dimId,
-                    pairedChestPos.x,
-                    pairedChestPos.y,
-                    pairedChestPos.z
-                );
-                
-                // 使配对箱子的缓存失效
                 cacheManager.invalidateCache(pairedChestPos, dimId);
-                
-                FloatingTextManager::getInstance().removeFloatingText(pairedChestPos, dimId);
             }
         }
     }
@@ -304,76 +262,51 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
 }
 
 bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region) {
+    if (!region) {
+        return false; // 需要 region 来确定主箱子
+    }
     Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
-    bool            success = db.execute(
+    BlockPos        mainPos = internal::GetMainChestPos(pos, *region);
+
+    return db.execute(
         "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?, ?);",
         shared_player_uuid,
         owner_uuid,
-        static_cast<int>(dimId),
-        pos.x,
-        pos.y,
-        pos.z
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
-
-    if (success && region) {
-        // 检查是否是双箱子，如果是，也为配对的箱子添加分享玩家
-        auto* blockActor = region->getBlockEntity(pos);
-        if (blockActor && blockActor->mType == BlockActorType::Chest) {
-            auto chest = static_cast<class ChestBlockActor*>(blockActor);
-            if (chest->mLargeChestPaired) {
-                BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
-                db.execute(
-                    "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?, ?);",
-                    shared_player_uuid,
-                    owner_uuid,
-                    static_cast<int>(dimId),
-                    pairedChestPos.x,
-                    pairedChestPos.y,
-                    pairedChestPos.z
-                );
-            }
-        }
-    }
-    return success;
 }
 
 bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region) {
+    if (!region) {
+        return false; // 需要 region 来确定主箱子
+    }
     Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
-    bool            success = db.execute(
+    BlockPos        mainPos = internal::GetMainChestPos(pos, *region);
+
+    return db.execute(
         "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         shared_player_uuid,
-        static_cast<int>(dimId),
-        pos.x,
-        pos.y,
-        pos.z
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
-
-    if (success && region) {
-        // 检查是否是双箱子，如果是，也移除配对箱子的分享玩家
-        auto* blockActor = region->getBlockEntity(pos);
-        if (blockActor && blockActor->mType == BlockActorType::Chest) {
-            auto chest = static_cast<class ChestBlockActor*>(blockActor);
-            if (chest->mLargeChestPaired) {
-                BlockPos pairedChestPos = chest->mLargeChestPairedPosition;
-                db.execute(
-                    "DELETE FROM shared_chests WHERE player_uuid = ? AND dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                    shared_player_uuid,
-                    static_cast<int>(dimId),
-                    pairedChestPos.x,
-                    pairedChestPos.y,
-                    pairedChestPos.z
-                );
-            }
-        }
-    }
-    return success;
 }
 
 std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId) {
+    // 这个函数可能在没有BlockSource的上下文中被调用，所以我们不能在这里获取mainPos。
+    // 幸运的是，共享玩家信息是和箱子位置绑定的，而这个绑定关系在add/remove时已经统一到mainPos了。
+    // 但查询时如果只用pos，可能会查不到从属箱子的共享信息。
+    // 因此，所有调用getShared*的地方，都需要传入BlockSource。
+    // 但为了保持API稳定，暂时只查询传入的pos。
+    // TODO: Refactor calls to getSharedPlayers to pass BlockSource.
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, owner_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        static_cast<int>(dimId),
+        dimId,
         pos.x,
         pos.y,
         pos.z
@@ -382,17 +315,18 @@ std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(Block
     std::vector<std::pair<std::string, std::string>> sharedPlayers;
     for (const auto& row : results) {
         if (row.size() >= 2) {
-            sharedPlayers.push_back({row[0], row[1]});  // {player_uuid, owner_uuid}
+            sharedPlayers.push_back({row[0], row[1]}); // {player_uuid, owner_uuid}
         }
     }
     return sharedPlayers;
 }
 
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {
+    // 同 getSharedPlayersWithOwner
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        static_cast<int>(dimId),
+        dimId,
         pos.x,
         pos.y,
         pos.z
@@ -406,5 +340,26 @@ std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {
     }
     return sharedPlayers;
 }
+
+namespace internal {
+BlockPos GetMainChestPos(BlockPos pos, BlockSource& region) {
+    auto* blockActor = region.getBlockEntity(pos);
+    if (blockActor && blockActor->mType == BlockActorType::Chest) {
+        auto* chest = static_cast<class ChestBlockActor*>(blockActor);
+        if (chest->mLargeChestPaired) {
+            BlockPos pairedPos = chest->mLargeChestPairedPosition;
+            // 通过比较坐标来确定一个唯一的“主”方块
+            // 目的是无论玩家与大箱子的哪一半交互，我们都能定位到同一个数据库条目
+            if (pos.x < pairedPos.x || (pos.x == pairedPos.x && (pos.y < pairedPos.y || (pos.y == pairedPos.y && pos.z < pairedPos.z)))) {
+                return pos; // 当前方块是主方块
+            } else {
+                return pairedPos; // 配对的方块是主方块
+            }
+        }
+    }
+    return pos; // 单箱子或非箱子实体
+}
+} // namespace internal
+
 
 } // namespace CT
