@@ -9,6 +9,7 @@
 #include "ll/api/event/player/PlayerJoinEvent.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
+#include "Config/ConfigManager.h" // 导入 ConfigManager
 #include "mc/nbt/CompoundTag.h"
 #include "mc/network/MinecraftPacketIds.h"
 #include "mc/network/packet/AddItemActorPacket.h"
@@ -271,7 +272,7 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                 }
             }
         }
-        co_await ll::coro::SleepAwaiter(std::chrono::seconds(1)); // 将更新频率改为每1秒
+        co_await ll::coro::SleepAwaiter(std::chrono::seconds(CT::ConfigManager::getInstance().get().floatingTextUpdateIntervalSeconds)); // 使用配置的更新频率
     }
 }
 

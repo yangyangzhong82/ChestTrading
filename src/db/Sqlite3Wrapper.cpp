@@ -58,8 +58,9 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 
     // 初始化线程池
     if (!mThreadPool) {
-        mThreadPool = std::make_unique<ThreadPool>(mThreadPoolSize);
-        CT::logger.info("数据库线程池已初始化，线程数: {}", mThreadPoolSize);
+        // 使用配置的线程池大小
+        mThreadPool = std::make_unique<ThreadPool>(CT::ConfigManager::getInstance().get().databaseThreadPoolSize);
+        CT::logger.info("数据库线程池已初始化，线程数: {}", CT::ConfigManager::getInstance().get().databaseThreadPoolSize);
     }
 
     return true;
