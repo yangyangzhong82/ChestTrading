@@ -98,10 +98,10 @@ bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_pl
 bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region = nullptr);
 
 // 获取所有分享玩家（包含主人信息）
-std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId);
+std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId, BlockSource& region);
 
 // 获取所有分享玩家（仅玩家UUID）
-std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId);
+std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId, BlockSource& region);
 
 namespace internal {
 // 获取箱子的主方块位置，对于双联箱，这总是一个确定的方块

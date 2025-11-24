@@ -59,7 +59,7 @@ void showShareForm(
     ll::form::SimpleForm fm;
     fm.setTitle("箱子分享管理");
 
-    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId);
+    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId, region);
     std::string ownerName = getPlayerNameFromUuid(ownerUuid);
 
     std::string content = "§e箱子主人: " + ownerName + "§r\n\n当前已分享的玩家：\n";
@@ -291,7 +291,7 @@ void showRemoveShareForm(
     ll::form::CustomForm removeForm; // 改为 CustomForm
     removeForm.setTitle("移除分享玩家 (第 " + std::to_string(currentPage + 1) + " 页)");
 
-    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId);
+    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId, region);
 
     // 计算分页
     int totalPlayers = sharedPlayers.size();

@@ -74,7 +74,7 @@ void registerEventListener() {
         if (isLocked) {
             // 箱子已被锁定
             bool isOwner = (ownerUuid == player_uuid);
-            std::vector<std::string> sharedPlayers = getSharedPlayers(pos, static_cast<int>(dimId));
+            std::vector<std::string> sharedPlayers = getSharedPlayers(pos, static_cast<int>(dimId), region);
             bool isSharedPlayer = false;
             for (const std::string& sharedPlayerUuid : sharedPlayers) {
                 if (sharedPlayerUuid == player_uuid) {

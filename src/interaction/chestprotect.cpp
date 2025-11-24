@@ -296,20 +296,16 @@ bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int
     );
 }
 
-std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId) {
-    // 这个函数可能在没有BlockSource的上下文中被调用，所以我们不能在这里获取mainPos。
-    // 幸运的是，共享玩家信息是和箱子位置绑定的，而这个绑定关系在add/remove时已经统一到mainPos了。
-    // 但查询时如果只用pos，可能会查不到从属箱子的共享信息。
-    // 因此，所有调用getShared*的地方，都需要传入BlockSource。
-    // 但为了保持API稳定，暂时只查询传入的pos。
-    // TODO: Refactor calls to getSharedPlayers to pass BlockSource.
-    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
+std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId, BlockSource& region) {
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid, owner_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
 
     std::vector<std::pair<std::string, std::string>> sharedPlayers;
@@ -321,15 +317,16 @@ std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(Block
     return sharedPlayers;
 }
 
-std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId) {
-    // 同 getSharedPlayersWithOwner
-    Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
+std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId, BlockSource& region) {
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+
     std::vector<std::vector<std::string>> results = db.query(
         "SELECT player_uuid FROM shared_chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
 
     std::vector<std::string> sharedPlayers;
