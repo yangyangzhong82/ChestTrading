@@ -1,8 +1,7 @@
 #include "FormUtils.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/ItemTextureManager.h"
-// #include "logger.h" // logger 已在 FormUtils.h 中包含，避免重定义
-#include "mc/world/item/Item.h" // 解决 Item 的不完整类型问题
+#include "mc/world/item/Item.h" 
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"

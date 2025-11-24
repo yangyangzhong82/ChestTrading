@@ -86,7 +86,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
     auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
     if (locked) {
-        logger.info(
+        logger.debug(
             "漏斗尝试向上锁的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
             chestPos.x,
             chestPos.y,

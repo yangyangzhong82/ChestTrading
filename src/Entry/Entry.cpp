@@ -1,11 +1,10 @@
 #include "Entry/Entry.h"
 
 #include "Config/ConfigManager.h"
-#include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
-#include "Utils/ItemTextureManager.h"  // 引入 ItemTextureManager
+#include "FloatingText/FloatingText.h" 
+#include "Utils/ItemTextureManager.h"  
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/event.h"
-#include "ll/api/Config.h"
 #include "ll/api/mod/RegisterHelper.h"
 
 namespace CT {
@@ -17,7 +16,6 @@ Entry& Entry::getInstance() {
 
 bool Entry::load() {
     getSelf().getLogger().debug("Loading...");
-    // Code for loading the mod goes here.
     auto configPath = getSelf().getConfigDir();
     if (!std::filesystem::exists(configPath)) {
         std::filesystem::create_directories(configPath);
@@ -35,7 +33,6 @@ bool Entry::load() {
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
     getSelf().getLogger().setLevel(ll::io::LogLevel::Trace);
-    // Code for enabling the mod goes here.
     // 优先加载用户指定的 texture_path.json
     std::string customTexturePath = "texture_path.json";
     if (CT::ItemTextureManager::getInstance().loadTextures(customTexturePath)) {

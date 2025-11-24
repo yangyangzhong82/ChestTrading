@@ -129,7 +129,7 @@ void showChestLockForm(
         });
     }
 
-    fm.appendButton("取消", [player_uuid](Player& p) { logger.info("玩家 {} 取消了操作。", player_uuid); });
+    fm.appendButton("取消", [player_uuid](Player& p) { logger.debug("玩家 {} 取消了操作。", player_uuid); });
 
     fm.sendTo(player);
 }

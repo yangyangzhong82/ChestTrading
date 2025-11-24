@@ -4,7 +4,7 @@
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
-#include "interaction/chestprotect.h" // 引入 chestprotect 以使用 ChestType
+#include "interaction/chestprotect.h" 
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
@@ -159,7 +159,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                         "§a物品价格和数量设置成功！价格: " + std::to_string(price)
                         + "，数量: " + std::to_string(dbCount)
                     );
-                    logger.info("showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.", item.getName(), price, dbCount);
+                    logger.debug("showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.", item.getName(), price, dbCount);
                     FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
                 } else {
                     p.sendMessage("§c物品价格和数量设置失败！");

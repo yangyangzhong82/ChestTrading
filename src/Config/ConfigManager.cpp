@@ -1,11 +1,12 @@
 #include "ConfigManager.h"
 #include "config.h"
 #include "ConfigSerialization.h"
+#include "Entry/Entry.h"
+#include "logger.h"
 #include <fstream>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <vector>
-#include "logger.h"
 namespace CT {
 
 ConfigManager& ConfigManager::getInstance() {
@@ -36,10 +37,7 @@ bool ConfigManager::load(const std::string& path) {
         // 填充内存中的配置对象。缺失的键将从结构体定义中获取默认值。
         *mConfig = user_json.get<Config>();
     } catch (const nlohmann::json::exception& e) {
-        logger.error(
-            "Failed to parse config file: {}. Please check for syntax errors.",
-            e.what()
-        );
+        logger.error("Failed to parse config file: {}. Please check for syntax errors.", e.what());
         return false;
     }
 
@@ -71,6 +69,8 @@ bool ConfigManager::load(const std::string& path) {
         }
         logger.warn("You can also delete your config.json to generate a new one with all keys on next startup.");
     }
+    auto& logger = Entry::getInstance().getSelf().getLogger();
+    logger.setLevel(mConfig->logLevel);
 
     return true; // 不再保存，以保留用户文件的格式和注释
 }
@@ -93,4 +93,4 @@ Config& ConfigManager::get() { return *mConfig; }
 
 const Config& ConfigManager::get() const { return *mConfig; }
 
-} // namespace CZET
+} // namespace CT

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "ll/api/io/LogLevel.h"
 #include <nlohmann/json.hpp>
 
 #include <boost/pfr.hpp>
@@ -57,4 +58,33 @@ struct adl_serializer<T> {
     }
 };
 
+} // namespace nlohmann
+namespace nlohmann {
+template <>
+struct adl_serializer<ll::io::LogLevel> {
+    static void to_json(json& j, const ll::io::LogLevel& level) { j = static_cast<int>(level); }
+
+    static void from_json(const json& j, ll::io::LogLevel& level) {
+        if (j.is_number()) {
+            level = static_cast<ll::io::LogLevel>(j.get<int>());
+        } else if (j.is_string()) {
+            std::string str = j.get<std::string>();
+            if (str == "Trace") {
+                level = ll::io::LogLevel::Trace;
+            } else if (str == "Debug") {
+                level = ll::io::LogLevel::Debug;
+            } else if (str == "Info") {
+                level = ll::io::LogLevel::Info;
+            } else if (str == "Warn") {
+                level = ll::io::LogLevel::Warn;
+            } else if (str == "Error") {
+                level = ll::io::LogLevel::Error;
+            } else if (str == "Fatal") {
+                level = ll::io::LogLevel::Fatal;
+            } else if (str == "Off") {
+                level = ll::io::LogLevel::Off;
+            }
+        }
+    }
+};
 } // namespace nlohmann

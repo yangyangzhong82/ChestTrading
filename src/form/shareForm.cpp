@@ -110,7 +110,7 @@ void showAddOfflineShareForm(
             ll::form::FormCancelReason        reason
         ) {
             if (!res) {
-                logger.info("玩家 {} 取消了添加离线玩家。", p.getUuid().asString());
+                logger.debug("玩家 {} 取消了添加离线玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region); // 返回主菜单
                 return;
             }
