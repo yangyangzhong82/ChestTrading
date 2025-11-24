@@ -103,6 +103,9 @@ std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(Block
 // 获取所有分享玩家（仅玩家UUID）
 std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId, BlockSource& region);
 
+// 检查玩家是否有权打开箱子
+bool canPlayerOpenChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region);
+
 namespace internal {
 // 获取箱子的主方块位置，对于双联箱，这总是一个确定的方块
 BlockPos GetMainChestPos(BlockPos pos, BlockSource& region);

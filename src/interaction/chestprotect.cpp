@@ -88,13 +88,13 @@ void ChestCacheManager::cleanupExpiredCache() {
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    logger.debug("getChestDetails: Checking chest at pos ({}, {}, {}), mainPos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, mainPos.x, mainPos.y, mainPos.z, dimId);
+    logger.trace("getChestDetails: Checking chest at pos ({}, {}, {}), mainPos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, mainPos.x, mainPos.y, mainPos.z, dimId);
 
     // 首先尝试从缓存获取主箱子信息
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
     ChestCacheEntry    cacheEntry;
     if (cacheManager.getCachedChestInfo(mainPos, dimId, cacheEntry)) {
-        logger.debug("getChestDetails: Cache hit for mainPos ({}, {}, {})", mainPos.x, mainPos.y, mainPos.z);
+        logger.trace("getChestDetails: Cache hit for mainPos ({}, {}, {})", mainPos.x, mainPos.y, mainPos.z);
         // 也为当前查询的pos缓存结果，避免下次重复计算mainPos
         if (pos != mainPos) {
             cacheManager.setCachedChestInfo(pos, dimId, cacheEntry);
@@ -336,6 +336,35 @@ std::vector<std::string> getSharedPlayers(BlockPos pos, int dimId, BlockSource& 
         }
     }
     return sharedPlayers;
+}
+
+bool canPlayerOpenChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region) {
+    auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
+
+    // 如果箱子没有被锁定，或者是一个公共箱子，任何人都可以打开
+    if (!isLocked || chestType == ChestType::Public) {
+        return true;
+    }
+
+    // 如果玩家是箱子的主人，可以打开
+    if (ownerUuid == player_uuid) {
+        return true;
+    }
+
+    // 如果箱子是普通上锁类型，检查分享列表
+    if (chestType == ChestType::Locked) {
+        auto sharedPlayers = getSharedPlayers(pos, dimId, region);
+        for (const auto& sharedPlayerUuid : sharedPlayers) {
+            if (sharedPlayerUuid == player_uuid) {
+                return true; // 玩家在分享列表中
+            }
+        }
+    }
+    
+    // 对于商店和回收商店，只有主人能从“后端”打开（即直接交互）
+    // 游客只能通过表单交互，这里的检查是针对直接打开箱子的行为
+
+    return false; // 默认情况下，如果以上条件都不满足，则不能打开
 }
 
 namespace internal {
