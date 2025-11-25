@@ -3,6 +3,10 @@
 #include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
+
+namespace ll::form {
+class CustomForm;
+}
 class BlockSource;
 #include <string>
 #include <tuple>
@@ -13,6 +17,15 @@ class BlockSource;
 #include <chrono>
 
 namespace CT {
+
+// 用于 GetAllChests 的返回结构
+struct ChestInfo {
+    int         dimId;
+    BlockPos    pos;
+    std::string ownerUuid;
+    ChestType   type;
+};
+
 
 // 箱子信息缓存结构
 struct ChestCacheEntry {
@@ -110,6 +123,9 @@ namespace internal {
 // 获取箱子的主方块位置，对于双联箱，这总是一个确定的方块
 BlockPos GetMainChestPos(BlockPos pos, BlockSource& region);
 } // namespace internal
+
+// 获取所有箱子信息
+std::vector<ChestInfo> getAllChests();
 
 
 } // namespace CT

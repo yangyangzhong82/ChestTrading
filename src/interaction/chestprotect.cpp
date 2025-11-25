@@ -387,5 +387,28 @@ BlockPos GetMainChestPos(BlockPos pos, BlockSource& region) {
 }
 } // namespace internal
 
+std::vector<ChestInfo> getAllChests() {
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    auto            results =
+        db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type FROM chests ORDER BY player_uuid, dim_id;");
+
+    std::vector<ChestInfo> chests;
+    for (const auto& row : results) {
+        if (row.size() >= 6) {
+            try {
+                ChestInfo info;
+                info.dimId      = std::stoi(row[0]);
+                info.pos        = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
+                info.ownerUuid  = row[4];
+                info.type       = static_cast<ChestType>(std::stoi(row[5]));
+                chests.push_back(info);
+            } catch (const std::exception& e) {
+                logger.error("Failed to parse chest info from database: {}", e.what());
+            }
+        }
+    }
+    return chests;
+}
+
 
 } // namespace CT

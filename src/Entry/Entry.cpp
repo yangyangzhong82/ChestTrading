@@ -6,7 +6,7 @@
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/event.h"
 #include "ll/api/mod/RegisterHelper.h"
-
+#include "command/command.h"
 namespace CT {
 
 Entry& Entry::getInstance() {
@@ -39,7 +39,7 @@ bool Entry::enable() {
     } else {
         getSelf().getLogger().warn("无法加载自定义物品贴图文件: {}，将只使用默认文件。", customTexturePath);
     }
-
+    registerCommand();
     // 加载默认物品贴图文件
     std::vector<std::string> defaultTextureFiles = {"terrain_texture.json", "item_texture.json"};
     CT::ItemTextureManager::getInstance().loadTextures(defaultTextureFiles);
