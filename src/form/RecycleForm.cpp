@@ -53,7 +53,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
         fm.setContent("以下是该回收商店的所有回收委托：");
         for (const auto& row : commissions) {
             std::string commissionNbtStr    = row[0];
-            int         price               = std::stoi(row[1]);
+            double      price               = std::stod(row[1]); // 从数据库读取时使用 stod
             int         minDurability       = std::stoi(row[2]);
             std::string requiredEnchantsStr = row[3];
 
@@ -76,7 +76,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             item.mCount    = 1; // 确保 item 的数量为 1，用于显示
 
             std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"
-                                   + " §6[回收单价: " + std::to_string(price) + "]§r";
+                                   + " §6[回收单价: " + std::to_string(price) + "]§r"; // 使用 std::to_string 显示 double
 
             std::string itemInfo;
             if (minDurability > 0) {
@@ -140,10 +140,13 @@ void showRecycleFinalConfirmForm(
     int                dimId,
     BlockSource&       region,
     int                recycleCount,
-    long long          recyclePrice,
+    double             recyclePrice, // 修改为 double
     const std::string& commissionNbtStr,
-    int                unitPrice
+    double             unitPrice     // 修改为 double
 );
+
+// 简化 getRecyclePrice 函数，只根据单价和数量计算总价
+double getRecyclePrice(double unitPrice, int count) { return unitPrice * count; }
 
 void showRecycleConfirmForm(
     Player&            player,
@@ -152,7 +155,7 @@ void showRecycleConfirmForm(
     int                dimId,
     BlockSource&       region,
     int                actualSlotIndex, // This will be -1 when called from the commission list
-    int                unitPrice,
+    double             unitPrice,     // 修改为 double
     const std::string& commissionNbtStr
 ) {
     ll::form::CustomForm fm;
@@ -202,8 +205,8 @@ void showRecycleConfirmForm(
         auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt);
         std::string itemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
         
-        logger.info("Comparing inventory item: Cleaned NBT: {}", itemNbtStr);
-        logger.info("Comparing with commission: Commission NBT: {}", commissionNbtStr);
+        logger.trace("Comparing inventory item: Cleaned NBT: {}", itemNbtStr);
+        logger.trace("Comparing with commission: Commission NBT: {}", commissionNbtStr);
 
         if (itemNbtStr == commissionNbtStr) {
             // 检查耐久度
@@ -242,7 +245,7 @@ void showRecycleConfirmForm(
 
     fm.appendLabel("你正在回收物品: " + std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r");
     fm.appendLabel("背包中可回收数量: " + std::to_string(totalPlayerCount));
-    fm.appendLabel("回收单价: §6" + std::to_string(unitPrice) + "§r");
+    fm.appendLabel("回收单价: §6" + std::to_string(unitPrice) + "§r"); // 使用 std::to_string 显示 double
 
 
     // 显示耐久度
@@ -323,7 +326,7 @@ void showRecycleConfirmForm(
             }
 
             // 1. 计算回收价格
-            long long recyclePrice = (long long)unitPrice * recycleCount;
+            double recyclePrice = getRecyclePrice(unitPrice, recycleCount); // 调用更新后的函数，使用 double
 
             // 跳转到最终确认表单
             showRecycleFinalConfirmForm(
@@ -341,9 +344,6 @@ void showRecycleConfirmForm(
     );
 }
 
-// 简化 getRecyclePrice 函数，只根据单价和数量计算总价
-long long getRecyclePrice(int unitPrice, int count) { return (long long)unitPrice * count; }
-
 void showRecycleFinalConfirmForm(
     Player&            player,
     const ItemStack&   item,
@@ -351,9 +351,9 @@ void showRecycleFinalConfirmForm(
     int                dimId,
     BlockSource&       region,
     int                recycleCount,
-    long long          recyclePrice,
+    double             recyclePrice,
     const std::string& commissionNbtStr,
-    int                unitPrice
+    double             unitPrice
 ) {
     ll::form::SimpleForm fm;
     fm.setTitle("确认回收");
@@ -361,7 +361,7 @@ void showRecycleFinalConfirmForm(
         "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount)
         + " 吗？\n"
           "你将获得 §6"
-        + std::to_string(recyclePrice)
+        + std::to_string(recyclePrice) // 使用 std::to_string 显示 double
         + "§r 金币。\n"
           "回收后，你的背包将会刷新。"
     );
@@ -384,7 +384,7 @@ void showRecycleFinalConfirmForm(
             }
 
             // 提前检查店主余额
-            if (Economy::getMoney(ownerInfo->xuid) < recyclePrice) {
+            if (Economy::getMoney(ownerInfo->xuid) < recyclePrice) { // getMoney 仍然可以使用 xuid，因为它最终会转换为 uuid
                 p.sendMessage("§c回收失败，商店主人余额不足。");
                 return;
             }
@@ -533,9 +533,9 @@ void showRecycleFinalConfirmForm(
             // --- 物品转移成功后，执行金钱交易和数据更新 ---
 
             // 4. 扣除商店主人金钱
-            if (!Economy::reduceMoneyByXuid(ownerInfo->xuid, recyclePrice)) {
+            if (!Economy::reduceMoneyByUuid(ownerUuid, recyclePrice)) {
                 p.sendMessage("§c回收失败，扣除商店主人金钱失败。请联系管理员。");
-                logger.error("Recycle failed at money reduction. Player: {}, OwnerXUID: {}, Amount: {}", p.getRealName(), ownerInfo->xuid, recyclePrice);
+                logger.error("Recycle failed at money reduction. Player: {}, OwnerUUID: {}, Amount: {}", p.getRealName(), ownerUuid, recyclePrice);
                 // 致命错误，物品已转移但钱无法扣除，需要回滚物品
                 // 暂时只提示
                 return;
@@ -554,7 +554,7 @@ void showRecycleFinalConfirmForm(
             db.execute(
                 "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, "
                 "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                dimId, pos.x, pos.y, pos.z, itemId, p.getUuid().asString(), recycleCount, (int)recyclePrice
+                dimId, pos.x, pos.y, pos.z, itemId, p.getUuid().asString(), recycleCount, recyclePrice // total_price 作为 double 传递
             );
 
             p.sendMessage(
@@ -673,13 +673,13 @@ void showEditCommissionForm(
         return;
     }
     
-    int currentPrice = std::stoi(commission[0][0]);
+    double currentPrice = std::stod(commission[0][0]); // 修改为 stod
     int currentMaxRecycleCount = std::stoi(commission[0][1]);
     
     ll::form::CustomForm fm;
     fm.setTitle("编辑回收委托");
     fm.appendLabel("物品: " + std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r");
-    fm.appendInput("price_input", "回收单价", std::to_string(currentPrice), std::to_string(currentPrice));
+    fm.appendInput("price_input", "回收单价", std::to_string(currentPrice), std::to_string(currentPrice)); // 使用 std::to_string 显示 double
     fm.appendInput("max_recycle_count", "最大回收数量 (0为不限制)", std::to_string(currentMaxRecycleCount), std::to_string(currentMaxRecycleCount));
     
     fm.sendTo(
@@ -696,8 +696,8 @@ void showEditCommissionForm(
             }
             
             try {
-                int newPrice = std::stoi(std::get<std::string>(result.value().at("price_input")));
-                if (newPrice < 0) {
+                double newPrice = std::stod(std::get<std::string>(result.value().at("price_input"))); // 修改为 stod
+                if (newPrice < 0.0) { // 修改为 double 比较
                     p.sendMessage("§c价格不能为负数！");
                     showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                     return;
@@ -714,7 +714,7 @@ void showEditCommissionForm(
                 auto& db = Sqlite3Wrapper::getInstance();
                 if (db.execute(
                     "UPDATE recycle_shop_items SET price = ?, max_recycle_count = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
-                    newPrice,
+                    newPrice, // price 作为 double 传递
                     newMaxRecycleCount,
                     dimId,
                     pos.x,
@@ -722,14 +722,14 @@ void showEditCommissionForm(
                     pos.z,
                     itemId
                 )) {
-                    p.sendMessage("§a委托信息更新成功！新价格: " + std::to_string(newPrice) + "，新最大回收数量: " + std::to_string(newMaxRecycleCount));
+                    p.sendMessage("§a委托信息更新成功！新价格: " + std::to_string(newPrice) + "，新最大回收数量: " + std::to_string(newMaxRecycleCount)); // 使用 std::to_string 显示 double
                     FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop);
                 } else {
                     p.sendMessage("§c委托信息更新失败！");
                 }
                 
             } catch (const std::exception& e) {
-                p.sendMessage("§c输入无效，请输入整数。");
+                p.sendMessage("§c输入无效，请输入一个数字。"); // 提示修改
                 showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                 return;
             }
@@ -822,11 +822,11 @@ void showCommissionDetailsForm(
                 
                 // 显示委托信息
                 if (!commissionInfo.empty()) {
-                    int price = std::stoi(commissionInfo[0][0]);
+                    double price = std::stod(commissionInfo[0][0]); // 修改为 stod
                     int maxRecycleCount = std::stoi(commissionInfo[0][1]);
                     int currentRecycledCount = std::stoi(commissionInfo[0][2]);
                     
-                    content += "§6当前回收单价: " + std::to_string(price) + "§r\n";
+                    content += "§6当前回收单价: " + std::to_string(price) + "§r\n"; // 使用 std::to_string 显示 double
                     if (maxRecycleCount > 0) {
                         content += "§e最大回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
                         content += "§a已回收数量: " + std::to_string(currentRecycledCount) + "§r\n\n";
@@ -842,7 +842,7 @@ void showCommissionDetailsForm(
                     for (const auto& row : records) {
                         std::string recyclerUuid = row[0];
                         std::string recycleCount = row[1];
-                        std::string totalPrice   = row[2];
+                        std::string totalPrice   = row[2]; // totalPrice 已经是 string，直接使用
                         std::string timestamp    = row[3];
 
                         std::string recyclerName = recyclerUuid;
@@ -929,7 +929,7 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                     fm.setContent("点击查看每个委托的详细回收记录：");
                     for (const auto& row : commissions) {
                         std::string itemNbtStr           = row[0];
-                        int         price                = std::stoi(row[1]);
+                        double      price                = std::stod(row[1]); // 修改为 stod
                         int         maxRecycleCount      = std::stoi(row[2]);
                         int         currentRecycledCount = std::stoi(row[3]);
 
@@ -947,7 +947,7 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                         }
 
                         std::string buttonText =
-                            std::string(item.getName()) + " §e" + progress + " §6[单价: " + std::to_string(price) + "]§r";
+                            std::string(item.getName()) + " §e" + progress + " §6[单价: " + std::to_string(price) + "]§r"; // 使用 std::to_string 显示 double
                         fm.appendButton(buttonText, [pos, dimId, region, itemNbtStr](Player& p) {
                             showCommissionDetailsForm(p, pos, dimId, *region, itemNbtStr);
                         });
@@ -1015,7 +1015,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
     ll::form::CustomForm fm;
     fm.setTitle("设置回收委托");
     fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置回收委托。");
-    fm.appendInput("price_input", "请输入回收价格", "0");
+    fm.appendInput("price_input", "请输入回收价格", "0.0"); // 更改默认值为 "0.0"
 
     if (item.isDamageableItem()) {
         fm.appendInput("min_durability", "最低耐久度 (0为不限制)", "0");
@@ -1041,8 +1041,8 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
             }
 
             try {
-                int price = std::stoi(std::get<std::string>(result.value().at("price_input")));
-                if (price < 0) {
+                double price = std::stod(std::get<std::string>(result.value().at("price_input"))); // 直接解析为 double
+                if (price < 0.0) {
                     p.sendMessage("§c价格不能为负数！");
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                     return;
@@ -1131,13 +1131,13 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                         pos.y,
                         pos.z,
                         itemId,
-                        price,
+                        price, // price 作为 double 传递
                         minDurability,
                         enchantsJsonStr,
                         maxRecycleCount
                     )) {
                     p.sendMessage(
-                        "§a回收委托设置成功！价格: " + std::to_string(price)
+                        "§a回收委托设置成功！价格: " + std::to_string(price) // 使用 std::to_string 显示 double
                         + "，最大回收数量: " + std::to_string(maxRecycleCount)
                     );
                     FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop); // 更新悬浮字
@@ -1146,7 +1146,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 }
 
             } catch (const std::exception& e) {
-                p.sendMessage("§c输入无效，请输入一个整数。");
+                p.sendMessage("§c输入无效，请输入一个数字。"); // 提示修改为数字
                 showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                 return;
             }

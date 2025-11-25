@@ -6,6 +6,9 @@
         "dependencies": [
         {
             "name": "LegacyMoney"
+        },
+        {
+            "name": "czmoney"
         }
     ]
 }

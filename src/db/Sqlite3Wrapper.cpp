@@ -127,7 +127,7 @@ bool Sqlite3Wrapper::initializeSchema() {
 
         "CREATE TABLE IF NOT EXISTS shop_items ("
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "slot INTEGER, item_id INTEGER NOT NULL, price INTEGER NOT NULL, db_count INTEGER NOT NULL DEFAULT 0,"
+        "slot INTEGER, item_id INTEGER NOT NULL, price REAL NOT NULL, db_count INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
         "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
         "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);",
@@ -135,7 +135,7 @@ bool Sqlite3Wrapper::initializeSchema() {
         "CREATE TABLE IF NOT EXISTS purchase_records ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price INTEGER NOT "
+        "item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price REAL NOT " // total_price 也改为 REAL
         "NULL,"
         "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
         "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES shop_items(dim_id, pos_x, pos_y, pos_z, "
@@ -143,7 +143,7 @@ bool Sqlite3Wrapper::initializeSchema() {
 
         "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "item_id INTEGER NOT NULL, price INTEGER NOT NULL, min_durability INTEGER DEFAULT 0,"
+        "item_id INTEGER NOT NULL, price REAL NOT NULL, min_durability INTEGER DEFAULT 0,"
         "required_enchants TEXT NOT NULL DEFAULT '',"
         "max_recycle_count INTEGER NOT NULL DEFAULT 0, current_recycled_count INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
@@ -153,7 +153,7 @@ bool Sqlite3Wrapper::initializeSchema() {
         "CREATE TABLE IF NOT EXISTS recycle_records ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price INTEGER "
+        "item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price REAL " // total_price 也改为 REAL
         "NOT NULL,"
         "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
         "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES recycle_shop_items(dim_id, pos_x, pos_y, pos_z, "
@@ -257,8 +257,45 @@ bool Sqlite3Wrapper::initializeSchema() {
         CT::logger.info("`recycle_records` 表迁移成功！");
     }
 
-    // 添加新列
-    if (!isColumnExists("shop_items", "db_count")) {
+    // --- 迁移现有 price/total_price 列的类型从 INTEGER 到 REAL ---
+    auto migrateColumnType = [&](const std::string& tableName, const std::string& columnName, int createStatementIndex) {
+        // 检查列是否存在且类型是否为 INTEGER
+        std::vector<std::vector<std::string>> columnInfo = query_unsafe("PRAGMA table_info(" + tableName + ");");
+        bool columnFound = false;
+        bool isIntegerType = false;
+        for (const auto& row : columnInfo) {
+            if (row.size() > 2 && row[1] == columnName) {
+                columnFound = true;
+                if (row[2] == "INTEGER") { // row[2] 是类型
+                    isIntegerType = true;
+                }
+                break;
+            }
+        }
+
+        if (columnFound && isIntegerType) {
+            CT::logger.info("迁移表 `{}` 中的 `{}` 列类型从 INTEGER 到 REAL...", tableName, columnName);
+            if (!execute_unsafe("ALTER TABLE " + tableName + " RENAME TO " + tableName + "_old;")
+                || !execute_unsafe(create_statements[createStatementIndex]) // Re-create new table with REAL type
+                || !execute_unsafe("INSERT INTO " + tableName + " SELECT * FROM " + tableName + "_old;") // 复制数据
+                || !execute_unsafe("DROP TABLE " + tableName + "_old;")) {
+                CT::logger.error("`{}` 表 `{}` 列类型迁移失败！", tableName, columnName);
+                rollback();
+                return false;
+            }
+            CT::logger.info("`{}` 表 `{}` 列类型迁移成功！", tableName, columnName);
+        }
+        return true;
+    };
+
+    // 执行 price 列迁移
+    if (!migrateColumnType("shop_items", "price", 4)) return false; // create_statements[4] 是 shop_items
+    if (!migrateColumnType("recycle_shop_items", "price", 6)) return false; // create_statements[6] 是 recycle_shop_items
+    if (!migrateColumnType("purchase_records", "total_price", 5)) return false; // create_statements[5] 是 purchase_records
+    if (!migrateColumnType("recycle_records", "total_price", 7)) return false; // create_statements[7] 是 recycle_records
+
+    // 添加新列 (这部分已经存在，但是要确保在列迁移之后执行，因为列迁移会重新创建表)
+    if (!isColumnExists("shop_items", "db_count")) { // 重新检查，因为表可能被重建了
         execute_unsafe("ALTER TABLE shop_items ADD COLUMN db_count INTEGER NOT NULL DEFAULT 0;");
     }
     if (!isColumnExists("recycle_shop_items", "required_enchants")) {
@@ -271,7 +308,8 @@ bool Sqlite3Wrapper::initializeSchema() {
         execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;");
     }
 
-    // 创建索引
+
+    // 创建索引 (同样确保在表迁移之后执行)
     const char* create_indices[] = {
         "CREATE INDEX IF NOT EXISTS idx_chests_position ON chests(dim_id, pos_x, pos_y, pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_shared_chests_position ON shared_chests(dim_id, pos_x, pos_y, pos_z);",

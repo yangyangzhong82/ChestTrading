@@ -44,7 +44,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         logger.debug("showShopChestItemsForm: Found {} items in database for shop at pos ({},{},{}) dim {}.", results.size(), pos.x, pos.y, pos.z, dimId);
         for (const auto& row : results) {
             int         itemId     = std::stoi(row[0]);
-            int         price      = std::stoi(row[1]);
+            double      price      = std::stod(row[1]); // 修改为 stod
             int         dbCount    = std::stoi(row[2]); // 从数据库获取可售数量
             std::string itemNbtStr = row[3];
 
@@ -67,7 +67,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 
             // 显示数据库中的可售数量 (dbCount) 和箱子中实际存在的数量 (totalCount)
             std::string buttonText = CT::FormUtils::getItemDisplayString(item) + " §b[库存: " + std::to_string(dbCount) + "/"
-                                   + std::to_string(totalCount) + "]§r" + " §6[价格: " + std::to_string(price) + "]§r";
+                                   + std::to_string(totalCount) + "]§r" + " §6[价格: " + std::to_string(price) + "]§r"; // 使用 std::to_string 显示 double
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
@@ -106,7 +106,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
     ll::form::CustomForm fm;
     fm.setTitle("设置商品价格");
     fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置价格。");
-    fm.appendInput("price_input", "请输入价格", "0");
+    fm.appendInput("price_input", "请输入价格", "0.0"); // 默认值改为小数
 
     fm.sendTo(
         player,
@@ -121,8 +121,8 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
             }
 
             try {
-                int price = std::stoi(std::get<std::string>(result.value().at("price_input")));
-                if (price < 0) {
+                double price = std::stod(std::get<std::string>(result.value().at("price_input"))); // 修改为 stod
+                if (price < 0.0) { // 修改为 double 比较
                     p.sendMessage("§c价格不能为负数！");
                     return;
                 }
@@ -154,9 +154,9 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     "(?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = excluded.price, db_count "
                     "= excluded.db_count, slot = excluded.slot;";
-                if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemId, price, dbCount)) {
+                if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemId, price, dbCount)) { // price 作为 double 传递
                     p.sendMessage(
-                        "§a物品价格和数量设置成功！价格: " + std::to_string(price)
+                        "§a物品价格和数量设置成功！价格: " + std::to_string(price) // 使用 std::to_string 显示 double
                         + "，数量: " + std::to_string(dbCount)
                     );
                     logger.debug("showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.", item.getName(), price, dbCount);
@@ -166,7 +166,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     logger.error("showShopItemPriceForm: Failed to set item '{}' price and count. Price: {}, Count: {}.", item.getName(), price, dbCount);
                 }
             } catch (const std::exception& e) {
-                p.sendMessage("§c价格输入无效，请输入一个整数。");
+                p.sendMessage("§c价格输入无效，请输入一个数字。"); // 提示修改
                 logger.error("showShopItemPriceForm: 设置物品价格时发生错误: {}", e.what());
             }
             showShopChestManageForm(p, pos, dimId, region);
@@ -216,7 +216,7 @@ void showShopItemManageForm(
     std::string content = "你正在管理物品: " + std::string(item.getName()) + "\n";
     int         dbCount = 0;
     if (!results.empty()) {
-        content += "当前价格: §a" + results[0][0] + "§r\n";
+        content += "当前价格: §a" + results[0][0] + "§r\n"; // 数据库返回的 price 已经是字符串，直接使用
         dbCount  = std::stoi(results[0][1]);
     } else {
         content += "当前状态: §7未定价§r\n";
@@ -380,7 +380,7 @@ void showShopItemBuyForm(
     BlockPos           pos,
     int                dimId,
     int                slot,
-    int                unitPrice, // 修改为单价
+    double             unitPrice, // 修改为 double
     BlockSource&       region,
     const std::string& itemNbtStr // 添加 itemNbtStr 参数
 ) {
@@ -417,9 +417,9 @@ void showShopItemBuyForm(
         }
     }
 
-    fm.appendLabel("单价: §6" + std::to_string(unitPrice) + "§r");
+    fm.appendLabel("单价: §6" + std::to_string(unitPrice) + "§r"); // 使用 std::to_string 显示 double
     fm.appendInput("buy_count", "请输入购买数量", "1");
-    fm.appendLabel("你的余额: §e" + std::to_string(Economy::getMoney(player)) + "§r");
+    fm.appendLabel("你的余额: §e" + std::to_string(Economy::getMoney(player)) + "§r"); // Economy::getMoney 返回 double
 
     fm.sendTo(
         player,
@@ -452,7 +452,7 @@ void showShopItemBuyForm(
                 return;
             }
 
-            long long totalPrice = (long long)buyCount * unitPrice;
+            double totalPrice = buyCount * unitPrice; // totalPrice 修改为 double
             logger.debug("showShopItemBuyForm: Player {} attempting to buy {} of item {} for total price {}.", p.getRealName(), buyCount, item.getName(), totalPrice);
 
             auto& db     = Sqlite3Wrapper::getInstance();
@@ -468,7 +468,7 @@ void showShopItemBuyForm(
             }
 
             if (!Economy::hasMoney(p, totalPrice)) {
-                p.sendMessage("§c你的金币不足！需要 §6" + std::to_string(totalPrice) + "§c 金币。");
+                p.sendMessage("§c你的金币不足！需要 §6" + std::to_string(totalPrice) + "§c 金币。"); // 使用 std::to_string 显示 double
                 logger.warn("showShopItemBuyForm: Player {} has insufficient money. Needed {}, has {}.", p.getRealName(), totalPrice, Economy::getMoney(p));
                 showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
                 return;
@@ -515,18 +515,18 @@ void showShopItemBuyForm(
                 if (isLocked && !ownerUuid.empty()) {
                     auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
                     if (ownerInfo) {
-                        if (Economy::addMoneyByXuid(ownerInfo->xuid, totalPrice)) {
+                        if (Economy::addMoneyByUuid(ownerUuid, totalPrice)) {
                             logger.info(
-                                "Successfully added {} money to shop owner {} (xuid: {}).",
+                                "Successfully added {} money to shop owner {} (uuid: {}).",
                                 totalPrice,
                                 ownerInfo->name,
-                                ownerInfo->xuid
+                                ownerUuid
                             );
                         } else {
                             logger.error(
-                                "Failed to add money to shop owner {} (xuid: {}).",
+                                "Failed to add money to shop owner {} (uuid: {}).",
                                 ownerInfo->name,
-                                ownerInfo->xuid
+                                ownerUuid
                             );
                         }
                     } else {
@@ -636,11 +636,11 @@ void showShopItemBuyForm(
                     itemId,
                     p.getUuid().asString(),
                     buyCount,
-                    (int)totalPrice
+                    totalPrice // totalPrice 作为 double 传递
                 );
 
                 p.sendMessage(
-                    "§a购买成功！你花费了 §6" + std::to_string(totalPrice) + "§a 金币购买了 "
+                    "§a购买成功！你花费了 §6" + std::to_string(totalPrice) + "§a 金币购买了 " // 使用 std::to_string 显示 double
                     + std::string(item.getName()) + " x" + std::to_string(buyCount) + "。"
                 );
                 FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
@@ -705,7 +705,7 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
                         // int itemId             = std::stoi(row[0]);
                         std::string buyerUuid      = row[1];
                         std::string purchaseCount  = row[2];
-                        std::string totalPrice     = row[3];
+                        std::string totalPrice     = row[3]; // totalPrice 已经是 string，直接使用
                         std::string timestamp      = row[4];
                         std::string itemNbtStr     = row[5];
 
