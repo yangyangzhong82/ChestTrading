@@ -50,7 +50,7 @@ void registerEventListener() {
         auto&       item           = player.getCarriedItem();
         auto        block          = ev.block();
         auto        dimId          = player.getDimensionId();
-        auto        pos            = ev.blockPos();
+        auto        originalPos    = ev.blockPos(); // 保存原始交互位置
         bool        isHoldingStick = (item.getTypeName() == "minecraft:stick");
         std::string player_uuid    = player.getUuid().asString();
         auto&       region         = player.getDimensionBlockSource();
@@ -68,17 +68,20 @@ void registerEventListener() {
         if (block->getTypeName() != "minecraft:chest") {
             return; // 只处理箱子
         }
+        
+        // 始终使用主箱子位置进行逻辑判断
+        BlockPos pos = CT::internal::GetMainChestPos(originalPos, region);
 
         auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
-        bool isOwner = (ownerUuid == player_uuid);
+        bool isOwner                          = (ownerUuid == player_uuid);
 
         // 玩家手持木棍：打开管理菜单
         if (isHoldingStick) {
             // 只有主人才能用木棍管理
             if (isLocked && !isOwner) {
-                 player.sendMessage("§c只有箱子主人才能使用木棍管理。");
+                player.sendMessage("§c只有箱子主人才能使用木棍管理。");
             } else {
-                 showChestLockForm(player, pos, static_cast<int>(dimId), isLocked, ownerUuid, chestType, region);
+                showChestLockForm(player, pos, static_cast<int>(dimId), isLocked, ownerUuid, chestType, region);
             }
             ev.cancel();
             return;
@@ -89,13 +92,13 @@ void registerEventListener() {
             // 权限检查通过，允许打开
             // 如果是商店或回收商店，且玩家不是主人，则显示商店表单而不是直接打开
             if ((chestType == ChestType::Shop || chestType == ChestType::RecycleShop) && !isOwner) {
-                 if (chestType == ChestType::Shop) {
+                if (chestType == ChestType::Shop) {
                     showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
-                 } else { // RecycleShop
+                } else { // RecycleShop
                     showRecycleForm(player, pos, static_cast<int>(dimId), region);
-                 }
-                 ev.cancel();
-                 return;
+                }
+                ev.cancel();
+                return;
             }
             // 其他情况（主人打开商店，或打开普通箱子/公共箱子），直接打开
             return;
