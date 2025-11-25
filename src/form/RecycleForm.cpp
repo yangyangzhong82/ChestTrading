@@ -384,7 +384,7 @@ void showRecycleFinalConfirmForm(
             }
 
             // 提前检查店主余额
-            if (LLMoney_Get(ownerInfo->xuid) < recyclePrice) {
+            if (Economy::getMoney(ownerInfo->xuid) < recyclePrice) {
                 p.sendMessage("§c回收失败，商店主人余额不足。");
                 return;
             }
@@ -533,7 +533,7 @@ void showRecycleFinalConfirmForm(
             // --- 物品转移成功后，执行金钱交易和数据更新 ---
 
             // 4. 扣除商店主人金钱
-            if (!LLMoney_Reduce(ownerInfo->xuid, recyclePrice)) {
+            if (!Economy::reduceMoneyByXuid(ownerInfo->xuid, recyclePrice)) {
                 p.sendMessage("§c回收失败，扣除商店主人金钱失败。请联系管理员。");
                 logger.error("Recycle failed at money reduction. Player: {}, OwnerXUID: {}, Amount: {}", p.getRealName(), ownerInfo->xuid, recyclePrice);
                 // 致命错误，物品已转移但钱无法扣除，需要回滚物品

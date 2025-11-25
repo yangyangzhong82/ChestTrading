@@ -17,6 +17,8 @@ add_requires("sqlite3")
 add_requires("legacymoney")
 
 add_requires("debug_shape")
+add_requires("czmoney")
+add_requires("Bedrock-Authority 0.2.0")
 if not has_config("vs_runtime") then
     set_runtimes("MD")
 end
@@ -32,7 +34,7 @@ target("ChestTrading") -- Change this to your mod name.
     add_rules("@levibuildscript/modpacker")
     add_cxflags( "/EHa", "/utf-8", "/W4", "/w44265", "/w44289", "/w44296", "/w45263", "/w44738", "/w45204")
     add_defines("NOMINMAX", "UNICODE")
-    add_packages("levilamina","sqlite3","legacymoney","debug_shape")
+    add_packages("levilamina","sqlite3","legacymoney","debug_shape","czmoney","Bedrock-Authority")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
     set_languages("c++20")

@@ -32,7 +32,6 @@ bool Entry::load() {
 
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
-    getSelf().getLogger().setLevel(ll::io::LogLevel::Trace);
     // 优先加载用户指定的 texture_path.json
     std::string customTexturePath = "texture_path.json";
     if (CT::ItemTextureManager::getInstance().loadTextures(customTexturePath)) {
