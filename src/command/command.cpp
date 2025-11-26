@@ -1,6 +1,6 @@
 #include "command.h"
 #include "Bedrock-Authority/permission/PermissionManager.h"
-#include "form/AdminForm.h" // 引入AdminForm
+#include "form/AdminForm.h" 
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"

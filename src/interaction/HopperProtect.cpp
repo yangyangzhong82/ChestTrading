@@ -57,7 +57,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     if (this->mIsEntity) {
         return origin(region, fromContainer, position, attachedFace);
     }
-    logger.debug("朝向:{}", attachedFace);
+    logger.trace("朝向:{}", attachedFace);
     BlockPos chestPos =
         BlockPos(static_cast<int>(position.x), static_cast<int>(position.y), static_cast<int>(position.z));
     switch (attachedFace) {
@@ -77,9 +77,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         chestPos.y -= 1;
         break;
     default:
-        // 对于其他朝向（例如向上），我们假设漏斗不会向这些方向推送物品到箱子，或者保持原位
-        // 也可以选择在这里记录一个警告或者直接返回false
-        logger.warn("HopperPushOutHook: 未知的 attachedFace 值: {}", attachedFace);
+        logger.debug("HopperPushOutHook: 未知的 attachedFace 值: {}", attachedFace);
         return origin(region, fromContainer, position, attachedFace);
     }
     int dimId = static_cast<int>(region.getDimensionId());

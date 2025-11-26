@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FloatingText/FloatingText.h" // 引入 FloatingTextManager
+#include "FloatingText/FloatingText.h" 
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 
@@ -10,8 +10,8 @@ class CustomForm;
 class BlockSource;
 #include <string>
 #include <tuple>
-#include <utility> // For std::pair
-#include <vector>  // For std::vector
+#include <utility> 
+#include <vector>  
 #include <unordered_map>
 #include <mutex>
 #include <chrono>

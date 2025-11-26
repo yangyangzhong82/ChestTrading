@@ -1,13 +1,10 @@
 #include "interaction/chestprotect.h"
-#include "db/Sqlite3Wrapper.h" // 引入 Sqlite3Wrapper
-#include "ll/api/form/SimpleForm.h"
+#include "db/Sqlite3Wrapper.h" 
 #include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/level/BlockSource.h"                 // 引入 BlockSource
-#include "mc/world/level/block/actor/ChestBlockActor.h" // 引入 ChestBlockActor
-#include "mc/world/item/ItemStack.h"                    // 引入 ItemStack
-#include "mc/nbt/CompoundTag.h"                         // 引入 CompoundTag
+#include "mc/world/level/BlockSource.h"                 
+#include "mc/world/level/block/actor/ChestBlockActor.h" 
 
 
 namespace CT {
