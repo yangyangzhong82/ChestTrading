@@ -1,4 +1,5 @@
 #include "FloatingText/FloatingText.h"
+#include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/NetworkPacket.h"
 #include "db/Sqlite3Wrapper.h"
@@ -9,7 +10,6 @@
 #include "ll/api/event/player/PlayerJoinEvent.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
-#include "Config/ConfigManager.h" // 导入 ConfigManager
 #include "mc/nbt/CompoundTag.h"
 #include "mc/network/MinecraftPacketIds.h"
 #include "mc/network/packet/AddItemActorPacket.h"
@@ -17,10 +17,13 @@
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/item/NetworkItemStackDescriptor.h"
+#include "mc/world/level/BlockPos.h"
 #include "mc/world/level/ChangeDimensionRequest.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include "mc\network\LoopbackPacketSender.h"
+
+
 
 namespace CT {
 
@@ -314,14 +317,14 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         for (const auto& itemRow : itemResults) {
             if (!itemRow.empty()) {
                 logger.debug("updateShopFloatingText: Processing item NBT string: {}", itemRow[0]);
-                auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]); // 使用 CT::NbtUtils::parseSNBT
+                auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]); 
                 if (nbt) {
-                    nbt->at("Count") = ByteTag(1); // 修复：为创建ItemStack添加Count标签
-                    auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt); // 使用 CT::NbtUtils::createItemFromNbt
+                    nbt->at("Count") = ByteTag(1); 
+                    auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt); 
                     if (itemPtr && !itemPtr->isNull()) {
                         std::string itemName = itemPtr->getName();
                         if (itemName.empty()) {
-                            itemName = itemPtr->getTypeName(); // 如果 getName() 为空，使用 getTypeName() 作为备用
+                            itemName = itemPtr->getTypeName(); 
                             logger.warn("updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: {}", itemName);
                         }
                         ft.itemNames.push_back(itemName);
