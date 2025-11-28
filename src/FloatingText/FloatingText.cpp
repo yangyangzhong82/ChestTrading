@@ -161,6 +161,7 @@ void FloatingTextManager::loadAllLockedChests() {
         return;
     }
 
+    const auto&                           config  = CT::ConfigManager::getInstance().get();
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
     std::vector<std::vector<std::string>> results = db.query("SELECT player_uuid, dim_id, pos_x, pos_y, pos_z, type FROM chests;");
 
@@ -185,15 +186,19 @@ void FloatingTextManager::loadAllLockedChests() {
             // 根据箱子类型生成不同的悬浮字文本
             switch (chestType) {
             case ChestType::Locked:
+                if (!config.floatingText.enableLockedChest) continue;
                 text = "§e[上锁箱子]§r 拥有者: " + ownerName;
                 break;
             case ChestType::RecycleShop:
+                if (!config.floatingText.enableRecycleShop) continue;
                 text = "§a[回收商店]§r 拥有者: " + ownerName;
                 break;
             case ChestType::Shop:
+                if (!config.floatingText.enableShopChest) continue;
                 text = "§b[商店箱子]§r 拥有者: " + ownerName;
                 break;
             case ChestType::Public:
+                if (!config.floatingText.enablePublicChest) continue;
                 text = "§d[公共箱子]";
                 break;
             default:
@@ -375,8 +380,9 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 
 // 发送假物品给玩家
 void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText& ft) {
-    if (ft.items.empty() || !ft.isDynamic) return;
-    
+    if (ft.items.empty() || !ft.isDynamic || !CT::ConfigManager::getInstance().get().floatingText.enableFakeItem)
+        return;
+
     // 边界检查
     if (ft.currentItemIndex >= ft.items.size()) {
         ft.currentItemIndex = 0;
@@ -411,9 +417,10 @@ void FloatingTextManager::removeFakeItemFromPlayer(Player& player, ChestFloating
 
 // 更新所有玩家的假物品
 void FloatingTextManager::updateFakeItemsForAllPlayers() {
+    if (!CT::ConfigManager::getInstance().get().floatingText.enableFakeItem) return;
     auto level = ll::service::getLevel();
     if (!level) return;
-    
+
     level->forEachPlayer([this](Player& player) {
         int playerDimId = player.getDimensionId().id;
         for (auto& pair : mFloatingTexts) {
@@ -436,15 +443,17 @@ void registerPlayerConnectionListener() {
             }
 
             FloatingTextManager::getInstance().drawAllFloatingTexts(player);
-            
+
             // 为玩家发送假物品
-            int playerDimId = player.getDimensionId().id;
-            for (auto& [key, ft] : FloatingTextManager::getInstance().mFloatingTexts) {
-                if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
-                    FloatingTextManager::getInstance().sendFakeItemToPlayer(player, ft);
+            if (CT::ConfigManager::getInstance().get().floatingText.enableFakeItem) {
+                int playerDimId = player.getDimensionId().id;
+                for (auto& [key, ft] : FloatingTextManager::getInstance().mFloatingTexts) {
+                    if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
+                        FloatingTextManager::getInstance().sendFakeItemToPlayer(player, ft);
+                    }
                 }
             }
-            
+
             logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字和假物品。", player.getRealName());
         }
     );
@@ -465,10 +474,12 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     auto toDim   = changeRequest.mToDimensionId.get();
 
     // 移除旧维度的假物品
-    for (auto& pair : FloatingTextManager::getInstance().mFloatingTexts) {
-        auto& ft = pair.second;
-        if (ft.isDynamic && ft.dimId == static_cast<int>(fromDim)) {
-            FloatingTextManager::getInstance().removeFakeItemFromPlayer(player, ft);
+    if (CT::ConfigManager::getInstance().get().floatingText.enableFakeItem) {
+        for (auto& pair : FloatingTextManager::getInstance().mFloatingTexts) {
+            auto& ft = pair.second;
+            if (ft.isDynamic && ft.dimId == static_cast<int>(fromDim)) {
+                FloatingTextManager::getInstance().removeFakeItemFromPlayer(player, ft);
+            }
         }
     }
 
@@ -479,12 +490,14 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ll::thread::ServerThreadExecutor::getDefault().execute([&player, fromDim, toDim]() {
         FloatingTextManager::getInstance().removeAllFloatingTexts(player, fromDim);
         FloatingTextManager::getInstance().drawAllFloatingTexts(player, toDim);
-        
+
         // 发送新维度的假物品
-        for (auto& pair : FloatingTextManager::getInstance().mFloatingTexts) {
-            auto& ft = pair.second;
-            if (ft.isDynamic && !ft.items.empty() && ft.dimId == static_cast<int>(toDim)) {
-                FloatingTextManager::getInstance().sendFakeItemToPlayer(player, ft);
+        if (CT::ConfigManager::getInstance().get().floatingText.enableFakeItem) {
+            for (auto& pair : FloatingTextManager::getInstance().mFloatingTexts) {
+                auto& ft = pair.second;
+                if (ft.isDynamic && !ft.items.empty() && ft.dimId == static_cast<int>(toDim)) {
+                    FloatingTextManager::getInstance().sendFakeItemToPlayer(player, ft);
+                }
             }
         }
     });
