@@ -1,10 +1,13 @@
 #include "interaction/chestprotect.h"
-#include "db/Sqlite3Wrapper.h" 
-#include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
+#include "Utils/NbtUtils.h"
+#include "db/Sqlite3Wrapper.h"
+#include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
+#include "mc/nbt/StringTag.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/level/BlockSource.h"                 
-#include "mc/world/level/block/actor/ChestBlockActor.h" 
+#include "mc/world/level/BlockSource.h"
+#include "mc/world/level/block/actor/BlockActor.h"
+#include "mc/world/level/block/actor/ChestBlockActor.h"
 
 
 namespace CT {
@@ -196,6 +199,23 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
             ownerName = playerInfo->name;
         }
 
+        // 设置/移除箱子名称
+        auto* mainBlockActor = region.getBlockEntity(mainPos);
+        if (mainBlockActor) {
+            auto nbt = NbtUtils::getBlockEntityNbt(mainBlockActor);
+            if (nbt) {
+                if (type == ChestType::Locked || type == ChestType::Public) {
+                    std::string chestTypeName = (type == ChestType::Locked) ? "的上锁箱子" : "的公共箱子";
+                    std::string customName    = ownerName + chestTypeName;
+                    (*nbt)["CustomName"]      = StringTag(customName);
+                    NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
+                } else if (nbt->contains("CustomName")) {
+                    nbt->erase("CustomName");
+                    NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
+                }
+            }
+        }
+
         switch (type) {
             case ChestType::Locked:      text = "§e[上锁箱子]§r 拥有者: " + ownerName; break;
             case ChestType::RecycleShop: text = "§a[回收商店]§r 拥有者: " + ownerName; break;
@@ -241,7 +261,17 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     if (success) {
         // 使缓存失效
         cacheManager.invalidateCache(pos, dimId);
-        
+
+        // 移除NBT中的自定义名称
+        auto* mainBlockActor = region.getBlockEntity(mainPos);
+        if (mainBlockActor) {
+            auto nbt = NbtUtils::getBlockEntityNbt(mainBlockActor);
+            if (nbt && nbt->contains("CustomName")) {
+                nbt->erase("CustomName");
+                NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
+            }
+        }
+
         // 只移除主方块的悬浮字
         FloatingTextManager::getInstance().removeFloatingText(mainPos, dimId);
 
