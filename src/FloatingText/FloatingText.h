@@ -3,14 +3,16 @@
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
 #include "ll/api/coro/CoroTask.h"
-#include "ll/api/service/PlayerInfo.h" // 引入 PlayerInfo
+#include "ll/api/service/PlayerInfo.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
-#include "ll/api/coro/SleepAwaiter.h" // 引入 sleep
+#include "ll/api/coro/SleepAwaiter.h"
+#include "mc/legacy/ActorUniqueID.h"
+#include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/dimension/Dimension.h"
 #include <map>
 #include <memory>
-#include <optional> // 引入 optional
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,7 +37,10 @@ struct ChestFloatingText {
     bool                                     isDynamic        = false;
     std::vector<std::string>                 itemNames;
     size_t                                   currentItemIndex = 0;
-
+    
+    // 假物品相关
+    std::vector<ItemStack>                          items;           // 存储物品
+    std::map<std::string, ActorUniqueID>            playerFakeItemIds; // 玩家UUID -> 假物品ID
 
     // 构造函数
     ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct)
@@ -99,6 +104,11 @@ public:
 
     // 更新商店/回收商店的悬浮字物品列表
     void updateShopFloatingText(BlockPos pos, int dimId, ChestType type);
+
+    // 假物品相关方法
+    void sendFakeItemToPlayer(Player& player, ChestFloatingText& ft);
+    void removeFakeItemFromPlayer(Player& player, ChestFloatingText& ft);
+    void updateFakeItemsForAllPlayers();
 };
 
 void registerPlayerConnectionListener();

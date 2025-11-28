@@ -19,9 +19,7 @@ NetworkItemStackDescriptor::NetworkItemStackDescriptor()
 ItemDescriptorCount::ItemDescriptorCount() : mStackSize(0) {};
 ItemDescriptor::ItemDescriptor() = default;
 
-AddItemActorPacket AddFakeitem(Vec3 pos, Player& player, BlockSource& region, ItemStack& item) {
-
-
+ActorUniqueID AddFakeitem(Vec3 pos, Player& player, BlockSource& region, ItemStack& item) {
     auto  p     = AddItemActorPacket();
     auto  level = ll::service::getLevel();
     auto& spaw  = level->getSpawner();
@@ -40,7 +38,7 @@ AddItemActorPacket AddFakeitem(Vec3 pos, Player& player, BlockSource& region, It
     p.mIsFromFishing                          = false;
     player.sendNetworkPacket(p);
     is->despawn();
-    return p;
+    return id;
 }
 
 void RemoveFakeitem(Player& player, ActorUniqueID id) {
