@@ -18,7 +18,7 @@ void showRecycleConfirmForm(
     int                dimId,
     BlockSource&       region,
     int                slotIndex,
-    double             unitPrice, // 修改为 double
+    double             unitPrice, 
     const std::string& commissionNbtStr = ""
 );
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);

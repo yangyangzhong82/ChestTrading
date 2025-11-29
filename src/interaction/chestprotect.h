@@ -24,6 +24,10 @@ struct ChestInfo {
     BlockPos    pos;
     std::string ownerUuid;
     ChestType   type;
+    std::string shopName;
+    bool        enableFloatingText = true;
+    bool        enableFakeItem     = true;
+    bool        isPublic           = true;
 };
 
 
@@ -127,5 +131,21 @@ BlockPos GetMainChestPos(BlockPos pos, BlockSource& region);
 // 获取所有箱子信息
 std::vector<ChestInfo> getAllChests();
 
+// 获取商店名称
+std::string getShopName(BlockPos pos, int dimId, BlockSource& region);
+
+// 设置商店名称
+bool setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& shopName);
+
+// 获取箱子配置
+struct ChestConfig {
+    bool enableFloatingText = true;
+    bool enableFakeItem     = true;
+    bool isPublic           = true;
+};
+ChestConfig getChestConfig(BlockPos pos, int dimId, BlockSource& region);
+
+// 设置箱子配置
+bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfig& config);
 
 } // namespace CT

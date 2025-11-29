@@ -163,7 +163,7 @@ void FloatingTextManager::loadAllLockedChests() {
 
     const auto&                           config  = CT::ConfigManager::getInstance().get();
     Sqlite3Wrapper&                       db      = Sqlite3Wrapper::getInstance();
-    std::vector<std::vector<std::string>> results = db.query("SELECT player_uuid, dim_id, pos_x, pos_y, pos_z, type FROM chests;");
+    std::vector<std::vector<std::string>> results = db.query("SELECT player_uuid, dim_id, pos_x, pos_y, pos_z, type, enable_floating_text, enable_fake_item FROM chests;");
 
     for (const auto& row : results) {
         if (row.size() >= 6) {
@@ -173,10 +173,15 @@ void FloatingTextManager::loadAllLockedChests() {
             int         posY      = std::stoi(row[3]);
             int         posZ      = std::stoi(row[4]);
             ChestType   chestType = static_cast<ChestType>(std::stoi(row[5]));
+            bool        enableFloatingText = (row.size() >= 7) ? (std::stoi(row[6]) != 0) : true;
+            bool        enableFakeItem     = (row.size() >= 8) ? (std::stoi(row[7]) != 0) : true;
             BlockPos    pos(posX, posY, posZ);
 
+            // 如果单箱子配置禁用悬浮字，跳过
+            if (!enableFloatingText) continue;
+
             std::string text;
-            std::string ownerName = ownerUuid; // 默认使用 UUID
+            std::string ownerName = ownerUuid;
             auto        playerInfo =
                 ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
             if (playerInfo) {
@@ -209,9 +214,10 @@ void FloatingTextManager::loadAllLockedChests() {
 
             // 如果是商店或回收商店，加载物品信息
             if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
-                auto key = std::make_pair(dimId, pos); // 重新定义 key
+                auto key = std::make_pair(dimId, pos);
                 auto& ft = mFloatingTexts.at(key);
                 ft.isDynamic = true;
+                ft.enableFakeItem = enableFakeItem; // 设置单箱子假物品配置
                 std::vector<std::vector<std::string>> itemResults;
                 if (chestType == ChestType::Shop) {
                     itemResults = db.query(
@@ -380,7 +386,8 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 
 // 发送假物品给玩家
 void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText& ft) {
-    if (ft.items.empty() || !ft.isDynamic || !CT::ConfigManager::getInstance().get().floatingText.enableFakeItem)
+    // 检查全局配置和单箱子配置
+    if (ft.items.empty() || !ft.isDynamic || !CT::ConfigManager::getInstance().get().floatingText.enableFakeItem || !ft.enableFakeItem)
         return;
 
     // 边界检查

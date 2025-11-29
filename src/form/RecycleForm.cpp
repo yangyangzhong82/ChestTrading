@@ -275,7 +275,6 @@ void showRecycleConfirmForm(
     }
 
     fm.appendInput("recycle_count", "请输入回收数量", "1", std::to_string(totalPlayerCount));
-    fm.appendLabel("预估回收总价: §6计算中...§r"); // 实际价格在回调中计算
 
     fm.sendTo(
         player,
@@ -355,16 +354,30 @@ void showRecycleFinalConfirmForm(
     const std::string& commissionNbtStr,
     double             unitPrice
 ) {
+    // 查询最大回收数量
+    auto& db     = Sqlite3Wrapper::getInstance();
+    int   itemId = db.getOrCreateItemId(commissionNbtStr);
+    int   maxRecycleCount = 0;
+    if (itemId >= 0) {
+        auto commission = db.query(
+            "SELECT max_recycle_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
+            dimId, pos.x, pos.y, pos.z, itemId
+        );
+        if (!commission.empty()) {
+            maxRecycleCount = std::stoi(commission[0][0]);
+        }
+    }
+
     ll::form::SimpleForm fm;
     fm.setTitle("确认回收");
-    fm.setContent(
-        "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount)
-        + " 吗？\n"
-          "你将获得 §6"
-        + std::to_string(recyclePrice) // 使用 std::to_string 显示 double
-        + "§r 金币。\n"
-          "回收后，你的背包将会刷新。"
-    );
+    
+    std::string content = "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + " 吗？\n";
+    if (maxRecycleCount > 0) {
+        content += "§e最高回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
+    }
+    content += "你将获得 §6" + std::to_string(recyclePrice) + "§r 金币。\n";
+    content += "回收后，你的背包将会刷新。";
+    fm.setContent(content);
 
     fm.appendButton(
         "§a确认回收",
@@ -596,6 +609,31 @@ void showCommissionDetailsForm(
 );
 
 
+void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::CustomForm fm;
+    fm.setTitle("设置回收商店名称");
+    
+    std::string currentName = getShopName(pos, dimId, region);
+    fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
+    fm.appendInput("shop_name", "请输入商店名称", "", currentName);
+    
+    fm.sendTo(player, [pos, dimId, &region](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+        if (!result.has_value()) {
+            p.sendMessage("§c你取消了设置商店名称。");
+            showRecycleShopManageForm(p, pos, dimId, region);
+            return;
+        }
+        
+        std::string newName = std::get<std::string>(result.value().at("shop_name"));
+        if (setShopName(pos, dimId, region, newName)) {
+            p.sendMessage("§a商店名称设置成功！");
+        } else {
+            p.sendMessage("§c商店名称设置失败！");
+        }
+        showRecycleShopManageForm(p, pos, dimId, region);
+    });
+}
+
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("回收商店管理");
@@ -609,10 +647,8 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
         showViewRecycleCommissionsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("删除回收委托", [&player, pos, dimId, &region](Player& p) {
-        // TODO: 实现删除回收委托的表单
-        p.sendMessage("§a功能待实现：删除回收委托");
-        showRecycleShopManageForm(p, pos, dimId, region); // 返回管理界面
+    fm.appendButton("设置商店名称", [&player, pos, dimId, &region](Player& p) {
+        showSetRecycleShopNameForm(p, pos, dimId, region);
     });
 
     fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
@@ -842,7 +878,7 @@ void showCommissionDetailsForm(
                     for (const auto& row : records) {
                         std::string recyclerUuid = row[0];
                         std::string recycleCount = row[1];
-                        std::string totalPrice   = row[2]; // totalPrice 已经是 string，直接使用
+                        std::string totalPrice   = row[2]; 
                         std::string timestamp    = row[3];
 
                         std::string recyclerName = recyclerUuid;

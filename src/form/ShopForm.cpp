@@ -257,6 +257,8 @@ void showShopItemManageForm(
 
 void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 
+void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("管理商店箱子");
@@ -363,6 +365,10 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
 
     fm.appendButton("查看购买记录", [&fm, &player, pos, dimId, &region](Player& p) {
         showPurchaseRecordsForm(p, pos, dimId, region);
+    });
+
+    fm.appendButton("设置商店名称", [&fm, &player, pos, dimId, &region](Player& p) {
+        showSetShopNameForm(p, pos, dimId, region);
     });
 
     fm.appendButton("返回", [&fm, &player, pos, dimId, &region](Player& p) {
@@ -651,6 +657,31 @@ void showShopItemBuyForm(
             showShopChestItemsForm(p, pos, dimId, region);
         }
     );
+}
+
+void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::CustomForm fm;
+    fm.setTitle("设置商店名称");
+    
+    std::string currentName = getShopName(pos, dimId, region);
+    fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
+    fm.appendInput("shop_name", "请输入商店名称", "", currentName);
+    
+    fm.sendTo(player, [pos, dimId, &region](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+        if (!result.has_value()) {
+            p.sendMessage("§c你取消了设置商店名称。");
+            showShopChestManageForm(p, pos, dimId, region);
+            return;
+        }
+        
+        std::string newName = std::get<std::string>(result.value().at("shop_name"));
+        if (setShopName(pos, dimId, region, newName)) {
+            p.sendMessage("§a商店名称设置成功！");
+        } else {
+            p.sendMessage("§c商店名称设置失败！");
+        }
+        showShopChestManageForm(p, pos, dimId, region);
+    });
 }
 
 void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {

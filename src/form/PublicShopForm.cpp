@@ -154,7 +154,8 @@ void showPublicShopListForm(Player& player, int currentPage, const std::string& 
     
     std::vector<ChestInfo> shops;
     for (const auto& chest : allChests) {
-        if (chest.type == ChestType::Shop) {
+        // 只显示公开的商店
+        if (chest.type == ChestType::Shop && chest.isPublic) {
             if (!searchKeyword.empty()) {
                 if (searchType == "owner") {
                     auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(chest.ownerUuid));
@@ -194,11 +195,10 @@ void showPublicShopListForm(Player& player, int currentPage, const std::string& 
             auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
             std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
 
-            std::string buttonText = "§b" + ownerName + "§r 的商店\n§7" + 
-                                     dimIdToString(shop.dimId) + " §e[" + 
-                                     std::to_string(shop.pos.x) + ", " + 
-                                     std::to_string(shop.pos.y) + ", " + 
-                                     std::to_string(shop.pos.z) + "]";
+            std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的商店") : shop.shopName;
+            std::string buttonText = ownerName + "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
+                                   + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
+                                   + std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop](Player& p) {
                 auto& region = p.getDimensionBlockSource();
@@ -235,7 +235,8 @@ void showPublicRecycleShopListForm(Player& player, int currentPage, const std::s
     auto allChests = getAllChests();
     std::vector<ChestInfo> recycleShops;
     for (const auto& chest : allChests) {
-        if (chest.type == ChestType::RecycleShop) {
+        // 只显示公开的回收商店
+        if (chest.type == ChestType::RecycleShop && chest.isPublic) {
             if (!searchKeyword.empty()) {
                 if (searchType == "owner") {
                     auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(chest.ownerUuid));
@@ -273,7 +274,8 @@ void showPublicRecycleShopListForm(Player& player, int currentPage, const std::s
             auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
             std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
 
-            std::string buttonText = "§b" + ownerName + "§r 的回收商店\n§7" + 
+            std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的回收商店") : shop.shopName;
+            std::string buttonText = "§b" + shopDisplayName + "§r\n§7" + 
                                      dimIdToString(shop.dimId) + " §e[" + 
                                      std::to_string(shop.pos.x) + ", " + 
                                      std::to_string(shop.pos.y) + ", " + 

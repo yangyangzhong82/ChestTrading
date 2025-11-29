@@ -294,9 +294,13 @@ bool Sqlite3Wrapper::initializeSchema() {
     if (!migrateColumnType("purchase_records", "total_price", 5)) return false; // create_statements[5] 是 purchase_records
     if (!migrateColumnType("recycle_records", "total_price", 7)) return false; // create_statements[7] 是 recycle_records
 
-    // 添加新列 (这部分已经存在，但是要确保在列迁移之后执行，因为列迁移会重新创建表)
-    if (!isColumnExists("shop_items", "db_count")) { // 重新检查，因为表可能被重建了
+
+    if (!isColumnExists("shop_items", "db_count")) { 
         execute_unsafe("ALTER TABLE shop_items ADD COLUMN db_count INTEGER NOT NULL DEFAULT 0;");
+    }
+    // 添加商店名称字段
+    if (!isColumnExists("chests", "shop_name")) {
+        execute_unsafe("ALTER TABLE chests ADD COLUMN shop_name TEXT NOT NULL DEFAULT '';");
     }
     if (!isColumnExists("recycle_shop_items", "required_enchants")) {
         execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN required_enchants TEXT NOT NULL DEFAULT '';");
@@ -306,6 +310,17 @@ bool Sqlite3Wrapper::initializeSchema() {
     }
     if (!isColumnExists("recycle_shop_items", "current_recycled_count")) {
         execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;");
+    }
+    
+    // 添加箱子配置字段
+    if (!isColumnExists("chests", "enable_floating_text")) {
+        execute_unsafe("ALTER TABLE chests ADD COLUMN enable_floating_text INTEGER NOT NULL DEFAULT 1;");
+    }
+    if (!isColumnExists("chests", "enable_fake_item")) {
+        execute_unsafe("ALTER TABLE chests ADD COLUMN enable_fake_item INTEGER NOT NULL DEFAULT 1;");
+    }
+    if (!isColumnExists("chests", "is_public")) {
+        execute_unsafe("ALTER TABLE chests ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1;");
     }
 
 

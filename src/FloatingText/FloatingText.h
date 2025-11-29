@@ -35,6 +35,7 @@ struct ChestFloatingText {
     std::unique_ptr<debug_shape::IDebugText> debugText; // 对应的 DebugText 对象
     ChestType                                type;
     bool                                     isDynamic        = false;
+    bool                                     enableFakeItem   = true; // 单箱子假物品配置
     std::vector<std::string>                 itemNames;
     size_t                                   currentItemIndex = 0;
     
@@ -43,12 +44,13 @@ struct ChestFloatingText {
     std::map<std::string, ActorUniqueID>            playerFakeItemIds; // 玩家UUID -> 假物品ID
 
     // 构造函数
-    ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct)
+    ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct, bool fakeItem = true)
     : pos(p),
       dimId(d),
       ownerUuid(std::move(uuid)),
       text(std::move(t)),
-      type(ct) {}
+      type(ct),
+      enableFakeItem(fakeItem) {}
 };
 
 // 悬浮字管理器

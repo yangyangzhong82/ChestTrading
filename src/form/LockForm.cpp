@@ -9,12 +9,13 @@
 #include "ll/api/form/SimpleForm.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "ShopForm.h" // 引入 ShopForm
+#include "ShopForm.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h" 
 #include "mc/world/item/Item.h"
 
-
 namespace CT {
+
+void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType);
 
 // using namespace CauldronZero::NbtUtils; // 引入 NbtUtils 命名空间
 
@@ -72,9 +73,13 @@ void showChestLockForm(
                 });
             } else if (chestType == ChestType::RecycleShop) {
                 fm.appendButton("管理回收商店", [&player, pos, dimId, &region](Player& p) {
-                    showRecycleShopManageForm(p, pos, dimId, region); // 调用新的管理表单
+                    showRecycleShopManageForm(p, pos, dimId, region);
                 });
             }
+
+            fm.appendButton("箱子设置", [pos, dimId, &region, chestType](Player& p) {
+                showChestSettingsForm(p, pos, dimId, region, chestType);
+            });
 
         } else {
             // 当前玩家不是主人
@@ -134,5 +139,55 @@ void showChestLockForm(
     fm.sendTo(player);
 }
 
+void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType) {
+    ll::form::CustomForm fm;
+    fm.setTitle("箱子设置");
+
+    ChestConfig config = getChestConfig(pos, dimId, region);
+
+    fm.appendToggle("enable_floating_text", "显示悬浮字", config.enableFloatingText);
+
+    bool isShopType = (chestType == ChestType::Shop || chestType == ChestType::RecycleShop);
+    if (isShopType) {
+        fm.appendToggle("enable_fake_item", "显示假物品", config.enableFakeItem);
+        fm.appendToggle("is_public", "公开到商店列表", config.isPublic);
+    }
+
+    fm.sendTo(player, [pos, dimId, &region, chestType, isShopType](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+        if (!result.has_value()) {
+            p.sendMessage("§c你取消了设置。");
+            auto [isLocked, ownerUuid, type] = getChestDetails(pos, dimId, region);
+            showChestLockForm(p, pos, dimId, isLocked, ownerUuid, type, region);
+            return;
+        }
+
+        ChestConfig newConfig;
+        
+        auto ftIt = result->find("enable_floating_text");
+        if (ftIt != result->end() && std::holds_alternative<uint64>(ftIt->second)) {
+            newConfig.enableFloatingText = (std::get<uint64>(ftIt->second) != 0);
+        }
+
+        if (isShopType) {
+            auto fiIt = result->find("enable_fake_item");
+            if (fiIt != result->end() && std::holds_alternative<uint64>(fiIt->second)) {
+                newConfig.enableFakeItem = (std::get<uint64>(fiIt->second) != 0);
+            }
+            auto ipIt = result->find("is_public");
+            if (ipIt != result->end() && std::holds_alternative<uint64>(ipIt->second)) {
+                newConfig.isPublic = (std::get<uint64>(ipIt->second) != 0);
+            }
+        }
+
+        if (setChestConfig(pos, dimId, region, newConfig)) {
+            p.sendMessage("§a箱子设置已保存！");
+        } else {
+            p.sendMessage("§c箱子设置保存失败！");
+        }
+
+        auto [isLocked, ownerUuid, type] = getChestDetails(pos, dimId, region);
+        showChestLockForm(p, pos, dimId, isLocked, ownerUuid, type, region);
+    });
+}
 
 } // namespace CT

@@ -417,7 +417,7 @@ BlockPos GetMainChestPos(BlockPos pos, BlockSource& region) {
 std::vector<ChestInfo> getAllChests() {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
     auto            results =
-        db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type FROM chests ORDER BY player_uuid, dim_id;");
+        db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public FROM chests ORDER BY player_uuid, dim_id;");
 
     std::vector<ChestInfo> chests;
     for (const auto& row : results) {
@@ -428,6 +428,10 @@ std::vector<ChestInfo> getAllChests() {
                 info.pos        = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
                 info.ownerUuid  = row[4];
                 info.type       = static_cast<ChestType>(std::stoi(row[5]));
+                info.shopName   = (row.size() >= 7) ? row[6] : "";
+                info.enableFloatingText = (row.size() >= 8) ? (std::stoi(row[7]) != 0) : true;
+                info.enableFakeItem     = (row.size() >= 9) ? (std::stoi(row[8]) != 0) : true;
+                info.isPublic           = (row.size() >= 10) ? (std::stoi(row[9]) != 0) : true;
                 chests.push_back(info);
             } catch (const std::exception& e) {
                 logger.error("Failed to parse chest info from database: {}", e.what());
@@ -437,5 +441,83 @@ std::vector<ChestInfo> getAllChests() {
     return chests;
 }
 
+std::string getShopName(BlockPos pos, int dimId, BlockSource& region) {
+    BlockPos mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    auto results = db.query(
+        "SELECT shop_name FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId, mainPos.x, mainPos.y, mainPos.z
+    );
+    if (!results.empty() && !results[0].empty()) {
+        return results[0][0];
+    }
+    return "";
+}
+
+bool setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& shopName) {
+    BlockPos mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    return db.execute(
+        "UPDATE chests SET shop_name = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        shopName, dimId, mainPos.x, mainPos.y, mainPos.z
+    );
+}
+
+ChestConfig getChestConfig(BlockPos pos, int dimId, BlockSource& region) {
+    BlockPos mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    auto results = db.query(
+        "SELECT enable_floating_text, enable_fake_item, is_public FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId, mainPos.x, mainPos.y, mainPos.z
+    );
+    ChestConfig config;
+    if (!results.empty() && results[0].size() >= 3) {
+        config.enableFloatingText = (std::stoi(results[0][0]) != 0);
+        config.enableFakeItem     = (std::stoi(results[0][1]) != 0);
+        config.isPublic           = (std::stoi(results[0][2]) != 0);
+    }
+    return config;
+}
+
+bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfig& config) {
+    BlockPos mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    bool success = db.execute(
+        "UPDATE chests SET enable_floating_text = ?, enable_fake_item = ?, is_public = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        config.enableFloatingText ? 1 : 0,
+        config.enableFakeItem ? 1 : 0,
+        config.isPublic ? 1 : 0,
+        dimId, mainPos.x, mainPos.y, mainPos.z
+    );
+    if (success) {
+        // 根据配置更新悬浮字显示
+        auto& ftm = FloatingTextManager::getInstance();
+        if (!config.enableFloatingText) {
+            ftm.removeFloatingText(mainPos, dimId);
+        } else {
+            // 重新加载悬浮字
+            auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
+            if (isLocked) {
+                std::string ownerName = ownerUuid;
+                if (auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid))) {
+                    ownerName = playerInfo->name;
+                }
+                std::string text;
+                switch (chestType) {
+                    case ChestType::Locked:      text = "§e[上锁箱子]§r 拥有者: " + ownerName; break;
+                    case ChestType::RecycleShop: text = "§a[回收商店]§r 拥有者: " + ownerName; break;
+                    case ChestType::Shop:        text = "§b[商店箱子]§r 拥有者: " + ownerName; break;
+                    case ChestType::Public:      text = "§d[公共箱子]§r 拥有者: " + ownerName; break;
+                    default:                     text = "§f[未知箱子类型]§r 拥有者: " + ownerName; break;
+                }
+                ftm.addOrUpdateFloatingText(mainPos, dimId, ownerUuid, text, chestType);
+                if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
+                    ftm.updateShopFloatingText(mainPos, dimId, chestType);
+                }
+            }
+        }
+    }
+    return success;
+}
 
 } // namespace CT
