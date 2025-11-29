@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Entry/Entry.h"
 #include "ll/api/io/Logger.h"
 

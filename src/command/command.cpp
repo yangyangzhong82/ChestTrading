@@ -1,6 +1,7 @@
 #include "command.h"
 #include "Bedrock-Authority/permission/PermissionManager.h"
-#include "form/AdminForm.h" 
+#include "form/AdminForm.h"
+#include "form/PublicShopForm.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -50,6 +51,32 @@ void registerCommand() {
             }
             // 权限已在命令注册时通过 CommandPermissionLevel::Operator 设置，此处无需再次检查
             showAdminMainForm(*player);
+        }
+    );
+
+    // 注册 /shop 命令 - 打开公开商店列表
+    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::Any);
+    shopCmd.overload<ll::command::EmptyParam>().execute(
+        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error("该命令只能由玩家执行。");
+                return;
+            }
+            showPublicShopListForm(*player);
+        }
+    );
+
+    // 注册 /recycle 命令 - 打开公开回收商店列表
+    auto& recycleCmd = registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::Any);
+    recycleCmd.overload<ll::command::EmptyParam>().execute(
+        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error("该命令只能由玩家执行。");
+                return;
+            }
+            showPublicRecycleShopListForm(*player);
         }
     );
 }
