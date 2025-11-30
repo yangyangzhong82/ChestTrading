@@ -93,17 +93,18 @@ void registerEventListener() {
         // 玩家没有手持木棍：尝试打开箱子
         if (canPlayerOpenChest(player_uuid, pos, static_cast<int>(dimId), region) || isAdmin) {
             // 权限检查通过，允许打开
-            // 如果是商店或回收商店，且玩家不是主人，则显示商店表单而不是直接打开
-            if ((chestType == ChestType::Shop || chestType == ChestType::RecycleShop) && !isOwner) {
-                if (chestType == ChestType::Shop) {
-                    showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
-                } else { // RecycleShop
-                    showRecycleForm(player, pos, static_cast<int>(dimId), region);
-                }
+            // 如果是商店或回收商店，不管是否为主人或管理员，都显示商店表单
+            // 这样管理员也能像普通玩家一样购买/回收物品
+            if (chestType == ChestType::Shop) {
+                showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                ev.cancel();
+                return;
+            } else if (chestType == ChestType::RecycleShop) {
+                showRecycleForm(player, pos, static_cast<int>(dimId), region);
                 ev.cancel();
                 return;
             }
-            // 其他情况（主人打开商店，或打开普通箱子/公共箱子），直接打开
+            // 其他情况（普通箱子/公共箱子），直接打开
             return;
         } else {
             // 权限检查失败
@@ -130,7 +131,7 @@ void registerEventListener() {
             if (block.getTypeName() == "minecraft:chest") {
                 auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
                 if (locked) {
-                    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player.getUuid().asString(), "chest.admin");
+                    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player.getUuid().asString(), "ctchest.admin");
                     if (isAdmin) {
                         CT::removeChest(pos, dimId, region);
                         player.sendMessage("§a管理员权限：已移除箱子锁定数据。");

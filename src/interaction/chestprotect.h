@@ -148,4 +148,10 @@ ChestConfig getChestConfig(BlockPos pos, int dimId, BlockSource& region);
 // 设置箱子配置
 bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfig& config);
 
+// 获取玩家拥有的特定类型箱子数量
+int getPlayerChestCount(const std::string& playerUuid, ChestType type);
+
+// 检查玩家是否可以创建特定类型的箱子（检查数量限制和权限）
+bool canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::string& errorMessage);
+
 } // namespace CT

@@ -8,6 +8,8 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "Bedrock-Authority/permission/PermissionManager.h"
+#include "config.h"
 
 
 namespace CT {
@@ -518,6 +520,93 @@ bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestCon
         }
     }
     return success;
+}
+
+int getPlayerChestCount(const std::string& playerUuid, ChestType type) {
+    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    auto results = db.query(
+        "SELECT COUNT(*) FROM chests WHERE player_uuid = ? AND type = ?;",
+        playerUuid,
+        static_cast<int>(type)
+    );
+    
+    if (!results.empty() && !results[0].empty()) {
+        try {
+            return std::stoi(results[0][0]);
+        } catch (const std::exception& e) {
+            logger.error("Failed to parse chest count for player {}: {}", playerUuid, e.what());
+            return 0;
+        }
+    }
+    return 0;
+}
+
+bool canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::string& errorMessage) {
+    // 检查管理员权限
+    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin");
+    if (isAdmin) {
+        return true; // 管理员绕过所有限制
+    }
+    
+    // 检查对应权限
+    std::string requiredPermission;
+    switch (type) {
+        case ChestType::Locked:
+            requiredPermission = "chest.create.locked";
+            break;
+        case ChestType::Public:
+            requiredPermission = "chest.create.public";
+            break;
+        case ChestType::RecycleShop:
+            requiredPermission = "chest.create.recycle";
+            break;
+        case ChestType::Shop:
+            requiredPermission = "chest.create.shop";
+            break;
+        default:
+            errorMessage = "§c未知的箱子类型！";
+            return false;
+    }
+    
+    if (!BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, requiredPermission)) {
+        errorMessage = "§c你没有创建该类型箱子的权限！";
+        return false;
+    }
+    
+    // 检查数量限制
+    extern Config gConfig;
+    int currentCount = getPlayerChestCount(playerUuid, type);
+    int maxCount = 0;
+    std::string chestTypeName;
+    
+    switch (type) {
+        case ChestType::Locked:
+            maxCount = gConfig.chestLimits.maxLockedChests;
+            chestTypeName = "上锁箱子";
+            break;
+        case ChestType::Public:
+            maxCount = gConfig.chestLimits.maxPublicChests;
+            chestTypeName = "公共箱子";
+            break;
+        case ChestType::RecycleShop:
+            maxCount = gConfig.chestLimits.maxRecycleShops;
+            chestTypeName = "回收商店";
+            break;
+        case ChestType::Shop:
+            maxCount = gConfig.chestLimits.maxShops;
+            chestTypeName = "商店";
+            break;
+        default:
+            errorMessage = "§c未知的箱子类型！";
+            return false;
+    }
+    
+    if (currentCount >= maxCount) {
+        errorMessage = "§c你已达到" + chestTypeName + "的数量上限（" + std::to_string(maxCount) + "个）！";
+        return false;
+    }
+    
+    return true;
 }
 
 } // namespace CT

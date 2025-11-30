@@ -18,6 +18,20 @@ struct FloatingTextSettings {
     bool enableFakeItem      = true; // 是否开启假掉落物显示
 };
 
+struct ChestLimits {
+    int maxLockedChests   = 10;  // 每名玩家最多可创建的上锁箱子数量
+    int maxPublicChests   = 5;   // 每名玩家最多可创建的公共箱子数量
+    int maxRecycleShops   = 3;   // 每名玩家最多可创建的回收商店数量
+    int maxShops          = 3;   // 每名玩家最多可创建的商店数量
+};
+
+struct ChestCreationCosts {
+    double lockedChestCost   = 100.0;  // 创建上锁箱子的费用
+    double publicChestCost   = 50.0;   // 创建公共箱子的费用
+    double recycleShopCost   = 500.0;  // 创建回收商店的费用
+    double shopCost          = 500.0;  // 创建商店的费用
+};
+
 struct Config {
     int                   version                           = 1;
     bool                  enableWalMode                     = true;       // 是否启用数据库的 WAL 模式
@@ -26,4 +40,6 @@ struct Config {
     ll::io::LogLevel      logLevel = ll::io::LogLevel::Info; // 日志等级
     CT::EconomyType       economyType = CT::EconomyType::CzMoney; // 经济类型，默认 LLMoney
     FloatingTextSettings floatingText;                            // 悬浮字相关设置
+    ChestLimits          chestLimits;                             // 箱子数量限制
+    ChestCreationCosts   chestCosts;                              // 箱子创建费用
 };
