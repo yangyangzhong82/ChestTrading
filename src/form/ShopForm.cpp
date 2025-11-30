@@ -3,6 +3,7 @@
 #include "FormUtils.h" 
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
+#include "Utils/MoneyFormat.h"
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/chestprotect.h" 
 #include "ll/api/form/CustomForm.h"
@@ -67,7 +68,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 
             // 显示数据库中的可售数量 (dbCount) 和箱子中实际存在的数量 (totalCount)
             std::string buttonText = CT::FormUtils::getItemDisplayString(item) + " §b[库存: " + std::to_string(dbCount) + "/"
-                                   + std::to_string(totalCount) + "]§r" + " §6[价格: " + std::to_string(price) + "]§r"; // 使用 std::to_string 显示 double
+                                   + std::to_string(totalCount) + "]§r" + " §6[价格: " + CT::MoneyFormat::format(price) + "]§r";
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
@@ -156,7 +157,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     "= excluded.db_count, slot = excluded.slot;";
                 if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemId, price, dbCount)) { // price 作为 double 传递
                     p.sendMessage(
-                        "§a物品价格和数量设置成功！价格: " + std::to_string(price) // 使用 std::to_string 显示 double
+                        "§a物品价格和数量设置成功！价格: " + CT::MoneyFormat::format(price)
                         + "，数量: " + std::to_string(dbCount)
                     );
                     logger.debug("showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.", item.getName(), price, dbCount);
@@ -216,7 +217,7 @@ void showShopItemManageForm(
     std::string content = "你正在管理物品: " + std::string(item.getName()) + "\n";
     int         dbCount = 0;
     if (!results.empty()) {
-        content += "当前价格: §a" + results[0][0] + "§r\n"; // 数据库返回的 price 已经是字符串，直接使用
+        content += "当前价格: §a" + CT::MoneyFormat::format(std::stod(results[0][0])) + "§r\n";
         dbCount  = std::stoi(results[0][1]);
     } else {
         content += "当前状态: §7未定价§r\n";
@@ -423,9 +424,9 @@ void showShopItemBuyForm(
         }
     }
 
-    fm.appendLabel("单价: §6" + std::to_string(unitPrice) + "§r"); // 使用 std::to_string 显示 double
+    fm.appendLabel("单价: §6" + CT::MoneyFormat::format(unitPrice) + "§r");
     fm.appendInput("buy_count", "请输入购买数量", "1");
-    fm.appendLabel("你的余额: §e" + std::to_string(Economy::getMoney(player)) + "§r"); // Economy::getMoney 返回 double
+    fm.appendLabel("你的余额: §e" + CT::MoneyFormat::format(Economy::getMoney(player)) + "§r");
 
     fm.sendTo(
         player,
@@ -474,7 +475,7 @@ void showShopItemBuyForm(
             }
 
             if (!Economy::hasMoney(p, totalPrice)) {
-                p.sendMessage("§c你的金币不足！需要 §6" + std::to_string(totalPrice) + "§c 金币。"); // 使用 std::to_string 显示 double
+                p.sendMessage("§c你的金币不足！需要 §6" + CT::MoneyFormat::format(totalPrice) + "§c 金币。");
                 logger.warn("showShopItemBuyForm: Player {} has insufficient money. Needed {}, has {}.", p.getRealName(), totalPrice, Economy::getMoney(p));
                 showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
                 return;
@@ -646,7 +647,7 @@ void showShopItemBuyForm(
                 );
 
                 p.sendMessage(
-                    "§a购买成功！你花费了 §6" + std::to_string(totalPrice) + "§a 金币购买了 " // 使用 std::to_string 显示 double
+                    "§a购买成功！你花费了 §6" + CT::MoneyFormat::format(totalPrice) + "§a 金币购买了 "
                     + std::string(item.getName()) + " x" + std::to_string(buyCount) + "。"
                 );
                 FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
