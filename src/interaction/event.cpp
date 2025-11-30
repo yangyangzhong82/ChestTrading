@@ -46,28 +46,30 @@ void registerEventListener() {
     auto& eventBus = ll::event::EventBus::getInstance();
 
     eventBus.emplaceListener<ll::event::PlayerInteractBlockEvent>([](ll::event::PlayerInteractBlockEvent& ev) {
+        auto        block = ev.block();
+        
+        // 立即检查是否为箱子，避免不必要的处理
+        if (block->getTypeName() != "minecraft:chest") {
+            return;
+        }
+
         auto&       player         = ev.self();
         auto&       item           = player.getCarriedItem();
-        auto        block          = ev.block();
         auto        dimId          = player.getDimensionId();
-        auto        originalPos    = ev.blockPos(); // 保存原始交互位置
+        auto        originalPos    = ev.blockPos();
         bool        isHoldingStick = (item.getTypeName() == "minecraft:stick");
         std::string player_uuid    = player.getUuid().asString();
         auto&       region         = player.getDimensionBlockSource();
 
-        // 防抖处理
+        // 防抖处理（仅对箱子交互）
         auto currentTime = std::chrono::steady_clock::now();
         if (lastInteractionTime.count(player_uuid) &&
             std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid]) <
                 DEBOUNCE_INTERVAL) {
-            ev.cancel(); // 在防抖间隔内，取消事件
+            ev.cancel();
             return;
         }
-        lastInteractionTime[player_uuid] = currentTime; // 更新上次交互时间
-
-        if (block->getTypeName() != "minecraft:chest") {
-            return; // 只处理箱子
-        }
+        lastInteractionTime[player_uuid] = currentTime;
         
         // 始终使用主箱子位置进行逻辑判断
         BlockPos pos = CT::internal::GetMainChestPos(originalPos, region);
