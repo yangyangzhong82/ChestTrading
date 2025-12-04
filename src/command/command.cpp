@@ -35,7 +35,7 @@ void registerCommand() {
     );
 
     // 注册独立的 /ctadmin 命令
-    auto& adminCmd = registrar.getOrCreateCommand("ctadmin", "ChestTrading 管理员命令", CommandPermissionLevel::Any);
+    auto& adminCmd = registrar.getOrCreateCommand("ctadmin", "ChestTrading 管理员命令", CommandPermissionLevel::GameDirectors);
 
     adminCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
@@ -55,7 +55,7 @@ void registerCommand() {
     );
 
     // 注册 /shop 命令 - 打开公开商店列表
-    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::Any);
+    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::GameDirectors);
     shopCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -68,7 +68,8 @@ void registerCommand() {
     );
 
     // 注册 /recycle 命令 - 打开公开回收商店列表
-    auto& recycleCmd = registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::Any);
+    auto& recycleCmd =
+        registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::GameDirectors);
     recycleCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());

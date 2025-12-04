@@ -111,7 +111,7 @@ bool Sqlite3Wrapper::initializeSchema() {
 
         "CREATE TABLE IF NOT EXISTS shared_chests ("
         "player_uuid TEXT NOT NULL,"
-        "owner_uuid TEXT NOT NULL," // 确保 owner_uuid 存在
+        "owner_uuid TEXT NOT NULL,"
         "dim_id INTEGER NOT NULL,"
         "pos_x INTEGER NOT NULL,"
         "pos_y INTEGER NOT NULL,"

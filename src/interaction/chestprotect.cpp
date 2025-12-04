@@ -9,7 +9,7 @@
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "Bedrock-Authority/permission/PermissionManager.h"
-#include "config.h"
+#include "Config/ConfigManager.h"
 
 
 namespace CT {
@@ -574,26 +574,26 @@ bool canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::st
     }
     
     // 检查数量限制
-    extern Config gConfig;
+    const Config& config = ConfigManager::getInstance().get();
     int currentCount = getPlayerChestCount(playerUuid, type);
     int maxCount = 0;
     std::string chestTypeName;
     
     switch (type) {
         case ChestType::Locked:
-            maxCount = gConfig.chestLimits.maxLockedChests;
+            maxCount = config.chestLimits.maxLockedChests;
             chestTypeName = "上锁箱子";
             break;
         case ChestType::Public:
-            maxCount = gConfig.chestLimits.maxPublicChests;
+            maxCount = config.chestLimits.maxPublicChests;
             chestTypeName = "公共箱子";
             break;
         case ChestType::RecycleShop:
-            maxCount = gConfig.chestLimits.maxRecycleShops;
+            maxCount = config.chestLimits.maxRecycleShops;
             chestTypeName = "回收商店";
             break;
         case ChestType::Shop:
-            maxCount = gConfig.chestLimits.maxShops;
+            maxCount = config.chestLimits.maxShops;
             chestTypeName = "商店";
             break;
         default:

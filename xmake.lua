@@ -7,7 +7,7 @@ add_repositories("yyz-repo https://github.com/yangyangzhong82/xmake-repo.git")
 -- add_requires("levilamina develop") to use develop version
 -- please note that you should add bdslibrary yourself if using dev version
 if is_config("target_type", "server") then
-    add_requires("levilamina 1.7.0", {configs = {target_type = "server"}})
+    add_requires("levilamina 1.7.6", {configs = {target_type = "server"}})
 else
     add_requires("levilamina", {configs = {target_type = "client"}})
 end
