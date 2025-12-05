@@ -93,14 +93,18 @@ void registerEventListener() {
         // 玩家没有手持木棍：尝试打开箱子
         if (canPlayerOpenChest(player_uuid, pos, static_cast<int>(dimId), region) || isAdmin) {
             // 权限检查通过，允许打开
-            // 如果是商店或回收商店，不管是否为主人或管理员，都显示商店表单
-            // 这样管理员也能像普通玩家一样购买/回收物品
-            if (chestType == ChestType::Shop) {
-                showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
-                ev.cancel();
-                return;
-            } else if (chestType == ChestType::RecycleShop) {
-                showRecycleForm(player, pos, static_cast<int>(dimId), region);
+            // 如果是商店或回收商店，主人和管理员可以直接打开箱子放入物品
+            if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
+                if (isOwner) {
+                    // 主人或管理员直接打开箱子
+                    return;
+                }
+                // 非主人显示商店表单
+                if (chestType == ChestType::Shop) {
+                    showShopChestItemsForm(player, pos, static_cast<int>(dimId), region);
+                } else {
+                    showRecycleForm(player, pos, static_cast<int>(dimId), region);
+                }
                 ev.cancel();
                 return;
             }

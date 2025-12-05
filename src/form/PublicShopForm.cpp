@@ -6,6 +6,7 @@
 #include "interaction/chestprotect.h"
 #include "FloatingText/FloatingText.h"
 #include "Utils/NbtUtils.h"
+#include "Utils/MoneyFormat.h"
 #include "logger.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/form/CustomForm.h"
@@ -201,8 +202,7 @@ void showPublicShopListForm(Player& player, int currentPage, const std::string& 
                                    + std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop](Player& p) {
-                auto& region = p.getDimensionBlockSource();
-                showShopChestItemsForm(p, shop.pos, shop.dimId, region);
+                showShopPreviewForm(p, shop);
             });
         }
     }
@@ -282,8 +282,7 @@ void showPublicRecycleShopListForm(Player& player, int currentPage, const std::s
                                      std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop](Player& p) {
-                auto& region = p.getDimensionBlockSource();
-                showRecycleForm(p, shop.pos, shop.dimId, region);
+                showRecycleShopPreviewForm(p, shop);
             });
         }
     }
@@ -304,6 +303,115 @@ void showPublicRecycleShopListForm(Player& player, int currentPage, const std::s
             });
         }
     }
+
+    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.sendTo(player);
+}
+
+// 商店预览表单（只能预览物品，不能购买，可传送到箱子位置）
+void showShopPreviewForm(Player& player, const ChestInfo& shop) {
+    ll::form::SimpleForm fm;
+    
+    auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
+    std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
+    std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的商店") : shop.shopName;
+    
+    fm.setTitle("商店预览 - " + shopDisplayName);
+
+    auto& db = Sqlite3Wrapper::getInstance();
+    auto results = db.query(
+        "SELECT s.price, s.db_count, d.item_nbt FROM shop_items s "
+        "JOIN item_definitions d ON s.item_id = d.item_id "
+        "WHERE s.dim_id = ? AND s.pos_x = ? AND s.pos_y = ? AND s.pos_z = ?",
+        shop.dimId, shop.pos.x, shop.pos.y, shop.pos.z
+    );
+
+    std::string content = "§e店主: " + ownerName + "\n";
+    content += "§7位置: " + dimIdToString(shop.dimId) + " [" + 
+               std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", " + 
+               std::to_string(shop.pos.z) + "]\n\n";
+    
+    if (results.empty()) {
+        content += "§7该商店暂无商品。\n";
+    } else {
+        content += "§a商品列表:\n";
+        for (const auto& row : results) {
+            double price = std::stod(row[0]);
+            int dbCount = std::stoi(row[1]);
+            std::string itemNbtStr = row[2];
+            
+            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+            if (itemPtr) {
+                content += "§f- " + std::string(itemPtr->getName()) + " §7x" + std::to_string(dbCount) + 
+                          " §6[" + CT::MoneyFormat::format(price) + "]\n";
+            }
+        }
+    }
+    content += "\n§c注意: 需要前往商店位置点击箱子才能购买！";
+    fm.setContent(content);
+
+    fm.appendButton("§a传送到商店", [shop](Player& p) {
+        p.teleport({(float)shop.pos.x + 0.5f, (float)shop.pos.y + 1.0f, (float)shop.pos.z + 0.5f}, shop.dimId);
+        p.sendMessage("§a已传送到商店位置，请点击箱子进行购买。");
+    });
+
+    fm.appendButton("§7返回列表", [](Player& p) {
+        showPublicShopListForm(p);
+    });
+
+    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.sendTo(player);
+}
+
+// 回收商店预览表单（只能预览物品，不能回收，可传送到箱子位置）
+void showRecycleShopPreviewForm(Player& player, const ChestInfo& shop) {
+    ll::form::SimpleForm fm;
+    
+    auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
+    std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
+    std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的回收商店") : shop.shopName;
+    
+    fm.setTitle("回收商店预览 - " + shopDisplayName);
+
+    auto& db = Sqlite3Wrapper::getInstance();
+    auto results = db.query(
+        "SELECT r.price, d.item_nbt FROM recycle_shop_items r "
+        "JOIN item_definitions d ON r.item_id = d.item_id "
+        "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?",
+        shop.dimId, shop.pos.x, shop.pos.y, shop.pos.z
+    );
+
+    std::string content = "§e店主: " + ownerName + "\n";
+    content += "§7位置: " + dimIdToString(shop.dimId) + " [" + 
+               std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", " + 
+               std::to_string(shop.pos.z) + "]\n\n";
+    
+    if (results.empty()) {
+        content += "§7该回收商店暂无回收委托。\n";
+    } else {
+        content += "§a回收物品列表:\n";
+        for (const auto& row : results) {
+            double price = std::stod(row[0]);
+            std::string itemNbtStr = row[1];
+            
+            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+            if (itemPtr) {
+                content += "§f- " + std::string(itemPtr->getName()) + " §6[回收价: " + 
+                          CT::MoneyFormat::format(price) + "]\n";
+            }
+        }
+    }
+    content += "\n§c注意: 需要前往商店位置点击箱子才能回收！";
+    fm.setContent(content);
+
+    fm.appendButton("§a传送到商店", [shop](Player& p) {
+        p.teleport({(float)shop.pos.x + 0.5f, (float)shop.pos.y + 1.0f, (float)shop.pos.z + 0.5f}, shop.dimId);
+        p.sendMessage("§a已传送到回收商店位置，请点击箱子进行回收。");
+    });
+
+    fm.appendButton("§7返回列表", [](Player& p) {
+        showPublicRecycleShopListForm(p);
+    });
 
     fm.appendButton("§c关闭", [](Player& p) {});
     fm.sendTo(player);
