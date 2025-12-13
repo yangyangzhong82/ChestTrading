@@ -2,13 +2,13 @@
 #include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
-#include "ll/api/service/Bedrock.h"    
-#include "ll/api/service/PlayerInfo.h" 
+#include "ll/api/service/Bedrock.h"
+#include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/Level.h"
-#include <algorithm> 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -60,7 +60,7 @@ void showShareForm(
     fm.setTitle("箱子分享管理");
 
     std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId, region);
-    std::string ownerName = getPlayerNameFromUuid(ownerUuid);
+    std::string              ownerName     = getPlayerNameFromUuid(ownerUuid);
 
     std::string content = "§e箱子主人: " + ownerName + "§r\n\n当前已分享的玩家：\n";
     if (sharedPlayers.empty()) {
@@ -72,16 +72,19 @@ void showShareForm(
     }
     fm.setContent(content);
 
-    fm.appendButton("添加在线玩家", [&player, pos, dimId, ownerUuid, &region, currentPage](Player& p) {
+    fm.appendButton("添加在线玩家", [pos, dimId, ownerUuid, currentPage](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showAddShareForm(p, pos, dimId, ownerUuid, region, currentPage);
     });
 
-    fm.appendButton("添加离线玩家", [&player, pos, dimId, ownerUuid, &region](Player& p) {
+    fm.appendButton("添加离线玩家", [pos, dimId, ownerUuid](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showAddOfflineShareForm(p, pos, dimId, ownerUuid, region);
     });
 
     if (!sharedPlayers.empty()) {
-        fm.appendButton("移除分享玩家", [&player, pos, dimId, ownerUuid, &region, currentPage](Player& p) {
+        fm.appendButton("移除分享玩家", [pos, dimId, ownerUuid, currentPage](Player& p) {
+            auto& region = p.getDimensionBlockSource();
             showRemoveShareForm(p, pos, dimId, ownerUuid, region, currentPage);
         });
     }
@@ -104,11 +107,8 @@ void showAddOfflineShareForm(
 
     fm.sendTo(
         player,
-        [pos, dimId, ownerUuid, &region](
-            Player&                           p,
-            const ll::form::CustomFormResult& res,
-            ll::form::FormCancelReason        reason
-        ) {
+        [pos, dimId, ownerUuid](Player& p, const ll::form::CustomFormResult& res, ll::form::FormCancelReason reason) {
+            auto& region = p.getDimensionBlockSource();
             if (!res) {
                 logger.debug("玩家 {} 取消了添加离线玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region); // 返回主菜单
@@ -118,7 +118,7 @@ void showAddOfflineShareForm(
             if (res->count(OFFLINE_PLAYER_INPUT_KEY)) {
                 const auto& offlinePlayerNameResult = res->at(OFFLINE_PLAYER_INPUT_KEY);
                 if (std::holds_alternative<std::string>(offlinePlayerNameResult)) {
-                        std::string offlinePlayerName = std::get<std::string>(offlinePlayerNameResult);
+                    std::string offlinePlayerName = std::get<std::string>(offlinePlayerNameResult);
                     if (!offlinePlayerName.empty()) {
                         auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(offlinePlayerName);
                         if (playerInfo) {
@@ -157,7 +157,8 @@ void showAddOfflineShareForm(
                     }
                 }
             }
-            showShareForm(p, pos, dimId, ownerUuid, region); // 返回主菜单
+            auto& regionRef = p.getDimensionBlockSource();
+            showShareForm(p, pos, dimId, ownerUuid, regionRef); // 返回主菜单
         }
     );
 }
@@ -210,11 +211,12 @@ void showAddShareForm(
 
     fm.sendTo(
         player,
-        [pos, dimId, ownerUuid, &region, currentPageUuids, currentPage, totalPages, &onlinePlayers](
+        [pos, dimId, ownerUuid, currentPageUuids, currentPage, totalPages](
             Player&                           p,
             const ll::form::CustomFormResult& res,
             ll::form::FormCancelReason        reason
         ) {
+            auto& region = p.getDimensionBlockSource();
             if (!res) {
                 logger.info("玩家 {} 取消了添加分享玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region, currentPage); // 返回主菜单
@@ -322,11 +324,12 @@ void showRemoveShareForm(
 
     removeForm.sendTo(
         player,
-        [pos, dimId, ownerUuid, &region, currentPageSharedUuids, currentPage, totalPages](
+        [pos, dimId, ownerUuid, currentPageSharedUuids, currentPage, totalPages](
             Player&                           p,
             const ll::form::CustomFormResult& res,
             ll::form::FormCancelReason        reason
         ) {
+            auto& region = p.getDimensionBlockSource();
             if (!res) {
                 logger.debug("玩家 {} 取消了移除分享玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region, currentPage); // 返回主菜单

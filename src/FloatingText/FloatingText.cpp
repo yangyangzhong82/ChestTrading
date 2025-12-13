@@ -278,22 +278,32 @@ void FloatingTextManager::loadAllLockedChests() {
 
 ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
     logger.debug("dynamicTextUpdateCoroutine: 协程开始运行");
+    bool updateText = true; // 交替标志：true更新悬浮字，false更新假物品
     while (true) {
-        logger.trace("dynamicTextUpdateCoroutine: 开始更新循环，共 {} 个悬浮字", mFloatingTexts.size());
+        logger.trace("dynamicTextUpdateCoroutine: 开始更新循环，共 {} 个悬浮字, updateText={}", mFloatingTexts.size(), updateText);
         for (auto& pair : mFloatingTexts) {
             auto& ft = pair.second;
             if (ft.isDynamic && !ft.itemNames.empty()) {
-                ft.currentItemIndex = (ft.currentItemIndex + 1) % ft.itemNames.size();
-                ft.text = (ft.type == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ") + ft.itemNames[ft.currentItemIndex];
-                logger.trace("dynamicTextUpdateCoroutine: 更新悬浮字 ({},{},{}) 到物品索引 {}: {}", ft.pos.x, ft.pos.y, ft.pos.z, ft.currentItemIndex, ft.text);
-                if (ft.debugText) {
-                    ft.debugText->setText(ft.text);
-                    ft.debugText->update();
+                if (updateText) {
+                    // 更新悬浮字文本
+                    ft.currentItemIndex = (ft.currentItemIndex + 1) % ft.itemNames.size();
+                    ft.text = (ft.type == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ") + ft.itemNames[ft.currentItemIndex];
+                    logger.trace("dynamicTextUpdateCoroutine: 更新悬浮字 ({},{},{}) 到物品索引 {}: {}", ft.pos.x, ft.pos.y, ft.pos.z, ft.currentItemIndex, ft.text);
+                    if (ft.debugText) {
+                        ft.debugText->setText(ft.text);
+                        ft.debugText->update();
+                    }
+                } else {
+                    // 更新假物品索引
+                    ft.currentFakeItemIndex = (ft.currentFakeItemIndex + 1) % ft.items.size();
                 }
             }
         }
-        // 更新所有玩家的假物品
-        updateFakeItemsForAllPlayers();
+        if (!updateText) {
+            // 更新所有玩家的假物品
+            updateFakeItemsForAllPlayers();
+        }
+        updateText = !updateText; // 交替
         co_await ll::coro::SleepAwaiter(std::chrono::seconds(CT::ConfigManager::getInstance().get().floatingTextUpdateIntervalSeconds));
     }
 }
@@ -391,8 +401,8 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         return;
 
     // 边界检查
-    if (ft.currentItemIndex >= ft.items.size()) {
-        ft.currentItemIndex = 0;
+    if (ft.currentFakeItemIndex >= ft.items.size()) {
+        ft.currentFakeItemIndex = 0;
     }
     
     std::string playerUuid = player.getUuid().asString();
@@ -407,7 +417,7 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         static_cast<float>(ft.pos.z) + 0.5f
     );
     
-    auto& currentItem = ft.items[ft.currentItemIndex];
+    auto& currentItem = ft.items[ft.currentFakeItemIndex];
     auto id = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), currentItem);
     ft.playerFakeItemIds[playerUuid] = id;
 }
@@ -451,17 +461,25 @@ void registerPlayerConnectionListener() {
 
             FloatingTextManager::getInstance().drawAllFloatingTexts(player);
 
-            // 为玩家发送假物品
+            // 延迟发送假物品，等待玩家完全初始化
             if (CT::ConfigManager::getInstance().get().floatingText.enableFakeItem) {
-                int playerDimId = player.getDimensionId().id;
-                for (auto& [key, ft] : FloatingTextManager::getInstance().mFloatingTexts) {
-                    if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
-                        FloatingTextManager::getInstance().sendFakeItemToPlayer(player, ft);
+                std::string playerUuid = player.getUuid().asString();
+                ll::thread::ServerThreadExecutor::getDefault().execute([playerUuid]() {
+                    auto level = ll::service::getLevel();
+                    if (!level) return;
+                    auto* playerPtr = level->getPlayer(playerUuid);
+                    if (!playerPtr) return;
+                    int playerDimId = playerPtr->getDimensionId().id;
+                    for (auto& [key, ft] : FloatingTextManager::getInstance().mFloatingTexts) {
+                        if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
+                            FloatingTextManager::getInstance().sendFakeItemToPlayer(*playerPtr, ft);
+                        }
                     }
-                }
+                    logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字和假物品。", playerPtr->getRealName());
+                });
+            } else {
+                logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字。", player.getRealName());
             }
-
-            logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字和假物品。", player.getRealName());
         }
     );
 }

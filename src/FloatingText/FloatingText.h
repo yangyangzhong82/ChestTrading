@@ -38,6 +38,7 @@ struct ChestFloatingText {
     bool                                     enableFakeItem   = true; // 单箱子假物品配置
     std::vector<std::string>                 itemNames;
     size_t                                   currentItemIndex = 0;
+    size_t                                   currentFakeItemIndex = 0; // 假物品独立索引
     
     // 假物品相关
     std::vector<ItemStack>                          items;           // 存储物品

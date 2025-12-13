@@ -113,23 +113,24 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                     buttonText,
                     texturePath,
                     "path",
-                    [&player, pos, dimId, &region, item, price, commissionNbtStr](Player& p) {
+                    [pos, dimId, item, price, commissionNbtStr](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
                         showRecycleConfirmForm(p, item, pos, dimId, region, -1, price, commissionNbtStr);
                     }
                 );
             } else {
-                fm.appendButton(buttonText, [&player, pos, dimId, &region, item, price, commissionNbtStr](Player& p) {
+                fm.appendButton(buttonText, [pos, dimId, item, price, commissionNbtStr](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
                     showRecycleConfirmForm(p, item, pos, dimId, region, -1, price, commissionNbtStr);
                 });
             }
         }
     }
 
-    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("返回", [pos, dimId](Player& p) {
         // 返回到箱子已锁定界面
-        std::string   ownerUuid = player.getUuid().asString();
-        bool          isLocked  = true;
-        CT::ChestType chestType = CT::ChestType::RecycleShop;
+        auto& region                          = p.getDimensionBlockSource();
+        auto [isLocked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
         CT::showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
     });
     fm.sendTo(player);
@@ -281,11 +282,12 @@ void showRecycleConfirmForm(
 
     fm.sendTo(
         player,
-        [&player, item, pos, dimId, &region, actualSlotIndex, unitPrice, commissionNbtStr, totalPlayerCount](
+        [item, pos, dimId, actualSlotIndex, unitPrice, commissionNbtStr, totalPlayerCount](
             Player&                           p,
             const ll::form::CustomFormResult& result,
             ll::form::FormCancelReason        reason
         ) {
+            auto& region = p.getDimensionBlockSource();
             if (!result.has_value()) {
                 p.sendMessage("§c你取消了回收。");
                 showRecycleForm(p, pos, dimId, region); // 返回回收商店主界面
@@ -390,7 +392,8 @@ void showRecycleFinalConfirmForm(
 
     fm.appendButton(
         "§a确认回收",
-        [&player, item, pos, dimId, &region, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
+        [item, pos, dimId, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
+            auto& region = p.getDimensionBlockSource();
             // 2. 获取箱子所有者
             auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
             if (!isLocked) {
@@ -615,12 +618,10 @@ void showRecycleFinalConfirmForm(
         }
     );
 
-    fm.appendButton(
-        "§c取消",
-        [&player, item, pos, dimId, &region, actualSlotIndex = -1, unitPrice, commissionNbtStr](Player& p) {
-            showRecycleConfirmForm(p, item, pos, dimId, region, actualSlotIndex, unitPrice, commissionNbtStr);
-        }
-    );
+    fm.appendButton("§c取消", [item, pos, dimId, unitPrice, commissionNbtStr](Player& p) {
+        auto& region = p.getDimensionBlockSource();
+        showRecycleConfirmForm(p, item, pos, dimId, region, -1, unitPrice, commissionNbtStr);
+    });
     fm.sendTo(player);
 }
 
@@ -644,24 +645,22 @@ void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSo
     fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
     fm.appendInput("shop_name", "请输入商店名称", "", currentName);
 
-    fm.sendTo(
-        player,
-        [pos, dimId, &region](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
-            if (!result.has_value()) {
-                p.sendMessage("§c你取消了设置商店名称。");
-                showRecycleShopManageForm(p, pos, dimId, region);
-                return;
-            }
-
-            std::string newName = std::get<std::string>(result.value().at("shop_name"));
-            if (setShopName(pos, dimId, region, newName)) {
-                p.sendMessage("§a商店名称设置成功！");
-            } else {
-                p.sendMessage("§c商店名称设置失败！");
-            }
+    fm.sendTo(player, [pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+        auto& region = p.getDimensionBlockSource();
+        if (!result.has_value()) {
+            p.sendMessage("§c你取消了设置商店名称。");
             showRecycleShopManageForm(p, pos, dimId, region);
+            return;
         }
-    );
+
+        std::string newName = std::get<std::string>(result.value().at("shop_name"));
+        if (setShopName(pos, dimId, region, newName)) {
+            p.sendMessage("§a商店名称设置成功！");
+        } else {
+            p.sendMessage("§c商店名称设置失败！");
+        }
+        showRecycleShopManageForm(p, pos, dimId, region);
+    });
 }
 
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
@@ -669,23 +668,25 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
     fm.setTitle("回收商店管理");
     fm.setContent("选择一个操作：");
 
-    fm.appendButton("添加回收委托", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("添加回收委托", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showAddItemToRecycleShopForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("查看回收委托", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("查看回收委托", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showViewRecycleCommissionsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("设置商店名称", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showSetRecycleShopNameForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("返回", [pos, dimId](Player& p) {
         // 返回到箱子已锁定界面
-        std::string   ownerUuid = p.getUuid().asString();
-        bool          isLocked  = true;
-        CT::ChestType chestType = CT::ChestType::RecycleShop;
+        auto& region                          = p.getDimensionBlockSource();
+        auto [isLocked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
         CT::showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
     });
 
@@ -763,9 +764,9 @@ void showEditCommissionForm(
         player,
         [pos,
          dimId,
-         &region,
          commissionNbtStr,
          itemId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+            auto& region = p.getDimensionBlockSource();
             if (!result.has_value()) {
                 p.sendMessage("§c你取消了编辑。");
                 showCommissionDetailsForm(p, pos, dimId, region, commissionNbtStr);
@@ -1050,8 +1051,8 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                                          + std::to_string(maxRecycleCount) + "]§r";
                             }
 
-                            std::string buttonText = std::string(item.getName()) + " §e" + progress + " §6[单价: "
-                                                   + CT::MoneyFormat::format(price) + "]§r";
+                            std::string buttonText = std::string(item.getName()) + " §e" + progress
+                                                   + " §6[单价: " + CT::MoneyFormat::format(price) + "]§r";
                             fm.appendButton(buttonText, [pos, dimId, region, itemNbtStr](Player& p) {
                                 showCommissionDetailsForm(p, pos, dimId, *region, itemNbtStr);
                             });
@@ -1098,18 +1099,21 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
             std::string texturePath = CT::ItemTextureManager::getInstance().getTexture(itemName);
 
             if (!texturePath.empty()) {
-                fm.appendButton(buttonText, texturePath, "path", [&player, pos, dimId, &region, item](Player& p) {
+                fm.appendButton(buttonText, texturePath, "path", [pos, dimId, item](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                 });
             } else {
-                fm.appendButton(buttonText, [&player, pos, dimId, &region, item](Player& p) {
+                fm.appendButton(buttonText, [pos, dimId, item](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                 });
             }
         }
     }
 
-    fm.appendButton("返回", [&player, pos, dimId, &region](Player& p) {
+    fm.appendButton("返回", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
         showRecycleShopManageForm(p, pos, dimId, region);
     });
 
@@ -1134,11 +1138,8 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
     fm.sendTo(
         player,
-        [&player,
-         item,
-         pos,
-         dimId,
-         &region](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+        [item, pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+            auto& region = p.getDimensionBlockSource();
             if (!result.has_value()) {
                 p.sendMessage("§c你取消了设置回收委托。");
                 showAddItemToRecycleShopForm(p, pos, dimId, region);
