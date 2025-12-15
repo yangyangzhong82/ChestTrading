@@ -417,15 +417,11 @@ void showRecycleFinalConfirmForm(
 
             // 4. 获取箱子实体
             auto* blockActor = region.getBlockEntity(pos);
-            if (!blockActor) {
+            if (!blockActor || blockActor->mType != BlockActorType::Chest) {
                 p.sendMessage("§c回收失败，无法获取箱子实体。");
                 return;
             }
-            auto chest = static_cast<class ChestBlockActor*>(blockActor);
-            if (!chest) {
-                p.sendMessage("§c回收失败，无法获取箱子实体。");
-                return;
-            }
+            auto* chest = static_cast<ChestBlockActor*>(blockActor);
 
             // 预检查箱子容量
             int chestAvailableSpace = 0; // 可以容纳的物品总数
@@ -960,12 +956,14 @@ void showCommissionDetailsForm(
                 }
                 fm.setContent(content);
 
-                fm.appendButton("§e编辑委托", [pos, dimId, region, commissionNbtStr](Player& p) {
-                    showEditCommissionForm(p, pos, dimId, *region, commissionNbtStr);
+                fm.appendButton("§e编辑委托", [pos, dimId, commissionNbtStr](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                 });
 
-                fm.appendButton("返回", [pos, dimId, region](Player& p) {
-                    showViewRecycleCommissionsForm(p, pos, dimId, *region);
+                fm.appendButton("返回", [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showViewRecycleCommissionsForm(p, pos, dimId, region);
                 });
 
                 fm.sendTo(*player);
@@ -1053,14 +1051,16 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
 
                             std::string buttonText = std::string(item.getName()) + " §e" + progress
                                                    + " §6[单价: " + CT::MoneyFormat::format(price) + "]§r";
-                            fm.appendButton(buttonText, [pos, dimId, region, itemNbtStr](Player& p) {
-                                showCommissionDetailsForm(p, pos, dimId, *region, itemNbtStr);
+                            fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
+                                auto& region = p.getDimensionBlockSource();
+                                showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
                             });
                         }
                     }
 
-                    fm.appendButton("返回", [pos, dimId, region](Player& p) {
-                        showRecycleShopManageForm(p, pos, dimId, *region);
+                    fm.appendButton("返回", [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showRecycleShopManageForm(p, pos, dimId, region);
                     });
 
                     fm.sendTo(*player);

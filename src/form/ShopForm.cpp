@@ -324,17 +324,10 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
     );
 
     auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor) {
-        player.sendMessage("§c无法获取箱子数据。");
-        logger.error("showShopChestManageForm: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
-        return;
-    }
-
-    auto chest = static_cast<class ChestBlockActor*>(blockActor);
-    if (!chest) {
+    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
         player.sendMessage("§c无法获取箱子数据。");
         logger.error(
-            "showShopChestManageForm: 无法将 BlockActor 转换为 ChestBlockActor 在 ({}, {}, {}) in dim {}",
+            "showShopChestManageForm: 无法获取箱子实体或类型不匹配在 ({}, {}, {}) in dim {}",
             pos.x,
             pos.y,
             pos.z,
@@ -342,6 +335,8 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         );
         return;
     }
+
+    auto* chest = static_cast<ChestBlockActor*>(blockActor);
 
     bool                                                           isEmpty = true;
     std::map<std::string, std::tuple<ItemStack, int, std::string>> aggregatedItems;
@@ -715,7 +710,7 @@ void showShopItemBuyForm(
                 logger.debug("showShopItemBuyForm: Item '{}' max stack size: {}.", baseItem.getName(), maxStackSize);
 
                 auto* blockActor = region.getBlockEntity(pos);
-                if (!blockActor) {
+                if (!blockActor || blockActor->mType != BlockActorType::Chest) {
                     p.sendMessage("§c购买失败，无法获取箱子数据。");
                     logger.error(
                         "showShopItemBuyForm: Failed to get ChestBlockActor at ({},{},{}) dim {}.",
@@ -727,19 +722,7 @@ void showShopItemBuyForm(
                     showShopChestItemsForm(p, pos, dimId, region);
                     return;
                 }
-                auto chest = static_cast<class ChestBlockActor*>(blockActor);
-                if (!chest) {
-                    p.sendMessage("§c购买失败，无法获取箱子数据。");
-                    logger.error(
-                        "showShopItemBuyForm: Failed to cast BlockActor to ChestBlockActor at ({},{},{}) dim {}.",
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        dimId
-                    );
-                    showShopChestItemsForm(p, pos, dimId, region);
-                    return;
-                }
+                auto* chest = static_cast<ChestBlockActor*>(blockActor);
 
                 while (remainingToGive > 0) {
                     int       giveCount  = std::min(remainingToGive, maxStackSize);
@@ -926,8 +909,9 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
                         fm.setContent(content);
                     }
 
-                    fm.appendButton("返回", [pos, dimId, region](Player& p) {
-                        showShopChestManageForm(p, pos, dimId, *region);
+                    fm.appendButton("返回", [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showShopChestManageForm(p, pos, dimId, region);
                     });
 
                     fm.sendTo(*player);

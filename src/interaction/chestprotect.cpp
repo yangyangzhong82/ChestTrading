@@ -1,4 +1,6 @@
 #include "interaction/chestprotect.h"
+#include "Bedrock-Authority/permission/PermissionManager.h"
+#include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -8,8 +10,7 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
-#include "Bedrock-Authority/permission/PermissionManager.h"
-#include "Config/ConfigManager.h"
+
 
 
 namespace CT {
@@ -18,37 +19,37 @@ namespace CT {
 
 bool ChestCacheManager::getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEntry& entry) {
     std::lock_guard<std::mutex> lock(mCacheMutex);
-    
+
     PositionKey key{dimId, pos.x, pos.y, pos.z};
-    auto it = mCache.find(key);
-    
+    auto        it = mCache.find(key);
+
     if (it == mCache.end()) {
         return false;
     }
-    
+
     // 检查缓存是否过期
-    auto now = std::chrono::steady_clock::now();
+    auto now     = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
-    
-    if (elapsed > mCacheTimeoutSeconds) {
+
+    if (elapsed > mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
         mCache.erase(it);
         return false;
     }
-    
+
     entry = it->second;
     return true;
 }
 
 void ChestCacheManager::setCachedChestInfo(BlockPos pos, int dimId, const ChestCacheEntry& entry) {
     std::lock_guard<std::mutex> lock(mCacheMutex);
-    
+
     PositionKey key{dimId, pos.x, pos.y, pos.z};
     mCache[key] = entry;
 }
 
 void ChestCacheManager::invalidateCache(BlockPos pos, int dimId) {
     std::lock_guard<std::mutex> lock(mCacheMutex);
-    
+
     PositionKey key{dimId, pos.x, pos.y, pos.z};
     mCache.erase(key);
 }
@@ -60,26 +61,26 @@ void ChestCacheManager::clearAllCache() {
 }
 
 void ChestCacheManager::setCacheTimeout(int seconds) {
-    mCacheTimeoutSeconds = seconds;
+    mCacheTimeoutSeconds.store(seconds, std::memory_order_relaxed);
     logger.info("箱子缓存超时时间已设置为 {} 秒", seconds);
 }
 
 void ChestCacheManager::cleanupExpiredCache() {
     std::lock_guard<std::mutex> lock(mCacheMutex);
-    
-    auto now = std::chrono::steady_clock::now();
+
+    auto   now          = std::chrono::steady_clock::now();
     size_t removedCount = 0;
-    
+
     for (auto it = mCache.begin(); it != mCache.end();) {
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
-        if (elapsed > mCacheTimeoutSeconds) {
+        if (elapsed > mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
             it = mCache.erase(it);
             removedCount++;
         } else {
             ++it;
         }
     }
-    
+
     if (removedCount > 0) {
         logger.debug("清理了 {} 个过期的箱子缓存条目", removedCount);
     }
@@ -90,7 +91,16 @@ void ChestCacheManager::cleanupExpiredCache() {
 
 std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    logger.trace("getChestDetails: Checking chest at pos ({}, {}, {}), mainPos ({}, {}, {}), dimId {}.", pos.x, pos.y, pos.z, mainPos.x, mainPos.y, mainPos.z, dimId);
+    logger.trace(
+        "getChestDetails: Checking chest at pos ({}, {}, {}), mainPos ({}, {}, {}), dimId {}.",
+        pos.x,
+        pos.y,
+        pos.z,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z,
+        dimId
+    );
 
     // 首先尝试从缓存获取主箱子信息
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
@@ -123,11 +133,8 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
         isLocked  = true;
         ownerUuid = results[0][0];
         chestType = static_cast<ChestType>(std::stoi(results[0][1]));
-        logger.debug(
-            "getChestDetails: Found chest in DB. Owner: {}, Type: {}.",
-            ownerUuid,
-            static_cast<int>(chestType)
-        );
+        logger
+            .debug("getChestDetails: Found chest in DB. Owner: {}, Type: {}.", ownerUuid, static_cast<int>(chestType));
     } else {
         logger.debug("getChestDetails: Chest not found in DB.");
     }
@@ -149,27 +156,39 @@ std::tuple<bool, std::string, ChestType> getChestDetails(BlockPos pos, int dimId
 }
 
 bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSource& region, ChestType type) {
-    Sqlite3Wrapper&    db         = Sqlite3Wrapper::getInstance();
+    Sqlite3Wrapper&    db           = Sqlite3Wrapper::getInstance();
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
-    BlockPos           mainPos    = internal::GetMainChestPos(pos, region);
+    BlockPos           mainPos      = internal::GetMainChestPos(pos, region);
 
     // 开始事务
     db.beginTransaction();
 
     // 先删除可能存在的旧记录
-    db.execute("DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;", dimId, pos.x, pos.y, pos.z);
-    
+    db.execute(
+        "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
     // 检查是否为大箱子
-    auto* blockActor = region.getBlockEntity(pos);
+    auto*    blockActor = region.getBlockEntity(pos);
     BlockPos pairedChestPos;
-    bool isLargeChest = false;
+    bool     isLargeChest = false;
     if (blockActor && blockActor->mType == BlockActorType::Chest) {
         auto* chest = static_cast<class ChestBlockActor*>(blockActor);
         if (chest->mLargeChestPaired) {
-            isLargeChest = true;
+            isLargeChest   = true;
             pairedChestPos = chest->mLargeChestPairedPosition;
             // 如果是大箱子，也要删除配对箱子位置的旧记录，以防万一
-             db.execute("DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;", dimId, pairedChestPos.x, pairedChestPos.y, pairedChestPos.z);
+            db.execute(
+                "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+                dimId,
+                pairedChestPos.x,
+                pairedChestPos.y,
+                pairedChestPos.z
+            );
         }
     }
 
@@ -193,7 +212,7 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
         if (isLargeChest) {
             cacheManager.invalidateCache(pairedChestPos, dimId);
         }
-        
+
         // 生成悬浮字文本
         std::string text;
         std::string ownerName = player_uuid;
@@ -219,11 +238,21 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
         }
 
         switch (type) {
-            case ChestType::Locked:      text = "§e[上锁箱子]§r 拥有者: " + ownerName; break;
-            case ChestType::RecycleShop: text = "§a[回收商店]§r 拥有者: " + ownerName; break;
-            case ChestType::Shop:        text = "§b[商店箱子]§r 拥有者: " + ownerName; break;
-            case ChestType::Public:      text = "§d[公共箱子]§r 拥有者: " + ownerName; break;
-            default:                     text = "§f[未知箱子类型]§r 拥有者: " + ownerName; break;
+        case ChestType::Locked:
+            text = "§e[上锁箱子]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::RecycleShop:
+            text = "§a[回收商店]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::Shop:
+            text = "§b[商店箱子]§r 拥有者: " + ownerName;
+            break;
+        case ChestType::Public:
+            text = "§d[公共箱子]§r 拥有者: " + ownerName;
+            break;
+        default:
+            text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
+            break;
         }
 
         // 统一在主方块位置创建悬浮字
@@ -242,14 +271,14 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
         // 回滚事务
         db.rollback();
     }
-    
+
     return success;
 }
 
 bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
-    Sqlite3Wrapper&    db         = Sqlite3Wrapper::getInstance();
+    Sqlite3Wrapper&    db           = Sqlite3Wrapper::getInstance();
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
-    BlockPos           mainPos    = internal::GetMainChestPos(pos, region);
+    BlockPos           mainPos      = internal::GetMainChestPos(pos, region);
 
     // 只删除主方块的记录
     bool success = db.execute(
@@ -261,8 +290,11 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     );
 
     if (success) {
-        // 使缓存失效
-        cacheManager.invalidateCache(pos, dimId);
+        // 使所有相关位置的缓存失效
+        cacheManager.invalidateCache(mainPos, dimId);
+        if (pos != mainPos) {
+            cacheManager.invalidateCache(pos, dimId);
+        }
 
         // 移除NBT中的自定义名称
         auto* mainBlockActor = region.getBlockEntity(mainPos);
@@ -290,7 +322,13 @@ bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
     return success;
 }
 
-bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_player_uuid, BlockPos pos, int dimId, BlockSource* region) {
+bool addSharedPlayer(
+    const std::string& owner_uuid,
+    const std::string& shared_player_uuid,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource*       region
+) {
     if (!region) {
         return false; // 需要 region 来确定主箱子
     }
@@ -298,7 +336,8 @@ bool addSharedPlayer(const std::string& owner_uuid, const std::string& shared_pl
     BlockPos        mainPos = internal::GetMainChestPos(pos, *region);
 
     return db.execute(
-        "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, ?, ?, ?);",
+        "INSERT OR REPLACE INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) VALUES (?, ?, ?, "
+        "?, ?, ?);",
         shared_player_uuid,
         owner_uuid,
         dimId,
@@ -325,7 +364,8 @@ bool removeSharedPlayer(const std::string& shared_player_uuid, BlockPos pos, int
     );
 }
 
-std::vector<std::pair<std::string, std::string>> getSharedPlayersWithOwner(BlockPos pos, int dimId, BlockSource& region) {
+std::vector<std::pair<std::string, std::string>>
+getSharedPlayersWithOwner(BlockPos pos, int dimId, BlockSource& region) {
     Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
     BlockPos        mainPos = internal::GetMainChestPos(pos, region);
 
@@ -389,7 +429,7 @@ bool canPlayerOpenChest(const std::string& player_uuid, BlockPos pos, int dimId,
             }
         }
     }
-    
+
     // 对于商店和回收商店，只有主人能从“后端”打开（即直接交互）
     // 游客只能通过表单交互，这里的检查是针对直接打开箱子的行为
 
@@ -405,7 +445,8 @@ BlockPos GetMainChestPos(BlockPos pos, BlockSource& region) {
             BlockPos pairedPos = chest->mLargeChestPairedPosition;
             // 通过比较坐标来确定一个唯一的“主”方块
             // 目的是无论玩家与大箱子的哪一半交互，我们都能定位到同一个数据库条目
-            if (pos.x < pairedPos.x || (pos.x == pairedPos.x && (pos.y < pairedPos.y || (pos.y == pairedPos.y && pos.z < pairedPos.z)))) {
+            if (pos.x < pairedPos.x
+                || (pos.x == pairedPos.x && (pos.y < pairedPos.y || (pos.y == pairedPos.y && pos.z < pairedPos.z)))) {
                 return pos; // 当前方块是主方块
             } else {
                 return pairedPos; // 配对的方块是主方块
@@ -418,19 +459,19 @@ BlockPos GetMainChestPos(BlockPos pos, BlockSource& region) {
 
 std::vector<ChestInfo> getAllChests() {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    auto            results =
-        db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public FROM chests ORDER BY player_uuid, dim_id;");
+    auto results = db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, "
+                            "enable_fake_item, is_public FROM chests ORDER BY player_uuid, dim_id;");
 
     std::vector<ChestInfo> chests;
     for (const auto& row : results) {
         if (row.size() >= 6) {
             try {
                 ChestInfo info;
-                info.dimId      = std::stoi(row[0]);
-                info.pos        = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
-                info.ownerUuid  = row[4];
-                info.type       = static_cast<ChestType>(std::stoi(row[5]));
-                info.shopName   = (row.size() >= 7) ? row[6] : "";
+                info.dimId              = std::stoi(row[0]);
+                info.pos                = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
+                info.ownerUuid          = row[4];
+                info.type               = static_cast<ChestType>(std::stoi(row[5]));
+                info.shopName           = (row.size() >= 7) ? row[6] : "";
                 info.enableFloatingText = (row.size() >= 8) ? (std::stoi(row[7]) != 0) : true;
                 info.enableFakeItem     = (row.size() >= 9) ? (std::stoi(row[8]) != 0) : true;
                 info.isPublic           = (row.size() >= 10) ? (std::stoi(row[9]) != 0) : true;
@@ -444,11 +485,14 @@ std::vector<ChestInfo> getAllChests() {
 }
 
 std::string getShopName(BlockPos pos, int dimId, BlockSource& region) {
-    BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    auto results = db.query(
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    auto            results = db.query(
         "SELECT shop_name FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        dimId, mainPos.x, mainPos.y, mainPos.z
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
     if (!results.empty() && !results[0].empty()) {
         return results[0][0];
@@ -457,20 +501,28 @@ std::string getShopName(BlockPos pos, int dimId, BlockSource& region) {
 }
 
 bool setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& shopName) {
-    BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
     return db.execute(
         "UPDATE chests SET shop_name = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        shopName, dimId, mainPos.x, mainPos.y, mainPos.z
+        shopName,
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
 }
 
 ChestConfig getChestConfig(BlockPos pos, int dimId, BlockSource& region) {
-    BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    auto results = db.query(
-        "SELECT enable_floating_text, enable_fake_item, is_public FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-        dimId, mainPos.x, mainPos.y, mainPos.z
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    auto            results = db.query(
+        "SELECT enable_floating_text, enable_fake_item, is_public FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y "
+                   "= ? AND pos_z = ?;",
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
     ChestConfig config;
     if (!results.empty() && results[0].size() >= 3) {
@@ -482,14 +534,18 @@ ChestConfig getChestConfig(BlockPos pos, int dimId, BlockSource& region) {
 }
 
 bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfig& config) {
-    BlockPos mainPos = internal::GetMainChestPos(pos, region);
-    Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    bool success = db.execute(
-        "UPDATE chests SET enable_floating_text = ?, enable_fake_item = ?, is_public = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+    BlockPos        mainPos = internal::GetMainChestPos(pos, region);
+    Sqlite3Wrapper& db      = Sqlite3Wrapper::getInstance();
+    bool            success = db.execute(
+        "UPDATE chests SET enable_floating_text = ?, enable_fake_item = ?, is_public = ? WHERE dim_id = ? AND pos_x = "
+                   "? AND pos_y = ? AND pos_z = ?;",
         config.enableFloatingText ? 1 : 0,
         config.enableFakeItem ? 1 : 0,
         config.isPublic ? 1 : 0,
-        dimId, mainPos.x, mainPos.y, mainPos.z
+        dimId,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z
     );
     if (success) {
         // 根据配置更新悬浮字显示
@@ -501,16 +557,27 @@ bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestCon
             auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
             if (isLocked) {
                 std::string ownerName = ownerUuid;
-                if (auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid))) {
+                if (auto playerInfo =
+                        ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid))) {
                     ownerName = playerInfo->name;
                 }
                 std::string text;
                 switch (chestType) {
-                    case ChestType::Locked:      text = "§e[上锁箱子]§r 拥有者: " + ownerName; break;
-                    case ChestType::RecycleShop: text = "§a[回收商店]§r 拥有者: " + ownerName; break;
-                    case ChestType::Shop:        text = "§b[商店箱子]§r 拥有者: " + ownerName; break;
-                    case ChestType::Public:      text = "§d[公共箱子]§r 拥有者: " + ownerName; break;
-                    default:                     text = "§f[未知箱子类型]§r 拥有者: " + ownerName; break;
+                case ChestType::Locked:
+                    text = "§e[上锁箱子]§r 拥有者: " + ownerName;
+                    break;
+                case ChestType::RecycleShop:
+                    text = "§a[回收商店]§r 拥有者: " + ownerName;
+                    break;
+                case ChestType::Shop:
+                    text = "§b[商店箱子]§r 拥有者: " + ownerName;
+                    break;
+                case ChestType::Public:
+                    text = "§d[公共箱子]§r 拥有者: " + ownerName;
+                    break;
+                default:
+                    text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
+                    break;
                 }
                 ftm.addOrUpdateFloatingText(mainPos, dimId, ownerUuid, text, chestType);
                 if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
@@ -524,12 +591,9 @@ bool setChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestCon
 
 int getPlayerChestCount(const std::string& playerUuid, ChestType type) {
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    auto results = db.query(
-        "SELECT COUNT(*) FROM chests WHERE player_uuid = ? AND type = ?;",
-        playerUuid,
-        static_cast<int>(type)
-    );
-    
+    auto            results =
+        db.query("SELECT COUNT(*) FROM chests WHERE player_uuid = ? AND type = ?;", playerUuid, static_cast<int>(type));
+
     if (!results.empty() && !results[0].empty()) {
         try {
             return std::stoi(results[0][0]);
@@ -547,65 +611,65 @@ bool canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::st
     if (isAdmin) {
         return true; // 管理员绕过所有限制
     }
-    
+
     // 检查对应权限
     std::string requiredPermission;
     switch (type) {
-        case ChestType::Locked:
-            requiredPermission = "chest.create.locked";
-            break;
-        case ChestType::Public:
-            requiredPermission = "chest.create.public";
-            break;
-        case ChestType::RecycleShop:
-            requiredPermission = "chest.create.recycle";
-            break;
-        case ChestType::Shop:
-            requiredPermission = "chest.create.shop";
-            break;
-        default:
-            errorMessage = "§c未知的箱子类型！";
-            return false;
+    case ChestType::Locked:
+        requiredPermission = "chest.create.locked";
+        break;
+    case ChestType::Public:
+        requiredPermission = "chest.create.public";
+        break;
+    case ChestType::RecycleShop:
+        requiredPermission = "chest.create.recycle";
+        break;
+    case ChestType::Shop:
+        requiredPermission = "chest.create.shop";
+        break;
+    default:
+        errorMessage = "§c未知的箱子类型！";
+        return false;
     }
-    
+
     if (!BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, requiredPermission)) {
         errorMessage = "§c你没有创建该类型箱子的权限！";
         return false;
     }
-    
+
     // 检查数量限制
-    const Config& config = ConfigManager::getInstance().get();
-    int currentCount = getPlayerChestCount(playerUuid, type);
-    int maxCount = 0;
-    std::string chestTypeName;
-    
+    const Config& config       = ConfigManager::getInstance().get();
+    int           currentCount = getPlayerChestCount(playerUuid, type);
+    int           maxCount     = 0;
+    std::string   chestTypeName;
+
     switch (type) {
-        case ChestType::Locked:
-            maxCount = config.chestLimits.maxLockedChests;
-            chestTypeName = "上锁箱子";
-            break;
-        case ChestType::Public:
-            maxCount = config.chestLimits.maxPublicChests;
-            chestTypeName = "公共箱子";
-            break;
-        case ChestType::RecycleShop:
-            maxCount = config.chestLimits.maxRecycleShops;
-            chestTypeName = "回收商店";
-            break;
-        case ChestType::Shop:
-            maxCount = config.chestLimits.maxShops;
-            chestTypeName = "商店";
-            break;
-        default:
-            errorMessage = "§c未知的箱子类型！";
-            return false;
+    case ChestType::Locked:
+        maxCount      = config.chestLimits.maxLockedChests;
+        chestTypeName = "上锁箱子";
+        break;
+    case ChestType::Public:
+        maxCount      = config.chestLimits.maxPublicChests;
+        chestTypeName = "公共箱子";
+        break;
+    case ChestType::RecycleShop:
+        maxCount      = config.chestLimits.maxRecycleShops;
+        chestTypeName = "回收商店";
+        break;
+    case ChestType::Shop:
+        maxCount      = config.chestLimits.maxShops;
+        chestTypeName = "商店";
+        break;
+    default:
+        errorMessage = "§c未知的箱子类型！";
+        return false;
     }
-    
+
     if (currentCount >= maxCount) {
         errorMessage = "§c你已达到" + chestTypeName + "的数量上限（" + std::to_string(maxCount) + "个）！";
         return false;
     }
-    
+
     return true;
 }
 
