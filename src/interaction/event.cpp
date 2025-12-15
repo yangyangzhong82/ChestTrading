@@ -1,8 +1,8 @@
 #include "event.h"
-#include "db/Sqlite3Wrapper.h" 
+#include "db/Sqlite3Wrapper.h"
 #include "form/LockForm.h"
-#include "form/ShopForm.h" 
 #include "form/RecycleForm.h"
+#include "form/ShopForm.h"
 
 #include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
@@ -31,9 +31,10 @@
 #include "mc\world\actor\monster\EnderDragon.h"
 
 
+#include "Bedrock-Authority/permission/PermissionManager.h"
 #include "mc\world\actor\provider\SynchedActorDataAccess.h"
 #include <chrono>
-#include "Bedrock-Authority/permission/PermissionManager.h"
+
 
 namespace CT {
 
@@ -41,13 +42,15 @@ namespace CT {
 std::map<std::string, std::chrono::steady_clock::time_point> lastInteractionTime;
 // 定义防抖间隔，例如500毫秒
 const std::chrono::milliseconds DEBOUNCE_INTERVAL(500);
+// 清理间隔（60秒未交互的条目将被清理）
+const std::chrono::seconds CLEANUP_THRESHOLD(60);
 
 void registerEventListener() {
     auto& eventBus = ll::event::EventBus::getInstance();
 
     eventBus.emplaceListener<ll::event::PlayerInteractBlockEvent>([](ll::event::PlayerInteractBlockEvent& ev) {
-        auto        block = ev.block();
-        
+        auto block = ev.block();
+
         // 立即检查是否为箱子，避免不必要的处理
         if (block->getTypeName() != "minecraft:chest") {
             return;
@@ -63,20 +66,30 @@ void registerEventListener() {
 
         // 防抖处理（仅对箱子交互）
         auto currentTime = std::chrono::steady_clock::now();
-        if (lastInteractionTime.count(player_uuid) &&
-            std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid]) <
-                DEBOUNCE_INTERVAL) {
+
+        // 清理过期条目
+        for (auto it = lastInteractionTime.begin(); it != lastInteractionTime.end();) {
+            if (currentTime - it->second > CLEANUP_THRESHOLD) {
+                it = lastInteractionTime.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        if (lastInteractionTime.count(player_uuid)
+            && std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid])
+                   < DEBOUNCE_INTERVAL) {
             ev.cancel();
             return;
         }
         lastInteractionTime[player_uuid] = currentTime;
-        
+
         // 始终使用主箱子位置进行逻辑判断
         BlockPos pos = CT::internal::GetMainChestPos(originalPos, region);
 
         auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
-        bool isAdmin                          = BA::permission::PermissionManager::getInstance().hasPermission(player_uuid, "chest.admin");
-        bool isOwner                          = (ownerUuid == player_uuid) || isAdmin;
+        bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player_uuid, "chest.admin");
+        bool isOwner = (ownerUuid == player_uuid) || isAdmin;
 
         // 玩家手持木棍：打开管理菜单
         if (isHoldingStick) {
@@ -135,7 +148,10 @@ void registerEventListener() {
             if (block.getTypeName() == "minecraft:chest") {
                 auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
                 if (locked) {
-                    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player.getUuid().asString(), "ctchest.admin");
+                    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(
+                        player.getUuid().asString(),
+                        "chest.admin"
+                    );
                     if (isAdmin) {
                         CT::removeChest(pos, dimId, region);
                         player.sendMessage("§a管理员权限：已移除箱子锁定数据。");
@@ -157,9 +173,6 @@ void registerEventListener() {
         }
     );
 }
-
-
-
 
 
 } // namespace CT

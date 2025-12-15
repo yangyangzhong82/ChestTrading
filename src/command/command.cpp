@@ -19,7 +19,7 @@ using ll::command::CommandRegistrar;
 void registerCommand() {
     auto& registrar = CommandRegistrar::getInstance();
     
-    // 注册 /ct 命令
+
     auto& ctCmd =
         registrar.getOrCreateCommand("ct", "ChestTrading 主命令", CommandPermissionLevel::Any);
 
@@ -34,8 +34,7 @@ void registerCommand() {
         }
     );
 
-    // 注册独立的 /ctadmin 命令
-    auto& adminCmd = registrar.getOrCreateCommand("ctadmin", "ChestTrading 管理员命令", CommandPermissionLevel::GameDirectors);
+    auto& adminCmd = registrar.getOrCreateCommand("ctadmin", "ChestTrading 管理员命令", CommandPermissionLevel::Any);
 
     adminCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
@@ -49,13 +48,12 @@ void registerCommand() {
                 output.error("你没有权限执行此命令。");
                 return;
             }
-            // 权限已在命令注册时通过 CommandPermissionLevel::Operator 设置，此处无需再次检查
             showAdminMainForm(*player);
         }
     );
 
     // 注册 /shop 命令 - 打开公开商店列表
-    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::GameDirectors);
+    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::Any);
     shopCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -68,8 +66,7 @@ void registerCommand() {
     );
 
     // 注册 /recycle 命令 - 打开公开回收商店列表
-    auto& recycleCmd =
-        registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::GameDirectors);
+    auto& recycleCmd = registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::Any);
     recycleCmd.overload<ll::command::EmptyParam>().execute(
         [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
