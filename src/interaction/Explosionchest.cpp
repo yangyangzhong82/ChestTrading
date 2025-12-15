@@ -24,6 +24,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     return res;
 }
 
+//mc对爆炸处理是单线程，暂不用考虑并发问题
 LL_AUTO_TYPE_INSTANCE_HOOK(
     Test2,
     ll::memory::HookPriority::Normal,

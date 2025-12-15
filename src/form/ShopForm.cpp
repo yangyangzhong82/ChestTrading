@@ -579,47 +579,7 @@ void showShopItemBuyForm(
                 return;
             }
 
-            auto dbResults = db.query(
-                "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
-                "item_id = ?",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId
-            );
-
-            if (dbResults.empty()) {
-                p.sendMessage("§c商店中没有该商品信息！");
-                logger.error(
-                    "showShopItemBuyForm: Item NBT {} not found in database for pos ({},{},{}) dim {}.",
-                    itemNbtStr,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    dimId
-                );
-                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
-                return;
-            }
-            int dbAvailableCount = std::stoi(dbResults[0][0]);
-            logger.debug(
-                "showShopItemBuyForm: Database available count for item {}: {}.",
-                item.getName(),
-                dbAvailableCount
-            );
-
-            if (dbAvailableCount < buyCount) {
-                p.sendMessage("§c商店数据库中没有足够的商品！当前库存: " + std::to_string(dbAvailableCount));
-                logger.warn(
-                    "showShopItemBuyForm: Database has insufficient items. Needed {}, available {}.",
-                    buyCount,
-                    dbAvailableCount
-                );
-                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
-                return;
-            }
-
+            // 先检查箱子中实际物品数量
             int actualAvailableItems = CT::FormUtils::countItemsInChest(region, pos, dimId, itemNbtStr);
             logger.debug(
                 "showShopItemBuyForm: Actual chest available count for item {}: {}.",
@@ -637,6 +597,71 @@ void showShopItemBuyForm(
                 showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
                 return;
             }
+
+            // 使用事务和条件UPDATE原子性地检查并扣除库存，防止竞态条件
+            db.beginTransaction();
+
+            // 条件UPDATE：只有当db_count >= buyCount时才扣除
+            bool updateSuccess = db.execute(
+                "UPDATE shop_items SET db_count = db_count - ? "
+                "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ? AND db_count >= ?",
+                buyCount,
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z,
+                itemId,
+                buyCount
+            );
+
+            if (!updateSuccess) {
+                db.rollback();
+                p.sendMessage("§c购买失败，数据库操作错误！");
+                logger.error("showShopItemBuyForm: Failed to update db_count for item {}.", item.getName());
+                showShopChestItemsForm(p, pos, dimId, region);
+                return;
+            }
+
+            // 查询更新后的库存，验证更新是否真正生效
+            auto dbResults = db.query(
+                "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
+                "item_id = ?",
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z,
+                itemId
+            );
+
+            if (dbResults.empty()) {
+                db.rollback();
+                p.sendMessage("§c商店中没有该商品信息！");
+                logger.error(
+                    "showShopItemBuyForm: Item NBT {} not found in database for pos ({},{},{}) dim {}.",
+                    itemNbtStr,
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    dimId
+                );
+                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
+                return;
+            }
+
+            int newDbCount = std::stoi(dbResults[0][0]);
+            if (newDbCount < 0) {
+                // 库存变负，说明有竞态条件，回滚
+                db.rollback();
+                p.sendMessage("§c商店库存不足，请稍后重试！");
+                logger.warn("showShopItemBuyForm: Race condition detected, db_count became negative: {}.", newDbCount);
+                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
+                return;
+            }
+
+            // 提交库存扣除事务
+            db.commit();
+            logger
+                .debug("showShopItemBuyForm: Successfully reserved {} items. New db_count: {}.", buyCount, newDbCount);
 
             if (Economy::reduceMoney(p, totalPrice)) {
                 // 增加给店主加钱的逻辑
@@ -771,22 +796,6 @@ void showShopItemBuyForm(
                         }
                     }
                 }
-
-                db.execute(
-                    "UPDATE shop_items SET db_count = db_count - ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND "
-                    "pos_z = ? AND item_id = ?",
-                    buyCount,
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    itemId
-                );
-                logger.debug(
-                    "showShopItemBuyForm: Updated database db_count for item {}. Reduced by {}.",
-                    item.getName(),
-                    buyCount
-                );
 
                 db.execute(
                     "INSERT INTO purchase_records (dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, "
