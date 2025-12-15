@@ -593,8 +593,13 @@ void showShopItemBuyForm(
                 return;
             }
 
-            // 使用事务和条件UPDATE原子性地检查并扣除库存，防止竞态条件
-            db.beginTransaction();
+            // 使用 Transaction RAII 类原子性地检查并扣除库存，防止竞态条件
+            Transaction txn(db);
+            if (!txn.isActive()) {
+                p.sendMessage("§c购买失败，无法开始事务！");
+                showShopChestItemsForm(p, pos, dimId, region);
+                return;
+            }
 
             // 条件UPDATE：只有当db_count >= buyCount时才扣除
             bool updateSuccess = db.execute(
@@ -610,11 +615,10 @@ void showShopItemBuyForm(
             );
 
             if (!updateSuccess) {
-                db.rollback();
                 p.sendMessage("§c购买失败，数据库操作错误！");
                 logger.error("showShopItemBuyForm: Failed to update db_count for item {}.", item.getName());
                 showShopChestItemsForm(p, pos, dimId, region);
-                return;
+                return; // txn 析构时自动 rollback
             }
 
             // 查询更新后的库存，验证更新是否真正生效
@@ -629,7 +633,6 @@ void showShopItemBuyForm(
             );
 
             if (dbResults.empty()) {
-                db.rollback();
                 p.sendMessage("§c商店中没有该商品信息！");
                 logger.error(
                     "showShopItemBuyForm: Item NBT {} not found in database for pos ({},{},{}) dim {}.",
@@ -640,21 +643,24 @@ void showShopItemBuyForm(
                     dimId
                 );
                 showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
-                return;
+                return; // txn 析构时自动 rollback
             }
 
             int newDbCount = std::stoi(dbResults[0][0]);
             if (newDbCount < 0) {
                 // 库存变负，说明有竞态条件，回滚
-                db.rollback();
                 p.sendMessage("§c商店库存不足，请稍后重试！");
                 logger.warn("showShopItemBuyForm: Race condition detected, db_count became negative: {}.", newDbCount);
                 showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
-                return;
+                return; // txn 析构时自动 rollback
             }
 
             // 提交库存扣除事务
-            db.commit();
+            if (!txn.commit()) {
+                p.sendMessage("§c购买失败，事务提交失败！");
+                showShopChestItemsForm(p, pos, dimId, region);
+                return;
+            }
             logger
                 .debug("showShopItemBuyForm: Successfully reserved {} items. New db_count: {}.", buyCount, newDbCount);
 

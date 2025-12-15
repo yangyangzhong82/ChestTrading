@@ -60,7 +60,10 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     if (!mThreadPool) {
         // 使用配置的线程池大小
         mThreadPool = std::make_unique<ThreadPool>(CT::ConfigManager::getInstance().get().databaseThreadPoolSize);
-        CT::logger.info("数据库线程池已初始化，线程数: {}", CT::ConfigManager::getInstance().get().databaseThreadPoolSize);
+        CT::logger.info(
+            "数据库线程池已初始化，线程数: {}",
+            CT::ConfigManager::getInstance().get().databaseThreadPoolSize
+        );
     }
 
     return true;
@@ -76,9 +79,8 @@ void Sqlite3Wrapper::close() {
 }
 
 bool Sqlite3Wrapper::initializeSchema() {
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-
-    if (!beginTransaction()) {
+    Transaction txn(*this);
+    if (!txn.isActive()) {
         CT::logger.error("无法开始数据库初始化事务。");
         return false;
     }
@@ -93,7 +95,6 @@ bool Sqlite3Wrapper::initializeSchema() {
             CT::logger.info("`chests` 数据表迁移成功！");
         } else {
             CT::logger.error("`chests` 数据表迁移失败！");
-            rollback();
             return false;
         }
     }
@@ -117,7 +118,8 @@ bool Sqlite3Wrapper::initializeSchema() {
         "pos_y INTEGER NOT NULL,"
         "pos_z INTEGER NOT NULL,"
         "PRIMARY KEY (player_uuid, dim_id, pos_x, pos_y, pos_z),"
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);",
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE "
+        "CASCADE);",
 
         "CREATE TABLE IF NOT EXISTS item_definitions ("
         "item_id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -129,13 +131,15 @@ bool Sqlite3Wrapper::initializeSchema() {
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
         "slot INTEGER, item_id INTEGER NOT NULL, price REAL NOT NULL, db_count INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE "
+        "CASCADE,"
         "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);",
 
         "CREATE TABLE IF NOT EXISTS purchase_records ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price REAL NOT " // total_price 也改为 REAL
+        "item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, purchase_count INTEGER NOT NULL, total_price REAL "
+        "NOT " // total_price 也改为 REAL
         "NULL,"
         "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
         "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES shop_items(dim_id, pos_x, pos_y, pos_z, "
@@ -147,23 +151,25 @@ bool Sqlite3Wrapper::initializeSchema() {
         "required_enchants TEXT NOT NULL DEFAULT '',"
         "max_recycle_count INTEGER NOT NULL DEFAULT 0, current_recycled_count INTEGER NOT NULL DEFAULT 0,"
         "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id),"
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE,"
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE "
+        "CASCADE,"
         "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);",
 
         "CREATE TABLE IF NOT EXISTS recycle_records ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL,"
-        "item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price REAL " // total_price 也改为 REAL
+        "item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, recycle_count INTEGER NOT NULL, total_price "
+        "REAL " // total_price 也改为 REAL
         "NOT NULL,"
         "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,"
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES recycle_shop_items(dim_id, pos_x, pos_y, pos_z, "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES recycle_shop_items(dim_id, pos_x, "
+        "pos_y, pos_z, "
         "item_id) ON DELETE CASCADE);"
     };
 
     for (const char* sql : create_statements) {
         if (!execute_unsafe(sql)) {
             // execute_unsafe 内部会打印错误
-            rollback();
             return false;
         }
     }
@@ -175,7 +181,6 @@ bool Sqlite3Wrapper::initializeSchema() {
         CT::logger.info("为 `shared_chests` 添加 `owner_uuid` 字段...");
         if (!execute_unsafe("ALTER TABLE shared_chests ADD COLUMN owner_uuid TEXT NOT NULL DEFAULT '';")) {
             CT::logger.error("添加 `owner_uuid` 字段失败！");
-            rollback();
             return false;
         }
     }
@@ -193,7 +198,6 @@ bool Sqlite3Wrapper::initializeSchema() {
                             "FROM shop_items_old o JOIN item_definitions d ON o.item_nbt = d.item_nbt;")
             || !execute_unsafe("DROP TABLE shop_items_old;")) {
             CT::logger.error("`shop_items` 表迁移失败！");
-            rollback();
             return false;
         }
         CT::logger.info("`shop_items` 表迁移成功！");
@@ -215,7 +219,6 @@ bool Sqlite3Wrapper::initializeSchema() {
             )
             || !execute_unsafe("DROP TABLE recycle_shop_items_old;")) {
             CT::logger.error("`recycle_shop_items` 表迁移失败！");
-            rollback();
             return false;
         }
         CT::logger.info("`recycle_shop_items` 表迁移成功！");
@@ -233,7 +236,6 @@ bool Sqlite3Wrapper::initializeSchema() {
                             "FROM purchase_records_old o JOIN item_definitions d ON o.item_nbt = d.item_nbt;")
             || !execute_unsafe("DROP TABLE purchase_records_old;")) {
             CT::logger.error("`purchase_records` 表迁移失败！");
-            rollback();
             return false;
         }
         CT::logger.info("`purchase_records` 表迁移成功！");
@@ -251,18 +253,18 @@ bool Sqlite3Wrapper::initializeSchema() {
                             "FROM recycle_records_old o JOIN item_definitions d ON o.item_nbt = d.item_nbt;")
             || !execute_unsafe("DROP TABLE recycle_records_old;")) {
             CT::logger.error("`recycle_records` 表迁移失败！");
-            rollback();
             return false;
         }
         CT::logger.info("`recycle_records` 表迁移成功！");
     }
 
     // --- 迁移现有 price/total_price 列的类型从 INTEGER 到 REAL ---
-    auto migrateColumnType = [&](const std::string& tableName, const std::string& columnName, int createStatementIndex) {
+    auto migrateColumnType = [&](const std::string& tableName, const std::string& columnName, int createStatementIndex
+                             ) {
         // 检查列是否存在且类型是否为 INTEGER
-        std::vector<std::vector<std::string>> columnInfo = query_unsafe("PRAGMA table_info(" + tableName + ");");
-        bool columnFound = false;
-        bool isIntegerType = false;
+        std::vector<std::vector<std::string>> columnInfo    = query_unsafe("PRAGMA table_info(" + tableName + ");");
+        bool                                  columnFound   = false;
+        bool                                  isIntegerType = false;
         for (const auto& row : columnInfo) {
             if (row.size() > 2 && row[1] == columnName) {
                 columnFound = true;
@@ -280,7 +282,6 @@ bool Sqlite3Wrapper::initializeSchema() {
                 || !execute_unsafe("INSERT INTO " + tableName + " SELECT * FROM " + tableName + "_old;") // 复制数据
                 || !execute_unsafe("DROP TABLE " + tableName + "_old;")) {
                 CT::logger.error("`{}` 表 `{}` 列类型迁移失败！", tableName, columnName);
-                rollback();
                 return false;
             }
             CT::logger.info("`{}` 表 `{}` 列类型迁移成功！", tableName, columnName);
@@ -290,12 +291,15 @@ bool Sqlite3Wrapper::initializeSchema() {
 
     // 执行 price 列迁移
     if (!migrateColumnType("shop_items", "price", 4)) return false; // create_statements[4] 是 shop_items
-    if (!migrateColumnType("recycle_shop_items", "price", 6)) return false; // create_statements[6] 是 recycle_shop_items
-    if (!migrateColumnType("purchase_records", "total_price", 5)) return false; // create_statements[5] 是 purchase_records
-    if (!migrateColumnType("recycle_records", "total_price", 7)) return false; // create_statements[7] 是 recycle_records
+    if (!migrateColumnType("recycle_shop_items", "price", 6))
+        return false; // create_statements[6] 是 recycle_shop_items
+    if (!migrateColumnType("purchase_records", "total_price", 5))
+        return false; // create_statements[5] 是 purchase_records
+    if (!migrateColumnType("recycle_records", "total_price", 7))
+        return false; // create_statements[7] 是 recycle_records
 
 
-    if (!isColumnExists("shop_items", "db_count")) { 
+    if (!isColumnExists("shop_items", "db_count")) {
         execute_unsafe("ALTER TABLE shop_items ADD COLUMN db_count INTEGER NOT NULL DEFAULT 0;");
     }
     // 添加商店名称字段
@@ -311,7 +315,7 @@ bool Sqlite3Wrapper::initializeSchema() {
     if (!isColumnExists("recycle_shop_items", "current_recycled_count")) {
         execute_unsafe("ALTER TABLE recycle_shop_items ADD COLUMN current_recycled_count INTEGER NOT NULL DEFAULT 0;");
     }
-    
+
     // 添加箱子配置字段
     if (!isColumnExists("chests", "enable_floating_text")) {
         execute_unsafe("ALTER TABLE chests ADD COLUMN enable_floating_text INTEGER NOT NULL DEFAULT 1;");
@@ -337,7 +341,7 @@ bool Sqlite3Wrapper::initializeSchema() {
         }
     }
 
-    if (!commit()) {
+    if (!txn.commit()) {
         CT::logger.error("无法提交数据库初始化事务。");
         return false;
     }
@@ -379,60 +383,54 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::st
     return results;
 }
 
-bool Sqlite3Wrapper::beginTransaction() {
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    if (mInTransaction) {
-        return true;
-    }
+// === Transaction RAII 类实现 ===
 
-    if (!db) return false;
+Transaction::Transaction(Sqlite3Wrapper& db) : mDb(db), mLock(db.mDbMutex) {
+    if (!mDb.db) return;
 
     char* err_msg = nullptr;
-    if (sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    if (sqlite3_exec(mDb.db, "BEGIN TRANSACTION;", nullptr, nullptr, &err_msg) == SQLITE_OK) {
+        mActive = true;
+        mDb.mStats.transactionCount++;
+    } else {
         std::cerr << "Failed to begin transaction: " << err_msg << std::endl;
         if (err_msg) sqlite3_free(err_msg);
-        return false;
     }
-
-    mInTransaction = true;
-    mStats.transactionCount++;
-    return true;
 }
 
-bool Sqlite3Wrapper::commit() {
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    if (!mInTransaction || !db) {
-        return false;
+Transaction::~Transaction() {
+    if (mActive && !mCommitted) {
+        rollback();
     }
+}
+
+bool Transaction::commit() {
+    if (!mActive || mCommitted) return false;
 
     char* err_msg = nullptr;
-    if (sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    if (sqlite3_exec(mDb.db, "COMMIT;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
         std::cerr << "Failed to commit transaction: " << err_msg << std::endl;
         if (err_msg) sqlite3_free(err_msg);
         return false;
     }
 
-    mInTransaction = false;
-    clearCache(); // 提交后清除缓存
+    mCommitted = true;
+    mActive    = false;
+    mDb.clearCache();
     return true;
 }
 
-bool Sqlite3Wrapper::rollback() {
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    if (!mInTransaction || !db) {
-        return false;
-    }
+void Transaction::rollback() {
+    if (!mActive) return;
 
     char* err_msg = nullptr;
-    if (sqlite3_exec(db, "ROLLBACK;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+    if (sqlite3_exec(mDb.db, "ROLLBACK;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
         std::cerr << "Failed to rollback transaction: " << err_msg << std::endl;
         if (err_msg) sqlite3_free(err_msg);
-        return false;
     }
 
-    mInTransaction = false;
-    clearCache(); // 回滚后清除缓存
-    return true;
+    mActive = false;
+    mDb.clearCache();
 }
 
 void Sqlite3Wrapper::clearCache() {

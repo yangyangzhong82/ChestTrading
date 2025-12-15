@@ -12,7 +12,6 @@
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 
 
-
 namespace CT {
 
 // ========== ChestCacheManager 实现 ==========
@@ -160,8 +159,23 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
     ChestCacheManager& cacheManager = ChestCacheManager::getInstance();
     BlockPos           mainPos      = internal::GetMainChestPos(pos, region);
 
-    // 开始事务
-    db.beginTransaction();
+    // 检查是否为大箱子（在事务外获取信息）
+    auto*    blockActor = region.getBlockEntity(pos);
+    BlockPos pairedChestPos;
+    bool     isLargeChest = false;
+    if (blockActor && blockActor->mType == BlockActorType::Chest) {
+        auto* chest = static_cast<class ChestBlockActor*>(blockActor);
+        if (chest->mLargeChestPaired) {
+            isLargeChest   = true;
+            pairedChestPos = chest->mLargeChestPairedPosition;
+        }
+    }
+
+    // 使用 Transaction RAII 类
+    Transaction txn(db);
+    if (!txn.isActive()) {
+        return false;
+    }
 
     // 先删除可能存在的旧记录
     db.execute(
@@ -172,24 +186,15 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
         pos.z
     );
 
-    // 检查是否为大箱子
-    auto*    blockActor = region.getBlockEntity(pos);
-    BlockPos pairedChestPos;
-    bool     isLargeChest = false;
-    if (blockActor && blockActor->mType == BlockActorType::Chest) {
-        auto* chest = static_cast<class ChestBlockActor*>(blockActor);
-        if (chest->mLargeChestPaired) {
-            isLargeChest   = true;
-            pairedChestPos = chest->mLargeChestPairedPosition;
-            // 如果是大箱子，也要删除配对箱子位置的旧记录，以防万一
-            db.execute(
-                "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
-                dimId,
-                pairedChestPos.x,
-                pairedChestPos.y,
-                pairedChestPos.z
-            );
-        }
+    if (isLargeChest) {
+        // 如果是大箱子，也要删除配对箱子位置的旧记录
+        db.execute(
+            "DELETE FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+            dimId,
+            pairedChestPos.x,
+            pairedChestPos.y,
+            pairedChestPos.z
+        );
     }
 
     // 只在主方块位置插入/替换记录
@@ -203,76 +208,72 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
         static_cast<int>(type)
     );
 
-    if (success) {
-        // 提交事务
-        db.commit();
-
-        // 使缓存失效
-        cacheManager.invalidateCache(pos, dimId);
-        if (isLargeChest) {
-            cacheManager.invalidateCache(pairedChestPos, dimId);
-        }
-
-        // 生成悬浮字文本
-        std::string text;
-        std::string ownerName = player_uuid;
-        if (auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(player_uuid))) {
-            ownerName = playerInfo->name;
-        }
-
-        // 设置/移除箱子名称
-        auto* mainBlockActor = region.getBlockEntity(mainPos);
-        if (mainBlockActor) {
-            auto nbt = NbtUtils::getBlockEntityNbt(mainBlockActor);
-            if (nbt) {
-                if (type == ChestType::Locked || type == ChestType::Public) {
-                    std::string chestTypeName = (type == ChestType::Locked) ? "的上锁箱子" : "的公共箱子";
-                    std::string customName    = ownerName + chestTypeName;
-                    (*nbt)["CustomName"]      = StringTag(customName);
-                    NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
-                } else if (nbt->contains("CustomName")) {
-                    nbt->erase("CustomName");
-                    NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
-                }
-            }
-        }
-
-        switch (type) {
-        case ChestType::Locked:
-            text = "§e[上锁箱子]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::RecycleShop:
-            text = "§a[回收商店]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::Shop:
-            text = "§b[商店箱子]§r 拥有者: " + ownerName;
-            break;
-        case ChestType::Public:
-            text = "§d[公共箱子]§r 拥有者: " + ownerName;
-            break;
-        default:
-            text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
-            break;
-        }
-
-        // 统一在主方块位置创建悬浮字
-        FloatingTextManager::getInstance().addOrUpdateFloatingText(mainPos, dimId, player_uuid, text, type);
-        // 如果是大箱子，确保另一个方块上没有悬浮字
-        if (isLargeChest) {
-            BlockPos otherPos = (mainPos == pos) ? pairedChestPos : pos;
-            FloatingTextManager::getInstance().removeFloatingText(otherPos, dimId);
-        }
-
-        // 如果是商店，更新主方塊的悬浮字物品列表
-        if (type == ChestType::Shop || type == ChestType::RecycleShop) {
-            FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, type);
-        }
-    } else {
-        // 回滚事务
-        db.rollback();
+    if (!success || !txn.commit()) {
+        return false; // txn 析构时自动 rollback
     }
 
-    return success;
+    // 事务提交成功后的操作
+    cacheManager.invalidateCache(pos, dimId);
+    if (isLargeChest) {
+        cacheManager.invalidateCache(pairedChestPos, dimId);
+    }
+
+    // 生成悬浮字文本
+    std::string text;
+    std::string ownerName = player_uuid;
+    if (auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(player_uuid))) {
+        ownerName = playerInfo->name;
+    }
+
+    // 设置/移除箱子名称
+    auto* mainBlockActor = region.getBlockEntity(mainPos);
+    if (mainBlockActor) {
+        auto nbt = NbtUtils::getBlockEntityNbt(mainBlockActor);
+        if (nbt) {
+            if (type == ChestType::Locked || type == ChestType::Public) {
+                std::string chestTypeName = (type == ChestType::Locked) ? "的上锁箱子" : "的公共箱子";
+                std::string customName    = ownerName + chestTypeName;
+                (*nbt)["CustomName"]      = StringTag(customName);
+                NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
+            } else if (nbt->contains("CustomName")) {
+                nbt->erase("CustomName");
+                NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
+            }
+        }
+    }
+
+    switch (type) {
+    case ChestType::Locked:
+        text = "§e[上锁箱子]§r 拥有者: " + ownerName;
+        break;
+    case ChestType::RecycleShop:
+        text = "§a[回收商店]§r 拥有者: " + ownerName;
+        break;
+    case ChestType::Shop:
+        text = "§b[商店箱子]§r 拥有者: " + ownerName;
+        break;
+    case ChestType::Public:
+        text = "§d[公共箱子]§r 拥有者: " + ownerName;
+        break;
+    default:
+        text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
+        break;
+    }
+
+    // 统一在主方块位置创建悬浮字
+    FloatingTextManager::getInstance().addOrUpdateFloatingText(mainPos, dimId, player_uuid, text, type);
+    // 如果是大箱子，确保另一个方块上没有悬浮字
+    if (isLargeChest) {
+        BlockPos otherPos = (mainPos == pos) ? pairedChestPos : pos;
+        FloatingTextManager::getInstance().removeFloatingText(otherPos, dimId);
+    }
+
+    // 如果是商店，更新主方塊的悬浮字物品列表
+    if (type == ChestType::Shop || type == ChestType::RecycleShop) {
+        FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, type);
+    }
+
+    return true;
 }
 
 bool removeChest(BlockPos pos, int dimId, BlockSource& region) {
