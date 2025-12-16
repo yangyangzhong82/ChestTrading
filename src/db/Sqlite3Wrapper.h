@@ -2,6 +2,7 @@
 
 #include "ThreadPool.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
+#include <atomic>
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -127,12 +128,25 @@ public:
 
     // 获取数据库统计信息
     struct DbStats {
-        int cacheHits        = 0;
-        int cacheMisses      = 0;
-        int queryCount       = 0;
-        int transactionCount = 0;
+        std::atomic<int> cacheHits{0};
+        std::atomic<int> cacheMisses{0};
+        std::atomic<int> queryCount{0};
+        std::atomic<int> transactionCount{0};
     };
-    DbStats getStats() const { return mStats; }
+    struct DbStatsSnapshot {
+        int cacheHits;
+        int cacheMisses;
+        int queryCount;
+        int transactionCount;
+    };
+    DbStatsSnapshot getStats() const {
+        return {
+            mStats.cacheHits.load(),
+            mStats.cacheMisses.load(),
+            mStats.queryCount.load(),
+            mStats.transactionCount.load()
+        };
+    }
 
 private:
     Sqlite3Wrapper();
