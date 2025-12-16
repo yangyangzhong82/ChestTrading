@@ -4,8 +4,6 @@
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
-#include "db/Sqlite3Wrapper.h"
-#include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
@@ -16,15 +14,19 @@
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "repository/ItemRepository.h"
+#include "repository/ShopRepository.h"
+#include "service/ChestService.h"
+#include "service/ShopService.h"
+#include "service/TextService.h"
 
 
 namespace CT {
 
-// using CT::NbtUtils::enchantToString; // 现在使用 FormUtils::getItemDisplayString
-
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("商店物品");
+    auto& txt = TextService::getInstance();
 
     logger.debug(
         "showShopChestItemsForm: Player {} is opening shop at pos ({},{},{}) dim {}.",
@@ -35,42 +37,16 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         dimId
     );
 
-    auto& db      = Sqlite3Wrapper::getInstance();
-    auto  results = db.query(
-        "SELECT s.item_id, s.price, s.db_count, d.item_nbt FROM shop_items s "
-         "JOIN item_definitions d ON s.item_id = d.item_id "
-         "WHERE s.dim_id = ? AND s.pos_x = ? AND s.pos_y = ? AND s.pos_z = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z
-    );
+    auto items = ShopService::getInstance().getShopItems(pos, dimId, region);
 
-    if (results.empty()) {
-        fm.setContent("商店是空的，没有可购买的商品。\n");
+    if (items.empty()) {
+        fm.setContent(txt.getMessage("shop.empty"));
         logger.debug("showShopChestItemsForm: Shop at pos ({},{},{}) dim {} is empty.", pos.x, pos.y, pos.z, dimId);
     } else {
-        logger.debug(
-            "showShopChestItemsForm: Found {} items in database for shop at pos ({},{},{}) dim {}.",
-            results.size(),
-            pos.x,
-            pos.y,
-            pos.z,
-            dimId
-        );
-        for (const auto& row : results) {
-            int         itemId     = std::stoi(row[0]);
-            double      price      = std::stod(row[1]); // 修改为 stod
-            int         dbCount    = std::stoi(row[2]); // 从数据库获取可售数量
-            std::string itemNbtStr = row[3];
-
-            logger.debug(
-                "showShopChestItemsForm: Processing item from DB: ItemID={}, NBT='{}', Price={}, DB_Count={}",
-                itemId,
-                itemNbtStr,
-                price,
-                dbCount
-            );
+        logger.debug("showShopChestItemsForm: Found {} items for shop.", items.size());
+        for (const auto& shopItem : items) {
+            std::string itemNbtStr = ItemRepository::getInstance().getItemNbt(shopItem.itemId);
+            if (itemNbtStr.empty()) continue;
 
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             if (!itemPtr) {
@@ -80,43 +56,25 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
                 continue;
             }
             ItemStack item = *itemPtr;
-            item.mCount    = 1; // 确保 item 的数量为 1，用于后续的 item.matches 比较
-            logger.debug("showShopChestItemsForm: Successfully created ItemStack for item '{}'.", item.getName());
+            item.mCount    = 1;
 
-            // 计算箱子中该物品类型的总数量
-            int totalCount = CT::FormUtils::countItemsInChest(region, pos, dimId, itemNbtStr);
-            logger.debug(
-                "showShopChestItemsForm: Calculated totalCount in chest for item '{}': {}.",
-                item.getName(),
-                totalCount
-            );
-
-            // 显示数据库中的可售数量 (dbCount) 和箱子中实际存在的数量 (totalCount)
-            std::string buttonText = CT::FormUtils::getItemDisplayString(item) + " §b[库存: " + std::to_string(dbCount)
-                                   + "/" + std::to_string(totalCount) + "]§r"
-                                   + " §6[价格: " + CT::MoneyFormat::format(price) + "]§r";
-
+            int         totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
+            std::string buttonText =
+                txt.generateShopItemText(item.getName(), shopItem.price, shopItem.dbCount, totalCount);
             std::string texturePath = CT::FormUtils::getItemTexturePath(item);
-
-            logger.debug(
-                "showShopChestItemsForm: Button text for item '{}': '{}'. Texture path: '{}'.",
-                item.getName(),
-                buttonText,
-                texturePath
-            );
 
             if (!texturePath.empty()) {
                 fm.appendButton(
                     buttonText,
                     texturePath,
                     "path",
-                    [pos, dimId, item, itemNbtStr, unitPrice = price](Player& p) {
+                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price](Player& p) {
                         auto& region = p.getDimensionBlockSource();
                         showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr);
                     }
                 );
             } else {
-                fm.appendButton(buttonText, [pos, dimId, item, itemNbtStr, unitPrice = price](Player& p) {
+                fm.appendButton(buttonText, [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr);
                 });
@@ -125,9 +83,17 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
     }
 
     fm.appendButton("返回", [pos, dimId](Player& p) {
-        auto& region                          = p.getDimensionBlockSource();
-        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
-        showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
+        auto& region = p.getDimensionBlockSource();
+        auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+        showChestLockForm(
+            p,
+            pos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
     fm.sendTo(player);
 }
@@ -136,20 +102,21 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
     ll::form::CustomForm fm;
     fm.setTitle("设置商品价格");
     fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置价格。");
-    fm.appendInput("price_input", "请输入价格", "0.0"); // 默认值改为小数
+    fm.appendInput("price_input", "请输入价格", "0.0");
 
     fm.sendTo(
         player,
         [item, pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+            auto& txt = TextService::getInstance();
             if (!result.has_value()) {
-                p.sendMessage("§c你取消了设置价格。");
+                p.sendMessage(txt.getMessage("action.cancelled"));
                 return;
             }
 
             try {
-                double price = std::stod(std::get<std::string>(result.value().at("price_input"))); // 修改为 stod
-                if (price < 0.0) { // 修改为 double 比较
-                    p.sendMessage("§c价格不能为负数！");
+                double price = std::stod(std::get<std::string>(result.value().at("price_input")));
+                if (price < 0.0) {
+                    p.sendMessage(txt.getMessage("input.negative_price"));
                     return;
                 }
 
@@ -160,59 +127,12 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                     return;
                 }
                 std::string itemNbtStr = CT::NbtUtils::toSNBT(*CT::NbtUtils::cleanNbtForComparison(*itemNbt));
+                int         dbCount    = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
 
-                int dbCount = CT::FormUtils::countItemsInChest(region, pos, dimId, itemNbtStr);
-
-                logger.debug(
-                    "showShopItemPriceForm: Storing item '{}' with NBT: '{}', Price: {}, Initial DB_Count: {}.",
-                    item.getName(),
-                    itemNbtStr,
-                    price,
-                    dbCount
-                );
-
-                auto& db = Sqlite3Wrapper::getInstance();
-
-                // 获取或创建 item_id
-                int itemId = db.getOrCreateItemId(itemNbtStr);
-                if (itemId < 0) {
-                    p.sendMessage("§c物品价格和数量设置失败！无法创建物品定义。");
-                    logger.error(
-                        "showShopItemPriceForm: Failed to get or create item_id for item '{}'.",
-                        item.getName()
-                    );
-                    showShopChestManageForm(p, pos, dimId, region);
-                    return;
-                }
-
-                std::string sql =
-                    "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count) VALUES "
-                    "(?, ?, ?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = excluded.price, db_count "
-                    "= excluded.db_count, slot = excluded.slot;";
-                if (db.execute(sql, dimId, pos.x, pos.y, pos.z, 0, itemId, price, dbCount)) { // price 作为 double 传递
-                    p.sendMessage(
-                        "§a物品价格和数量设置成功！价格: " + CT::MoneyFormat::format(price)
-                        + "，数量: " + std::to_string(dbCount)
-                    );
-                    logger.debug(
-                        "showShopItemPriceForm: Item '{}' price and count set successfully. Price: {}, Count: {}.",
-                        item.getName(),
-                        price,
-                        dbCount
-                    );
-                    FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
-                } else {
-                    p.sendMessage("§c物品价格和数量设置失败！");
-                    logger.error(
-                        "showShopItemPriceForm: Failed to set item '{}' price and count. Price: {}, Count: {}.",
-                        item.getName(),
-                        price,
-                        dbCount
-                    );
-                }
+                auto result = ShopService::getInstance().setItemPrice(pos, dimId, itemNbtStr, price, dbCount, region);
+                p.sendMessage(result.message);
             } catch (const std::exception& e) {
-                p.sendMessage("§c价格输入无效，请输入一个数字。"); // 提示修改
+                p.sendMessage(txt.getMessage("input.invalid_number"));
                 logger.error("showShopItemPriceForm: 设置物品价格时发生错误: {}", e.what());
             }
             auto& regionRef = p.getDimensionBlockSource();
@@ -230,6 +150,7 @@ void showShopItemManageForm(
 ) {
     ll::form::SimpleForm fm;
     fm.setTitle("管理商品");
+    auto& txt = TextService::getInstance();
 
     auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
     if (!itemPtr) {
@@ -239,33 +160,21 @@ void showShopItemManageForm(
     }
     ItemStack item = *itemPtr;
 
-    int totalCount = CT::FormUtils::countItemsInChest(region, pos, dimId, itemNbtStr);
-
-    auto& db = Sqlite3Wrapper::getInstance();
-
-    // 获取 item_id
-    int itemId = db.getOrCreateItemId(itemNbtStr);
+    int totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
+    int itemId     = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
     if (itemId < 0) {
         player.sendMessage("§c无法管理该物品，无法获取物品ID。");
         showShopChestManageForm(player, pos, dimId, region);
         return;
     }
 
-    auto results = db.query(
-        "SELECT price, db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id "
-        "= ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z,
-        itemId
-    );
+    auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
 
     std::string content = "你正在管理物品: " + std::string(item.getName()) + "\n";
     int         dbCount = 0;
-    if (!results.empty()) {
-        content += "当前价格: §a" + CT::MoneyFormat::format(std::stod(results[0][0])) + "§r\n";
-        dbCount  = std::stoi(results[0][1]);
+    if (itemOpt) {
+        content += "当前价格: §a" + CT::MoneyFormat::format(itemOpt->price) + "§r\n";
+        dbCount  = itemOpt->dbCount;
     } else {
         content += "当前状态: §7未定价§r\n";
     }
@@ -279,21 +188,13 @@ void showShopItemManageForm(
     });
 
     fm.appendButton("移除商品", [pos, dimId, itemId](Player& p) {
-        auto& db = Sqlite3Wrapper::getInstance();
-        if (db.execute(
-                "DELETE FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId
-            )) {
-            p.sendMessage("§a商品已成功移除！");
-            FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::Shop);
+        auto& region = p.getDimensionBlockSource();
+        auto& txt    = TextService::getInstance();
+        if (ShopService::getInstance().removeItem(pos, dimId, itemId, region)) {
+            p.sendMessage(txt.getMessage("shop.item_removed"));
         } else {
             p.sendMessage("§c商品移除失败！");
         }
-        auto& region = p.getDimensionBlockSource();
         showShopChestManageForm(p, pos, dimId, region);
     });
 
@@ -368,32 +269,12 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                     std::get<1>(aggregatedItems[itemNbtStr])
                 );
             } else {
-                auto& db     = Sqlite3Wrapper::getInstance();
-                int   itemId = db.getOrCreateItemId(itemNbtStr);
-
+                int         itemId   = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
                 std::string priceStr = "§7未定价";
                 if (itemId > 0) {
-                    auto results = db.query(
-                        "SELECT price FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND "
-                        "item_id = ?",
-                        dimId,
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        itemId
-                    );
-                    if (!results.empty()) {
-                        priceStr = "§a[已定价: " + results[0][0] + "]";
-                        logger.debug(
-                            "showShopChestManageForm: Item '{}' found in DB with price {}.",
-                            itemInSlot.getName(),
-                            results[0][0]
-                        );
-                    } else {
-                        logger.debug(
-                            "showShopChestManageForm: Item '{}' not found in DB (no price set).",
-                            itemInSlot.getName()
-                        );
+                    auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
+                    if (itemOpt) {
+                        priceStr = "§a[已定价: " + CT::MoneyFormat::format(itemOpt->price) + "]";
                     }
                 }
                 aggregatedItems[itemNbtStr] = std::make_tuple(itemInSlot, (int)itemInSlot.mCount, priceStr);
@@ -452,9 +333,17 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
     });
 
     fm.appendButton("返回", [pos, dimId](Player& p) {
-        auto& region                          = p.getDimensionBlockSource();
-        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
-        showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
+        auto& region = p.getDimensionBlockSource();
+        auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+        showChestLockForm(
+            p,
+            pos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
     fm.sendTo(player);
 }
@@ -489,20 +378,11 @@ void showShopItemBuyForm(
         "你正在购买物品: " + CT::FormUtils::getItemDisplayString(item, 0, true)
     ); // 使用 FormUtils 显示物品信息
 
-    auto& db     = Sqlite3Wrapper::getInstance();
-    int   itemId = db.getOrCreateItemId(itemNbtStr);
+    int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
     if (itemId > 0) {
-        auto results = db.query(
-            "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = "
-            "?",
-            dimId,
-            pos.x,
-            pos.y,
-            pos.z,
-            itemId
-        );
-        if (!results.empty()) {
-            fm.appendLabel("剩余库存: §b" + results[0][0] + "§r");
+        auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
+        if (itemOpt) {
+            fm.appendLabel("剩余库存: §b" + std::to_string(itemOpt->dbCount) + "§r");
         }
     }
 
@@ -553,8 +433,7 @@ void showShopItemBuyForm(
                 totalPrice
             );
 
-            auto& db     = Sqlite3Wrapper::getInstance();
-            int   itemId = db.getOrCreateItemId(itemNbtStr);
+            int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
             if (itemId < 0) {
                 p.sendMessage("§c购买失败，无法获取商品ID。");
                 logger.error("showShopItemBuyForm: Failed to get or create item_id for item NBT {}.", itemNbtStr);
@@ -669,30 +548,12 @@ void showShopItemBuyForm(
             }
 
             // 步骤3：扣钱成功，更新数据库库存
-            int changedRows = db.executeAndGetChanges(
-                "UPDATE shop_items SET db_count = db_count - ? "
-                "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ? AND db_count >= ?",
-                buyCount,
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId,
-                buyCount
-            );
-
-            if (changedRows <= 0) {
-                // db_count更新失败，但钱已扣、箱子已扣，记录警告但继续完成交易
-                logger.warn("showShopItemBuyForm: db_count update failed or insufficient, but transaction continues.");
-            }
+            ShopRepository::getInstance().decrementDbCount(pos, dimId, itemId, buyCount);
 
             // 步骤4：给店主加钱
-            auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
-            if (isLocked && !ownerUuid.empty()) {
-                auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
-                if (ownerInfo && Economy::addMoneyByUuid(ownerUuid, totalPrice)) {
-                    logger.info("Added {} to shop owner {} ({}).", totalPrice, ownerInfo->name, ownerUuid);
-                }
+            auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            if (chestInfo && !chestInfo->ownerUuid.empty()) {
+                Economy::addMoneyByUuid(chestInfo->ownerUuid, totalPrice);
             }
 
             // 步骤5：给玩家物品
@@ -711,18 +572,14 @@ void showShopItemBuyForm(
             p.refreshInventory();
 
             // 步骤6：记录购买
-            db.execute(
-                "INSERT INTO purchase_records (dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, "
-                "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId,
-                p.getUuid().asString(),
-                buyCount,
-                totalPrice
-            );
+            PurchaseRecordData record;
+            record.dimId         = dimId;
+            record.pos           = pos;
+            record.itemId        = itemId;
+            record.buyerUuid     = p.getUuid().asString();
+            record.purchaseCount = buyCount;
+            record.totalPrice    = totalPrice;
+            ShopRepository::getInstance().addPurchaseRecord(record);
 
             p.sendMessage(
                 "§a购买成功！你花费了 §6" + CT::MoneyFormat::format(totalPrice) + "§a 金币购买了 "
@@ -737,101 +594,65 @@ void showShopItemBuyForm(
 void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
     fm.setTitle("设置商店名称");
+    auto& chestService = ChestService::getInstance();
+    auto& txt          = TextService::getInstance();
 
-    std::string currentName = getShopName(pos, dimId, region);
+    std::string currentName = chestService.getShopName(pos, dimId, region);
     fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
     fm.appendInput("shop_name", "请输入商店名称", "", currentName);
 
     fm.sendTo(player, [pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
         auto& region = p.getDimensionBlockSource();
+        auto& txt    = TextService::getInstance();
         if (!result.has_value()) {
-            p.sendMessage("§c你取消了设置商店名称。");
+            p.sendMessage(txt.getMessage("action.cancelled"));
             showShopChestManageForm(p, pos, dimId, region);
             return;
         }
 
         std::string newName = std::get<std::string>(result.value().at("shop_name"));
-        if (setShopName(pos, dimId, region, newName)) {
-            p.sendMessage("§a商店名称设置成功！");
+        if (ChestService::getInstance().setShopName(pos, dimId, region, newName)) {
+            p.sendMessage(txt.getMessage("shop.name_set_success"));
         } else {
-            p.sendMessage("§c商店名称设置失败！");
+            p.sendMessage(txt.getMessage("shop.name_set_fail"));
         }
         showShopChestManageForm(p, pos, dimId, region);
     });
 }
 
 void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    // 异步查询购买记录
-    auto& db = Sqlite3Wrapper::getInstance();
+    ll::form::SimpleForm fm;
+    fm.setTitle("购买记录");
 
-    // 获取玩家UUID用于后续回调
-    std::string playerUuid = player.getUuid().asString();
+    auto records = ShopRepository::getInstance().getPurchaseRecords(pos, dimId);
 
-    logger.debug("showPurchaseRecordsForm: 开始异步查询购买记录 pos({},{},{}) dim {}", pos.x, pos.y, pos.z, dimId);
+    if (records.empty()) {
+        fm.setContent("§7该商店暂无购买记录。");
+    } else {
+        std::string content = "§a最近的购买记录:\n";
+        for (const auto& record : records) {
+            auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(record.itemNbt);
+            std::string itemName = itemPtr ? itemPtr->getName() : "未知物品";
 
-    // 异步查询数据库
-    auto future = db.queryAsync(
-        "SELECT p.item_id, p.buyer_uuid, p.purchase_count, p.total_price, p.timestamp, d.item_nbt "
-        "FROM purchase_records p "
-        "JOIN item_definitions d ON p.item_id = d.item_id "
-        "WHERE p.dim_id = ? AND p.pos_x = ? AND p.pos_y = ? AND p.pos_z = ? "
-        "ORDER BY p.timestamp DESC",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z
-    );
-
-    // 使用线程池等待查询完成，然后回调到主线程显示表单
-    db.thenOnMainThread(std::move(future), [playerUuid, pos, dimId](std::vector<std::vector<std::string>> records) {
-        logger.debug("showPurchaseRecordsForm: 异步查询完成，记录数: {}", records.size());
-
-        // 重新获取玩家对象
-        auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-        if (!player) {
-            logger.warn("showPurchaseRecordsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
-            return;
-        }
-
-        ll::form::SimpleForm fm;
-        fm.setTitle("购买记录");
-
-        if (records.empty()) {
-            fm.setContent("§7该商店暂无购买记录。");
-        } else {
-            std::string content = "§a最近的购买记录:\n";
-            for (const auto& row : records) {
-                std::string buyerUuid     = row[1];
-                std::string purchaseCount = row[2];
-                std::string totalPrice    = row[3];
-                std::string timestamp     = row[4];
-                std::string itemNbtStr    = row[5];
-
-                auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
-                std::string itemName = "未知物品";
-                if (itemPtr) {
-                    itemName = itemPtr->getName();
-                }
-
-                std::string buyerName = buyerUuid;
-                auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(buyerUuid));
-                if (playerInfo) {
-                    buyerName = playerInfo->name;
-                }
-
-                content += "§f" + timestamp + " - " + buyerName + " 购买了 " + itemName + " x" + purchaseCount
-                         + "，花费 " + totalPrice + " 金币\n";
+            std::string buyerName = record.buyerUuid;
+            auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(record.buyerUuid));
+            if (playerInfo) {
+                buyerName = playerInfo->name;
             }
-            fm.setContent(content);
+
+            content += "§f" + record.timestamp + " - " + buyerName + " 购买了 " + itemName + " x"
+                     + std::to_string(record.purchaseCount) + "，花费 " + CT::MoneyFormat::format(record.totalPrice)
+                     + " 金币\n";
         }
+        fm.setContent(content);
+    }
 
-        fm.appendButton("返回", [pos, dimId](Player& p) {
-            auto& region = p.getDimensionBlockSource();
-            showShopChestManageForm(p, pos, dimId, region);
-        });
-
-        fm.sendTo(*player);
+    fm.appendButton("返回", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
+        showShopChestManageForm(p, pos, dimId, region);
     });
+
+    fm.sendTo(player);
 }
 
 } // namespace CT

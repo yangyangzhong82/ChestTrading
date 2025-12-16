@@ -1,5 +1,4 @@
 #include "shareForm.h"
-#include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
@@ -8,6 +7,8 @@
 #include "mc/platform/UUID.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/Level.h"
+#include "service/ChestService.h"
+#include "service/TextService.h"
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -59,7 +60,8 @@ void showShareForm(
     ll::form::SimpleForm fm;
     fm.setTitle("箱子分享管理");
 
-    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId, region);
+    auto&                    chestService  = ChestService::getInstance();
+    std::vector<std::string> sharedPlayers = chestService.getSharedPlayers(pos, dimId, region);
     std::string              ownerName     = getPlayerNameFromUuid(ownerUuid);
 
     std::string content = "§e箱子主人: " + ownerName + "§r\n\n当前已分享的玩家：\n";
@@ -123,33 +125,27 @@ void showAddOfflineShareForm(
                         auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(offlinePlayerName);
                         if (playerInfo) {
                             std::string offlinePlayerUuid = playerInfo->uuid.asString();
-                            if (addSharedPlayer(ownerUuid, offlinePlayerUuid, pos, dimId, &region)) {
-                                p.sendMessage("§a成功添加离线玩家 " + offlinePlayerName + " 到分享列表！");
-                                logger.info(
-                                    "玩家 {} 成功将箱子 ({}, {}, {}) in dim {} 分享给离线玩家 {} ({}).",
-                                    ownerUuid,
-                                    pos.x,
-                                    pos.y,
-                                    pos.z,
-                                    dimId,
-                                    offlinePlayerName,
-                                    offlinePlayerUuid
-                                );
+                            auto&       svc               = ChestService::getInstance();
+                            auto&       txt               = TextService::getInstance();
+                            if (svc.addSharedPlayer(ownerUuid, offlinePlayerUuid, pos, dimId, region)) {
+                                p.sendMessage(txt.getMessage(
+                                    "share.add_success",
+                                    {
+                                        {"player", offlinePlayerName}
+                                }
+                                ));
+                                logger.info("玩家 {} 成功将箱子分享给离线玩家 {}.", ownerUuid, offlinePlayerName);
                             } else {
-                                p.sendMessage("§c添加离线玩家 " + offlinePlayerName + " 失败！");
-                                logger.error(
-                                    "玩家 {} 尝试将箱子 ({}, {}, {}) in dim {} 分享给离线玩家 {} ({}) 失败。",
-                                    ownerUuid,
-                                    pos.x,
-                                    pos.y,
-                                    pos.z,
-                                    dimId,
-                                    offlinePlayerName,
-                                    offlinePlayerUuid
-                                );
+                                p.sendMessage(txt.getMessage("share.add_fail"));
+                                logger.error("玩家 {} 分享给离线玩家 {} 失败。", ownerUuid, offlinePlayerName);
                             }
                         } else {
-                            p.sendMessage("§c未找到玩家 " + offlinePlayerName + "！");
+                            p.sendMessage(TextService::getInstance().getMessage(
+                                "share.player_not_found",
+                                {
+                                    {"player", offlinePlayerName}
+                            }
+                            ));
                             logger.warn("玩家 {} 尝试分享给不存在的玩家 {}.", ownerUuid, offlinePlayerName);
                         }
                     } else {
@@ -239,38 +235,24 @@ void showAddShareForm(
             }
 
             // 处理在线玩家开关结果
-            bool playersAdded = false;
+            auto& svc = ChestService::getInstance();
+            auto& txt = TextService::getInstance();
             for (const std::string& onlinePlayerUuid : currentPageUuids) {
                 if (res->count(onlinePlayerUuid)) {
                     const auto& toggleResult = res->at(onlinePlayerUuid);
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string onlinePlayerName = getPlayerNameFromUuid(onlinePlayerUuid);
-                        // 添加分享玩家
-                        if (addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId, &region)) {
-                            p.sendMessage("§a成功添加玩家 " + onlinePlayerName + " 到分享列表！");
-                            logger.debug(
-                                "玩家 {} 成功将箱子 ({}, {}, {}) in dim {} 分享给玩家 {} ({}).",
-                                ownerUuid,
-                                pos.x,
-                                pos.y,
-                                pos.z,
-                                dimId,
-                                onlinePlayerName,
-                                onlinePlayerUuid
-                            );
-                            playersAdded = true;
+                        if (svc.addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId, region)) {
+                            p.sendMessage(txt.getMessage(
+                                "share.add_success",
+                                {
+                                    {"player", onlinePlayerName}
+                            }
+                            ));
+                            logger.debug("玩家 {} 成功分享给玩家 {}.", ownerUuid, onlinePlayerName);
                         } else {
-                            p.sendMessage("§c添加分享玩家失败！");
-                            logger.error(
-                                "玩家 {} 尝试将箱子 ({}, {}, {}) in dim {} 分享给玩家 {} ({}) 失败。",
-                                ownerUuid,
-                                pos.x,
-                                pos.y,
-                                pos.z,
-                                dimId,
-                                onlinePlayerName,
-                                onlinePlayerUuid
-                            );
+                            p.sendMessage(txt.getMessage("share.add_fail"));
+                            logger.error("玩家 {} 分享给玩家 {} 失败。", ownerUuid, onlinePlayerName);
                         }
                     }
                 }
@@ -293,7 +275,7 @@ void showRemoveShareForm(
     ll::form::CustomForm removeForm; // 改为 CustomForm
     removeForm.setTitle("移除分享玩家 (第 " + std::to_string(currentPage + 1) + " 页)");
 
-    std::vector<std::string> sharedPlayers = getSharedPlayers(pos, dimId, region);
+    std::vector<std::string> sharedPlayers = ChestService::getInstance().getSharedPlayers(pos, dimId, region);
 
     // 计算分页
     int totalPlayers = sharedPlayers.size();
@@ -352,34 +334,24 @@ void showRemoveShareForm(
             }
 
             // 处理开关结果
+            auto& svc = ChestService::getInstance();
+            auto& txt = TextService::getInstance();
             for (const std::string& sharedPlayerUuid : currentPageSharedUuids) {
                 if (res->count(sharedPlayerUuid)) {
                     const auto& toggleResult = res->at(sharedPlayerUuid);
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string sharedPlayerName = getPlayerNameFromUuid(sharedPlayerUuid);
-                        if (removeSharedPlayer(sharedPlayerUuid, pos, dimId, &region)) {
-                            p.sendMessage("§a成功从分享列表移除玩家 " + sharedPlayerName + "！");
-                            logger.info(
-                                "玩家 {} 成功从箱子 ({}, {}, {}) in dim {} 移除分享玩家 {} ({}).",
-                                ownerUuid,
-                                pos.x,
-                                pos.y,
-                                pos.z,
-                                dimId,
-                                sharedPlayerName,
-                                sharedPlayerUuid
-                            );
+                        if (svc.removeSharedPlayer(sharedPlayerUuid, pos, dimId, region)) {
+                            p.sendMessage(txt.getMessage(
+                                "share.remove_success",
+                                {
+                                    {"player", sharedPlayerName}
+                            }
+                            ));
+                            logger.info("玩家 {} 成功移除分享玩家 {}.", ownerUuid, sharedPlayerName);
                         } else {
-                            p.sendMessage("§c移除分享玩家失败！");
-                            logger.error(
-                                "玩家 {} 尝试从箱子 ({}, {}, {}) in dim {} 移除分享玩家 {} 失败。",
-                                ownerUuid,
-                                pos.x,
-                                pos.y,
-                                pos.z,
-                                dimId,
-                                sharedPlayerUuid
-                            );
+                            p.sendMessage(txt.getMessage("share.remove_fail"));
+                            logger.error("玩家 {} 移除分享玩家 {} 失败。", ownerUuid, sharedPlayerUuid);
                         }
                     }
                 }

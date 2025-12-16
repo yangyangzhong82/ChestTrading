@@ -2,24 +2,18 @@
 #include "Config/ConfigManager.h"
 #include "RecycleForm.h"
 #include "ShopForm.h"
-#include "Utils/ItemTextureManager.h"
 #include "Utils/MoneyFormat.h"
-#include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
-#include "db/Sqlite3Wrapper.h"
-#include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/item/Item.h"
-#include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "service/ChestService.h"
+#include "service/TextService.h"
 
 namespace CT {
 
 void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType);
-
-// using namespace CauldronZero::NbtUtils; // 引入 NbtUtils 命名空间
 
 void showChestLockForm(
     Player&            player,
@@ -31,37 +25,22 @@ void showChestLockForm(
     BlockSource&       region
 ) {
     ll::form::SimpleForm fm;
-    std::string          player_uuid = player.getUuid().asString();
+    std::string          player_uuid  = player.getUuid().asString();
+    auto&                textService  = TextService::getInstance();
+    auto&                chestService = ChestService::getInstance();
 
     if (isLocked) {
         // 箱子已设置
         if (ownerUuid == player_uuid) {
             // 当前玩家是主人
-            std::string typeStr;
-            switch (chestType) {
-            case ChestType::Locked:
-                typeStr = "普通锁";
-                break;
-            case ChestType::RecycleShop:
-                typeStr = "回收商店";
-                break;
-            case ChestType::Shop:
-                typeStr = "商店";
-                break;
-            case ChestType::Public:
-                typeStr = "公共箱子";
-                break;
-            }
+            std::string typeStr = textService.getChestTypeName(chestType);
             fm.setTitle("箱子管理");
             fm.setContent("这个箱子已被你设置为: " + typeStr + "\n你想做什么？");
 
             fm.appendButton("移除设置", [pos, dimId](Player& p) {
                 auto& region = p.getDimensionBlockSource();
-                if (removeChest(pos, dimId, region)) {
-                    p.sendMessage("§a箱子设置已成功移除！");
-                } else {
-                    p.sendMessage("§c箱子设置移除失败！");
-                }
+                auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
+                p.sendMessage(result.message);
             });
 
             if (chestType == ChestType::Locked) {
@@ -110,100 +89,92 @@ void showChestLockForm(
         fm.setTitle("设置箱子");
         fm.setContent("你希望将这个箱子设置为什么类型？");
 
-        fm.appendButton("普通上锁", [pos, dimId, player_uuid](Player& p) {
-            auto&       region = p.getDimensionBlockSource();
-            std::string errorMsg;
-            if (!canPlayerCreateChest(player_uuid, ChestType::Locked, errorMsg)) {
-                p.sendMessage(errorMsg);
-                return;
-            }
-            double cost = ConfigManager::getInstance().get().chestCosts.lockedChestCost;
-            if (!Economy::hasMoney(p, cost)) {
-                p.sendMessage("§c金钱不足！需要 " + MoneyFormat::format(cost));
-                return;
-            }
-            if (!Economy::reduceMoney(p, cost)) {
-                p.sendMessage("§c扣除金钱失败！");
-                return;
-            }
-            if (setChest(player_uuid, pos, dimId, region, ChestType::Locked)) {
-                p.sendMessage("§a箱子已成功上锁！花费 " + MoneyFormat::format(cost));
-            } else {
-                Economy::addMoney(p, cost);
-                p.sendMessage("§c箱子上锁失败！已退还金钱");
-            }
+        auto createChestHandler =
+            [](Player& p, BlockPos pos, int dimId, const std::string& playerUuid, ChestType type, double cost) {
+                auto& region = p.getDimensionBlockSource();
+                auto& svc    = ChestService::getInstance();
+                auto& txt    = TextService::getInstance();
+
+                std::string errorMsg;
+                if (!svc.canPlayerCreateChest(playerUuid, type, errorMsg)) {
+                    p.sendMessage(errorMsg);
+                    return;
+                }
+                if (!Economy::hasMoney(p, cost)) {
+                    p.sendMessage(txt.getMessage(
+                        "economy.insufficient",
+                        {
+                            {"price", MoneyFormat::format(cost)}
+                    }
+                    ));
+                    return;
+                }
+                if (!Economy::reduceMoney(p, cost)) {
+                    p.sendMessage(txt.getMessage("economy.deduct_fail"));
+                    return;
+                }
+                auto result = svc.createChest(playerUuid, pos, dimId, type, region);
+                if (result.success) {
+                    p.sendMessage(txt.getMessage(
+                        "chest.create_success",
+                        {
+                            {"type",  txt.getChestTypeName(type)},
+                            {"price", MoneyFormat::format(cost) }
+                    }
+                    ));
+                } else {
+                    Economy::addMoney(p, cost);
+                    p.sendMessage(txt.getMessage(
+                        "chest.create_fail",
+                        {
+                            {"type", txt.getChestTypeName(type)}
+                    }
+                    ));
+                }
+            };
+
+        fm.appendButton("普通上锁", [pos, dimId, player_uuid, createChestHandler](Player& p) {
+            createChestHandler(
+                p,
+                pos,
+                dimId,
+                player_uuid,
+                ChestType::Locked,
+                ConfigManager::getInstance().get().chestCosts.lockedChestCost
+            );
         });
 
-        fm.appendButton("设为回收商店", [pos, dimId, player_uuid](Player& p) {
-            auto&       region = p.getDimensionBlockSource();
-            std::string errorMsg;
-            if (!canPlayerCreateChest(player_uuid, ChestType::RecycleShop, errorMsg)) {
-                p.sendMessage(errorMsg);
-                return;
-            }
-            double cost = ConfigManager::getInstance().get().chestCosts.recycleShopCost;
-            if (!Economy::hasMoney(p, cost)) {
-                p.sendMessage("§c金钱不足！需要 " + MoneyFormat::format(cost));
-                return;
-            }
-            if (!Economy::reduceMoney(p, cost)) {
-                p.sendMessage("§c扣除金钱失败！");
-                return;
-            }
-            if (setChest(player_uuid, pos, dimId, region, ChestType::RecycleShop)) {
-                p.sendMessage("§a箱子已成功设为回收商店！花费 " + MoneyFormat::format(cost));
-            } else {
-                Economy::addMoney(p, cost);
-                p.sendMessage("§c设置回收商店失败！已退还金钱");
-            }
+        fm.appendButton("设为回收商店", [pos, dimId, player_uuid, createChestHandler](Player& p) {
+            createChestHandler(
+                p,
+                pos,
+                dimId,
+                player_uuid,
+                ChestType::RecycleShop,
+                ConfigManager::getInstance().get().chestCosts.recycleShopCost
+            );
         });
 
-        fm.appendButton("设为商店", [pos, dimId, player_uuid](Player& p) {
-            auto&       region = p.getDimensionBlockSource();
-            std::string errorMsg;
-            if (!canPlayerCreateChest(player_uuid, ChestType::Shop, errorMsg)) {
-                p.sendMessage(errorMsg);
-                return;
-            }
-            double cost = ConfigManager::getInstance().get().chestCosts.shopCost;
-            if (!Economy::hasMoney(p, cost)) {
-                p.sendMessage("§c金钱不足！需要 " + MoneyFormat::format(cost));
-                return;
-            }
-            if (!Economy::reduceMoney(p, cost)) {
-                p.sendMessage("§c扣除金钱失败！");
-                return;
-            }
-            if (setChest(player_uuid, pos, dimId, region, ChestType::Shop)) {
-                p.sendMessage("§a箱子已成功设为商店！花费 " + MoneyFormat::format(cost));
-            } else {
-                Economy::addMoney(p, cost);
-                p.sendMessage("§c设置商店失败！已退还金钱");
-            }
+        fm.appendButton("设为商店", [pos, dimId, player_uuid, createChestHandler](Player& p) {
+            createChestHandler(
+                p,
+                pos,
+                dimId,
+                player_uuid,
+                ChestType::Shop,
+                ConfigManager::getInstance().get().chestCosts.shopCost
+            );
         });
 
-        fm.appendButton("设为公共箱子", [pos, dimId, player_uuid](Player& p) {
-            auto&       region = p.getDimensionBlockSource();
-            std::string errorMsg;
-            if (!canPlayerCreateChest(player_uuid, ChestType::Public, errorMsg)) {
-                p.sendMessage(errorMsg);
-                return;
-            }
-            double cost = ConfigManager::getInstance().get().chestCosts.publicChestCost;
-            if (!Economy::hasMoney(p, cost)) {
-                p.sendMessage("§c金钱不足！需要 " + MoneyFormat::format(cost));
-                return;
-            }
-            if (!Economy::reduceMoney(p, cost)) {
-                p.sendMessage("§c扣除金钱失败！");
-                return;
-            }
-            if (setChest(player_uuid, pos, dimId, region, ChestType::Public)) {
-                p.sendMessage("§a箱子已成功设为公共箱子！花费 " + MoneyFormat::format(cost));
-            } else {
-                Economy::addMoney(p, cost);
-                p.sendMessage("§c设置公共箱子失败！已退还金钱");
-            }
+        fm.appendButton("设为公共箱子", [pos, dimId, player_uuid, createChestHandler](Player& p) {
+            createChestHandler(
+                p,
+                pos,
+                dimId,
+                player_uuid,
+                ChestType::Public,
+                ConfigManager::getInstance().get().chestCosts.publicChestCost
+            );
         });
     }
 
@@ -216,7 +187,8 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
     ll::form::CustomForm fm;
     fm.setTitle("箱子设置");
 
-    ChestConfig config = getChestConfig(pos, dimId, region);
+    auto& chestService = ChestService::getInstance();
+    auto  config       = chestService.getChestConfig(pos, dimId, region);
 
     fm.appendToggle("enable_floating_text", "显示悬浮字", config.enableFloatingText);
 
@@ -233,14 +205,25 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
          chestType,
          isShopType](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
             auto& region = p.getDimensionBlockSource();
+            auto& svc    = ChestService::getInstance();
+            auto& txt    = TextService::getInstance();
+
             if (!result.has_value()) {
-                p.sendMessage("§c你取消了设置。");
-                auto [isLocked, ownerUuid, type] = getChestDetails(pos, dimId, region);
-                showChestLockForm(p, pos, dimId, isLocked, ownerUuid, type, region);
+                p.sendMessage(txt.getMessage("action.cancelled"));
+                auto info = svc.getChestInfo(pos, dimId, region);
+                showChestLockForm(
+                    p,
+                    pos,
+                    dimId,
+                    info.has_value(),
+                    info ? info->ownerUuid : "",
+                    info ? info->type : ChestType::Invalid,
+                    region
+                );
                 return;
             }
 
-            ChestConfig newConfig;
+            ChestConfigData newConfig;
 
             auto ftIt = result->find("enable_floating_text");
             if (ftIt != result->end() && std::holds_alternative<uint64>(ftIt->second)) {
@@ -258,14 +241,22 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
                 }
             }
 
-            if (setChestConfig(pos, dimId, region, newConfig)) {
-                p.sendMessage("§a箱子设置已保存！");
+            if (svc.updateChestConfig(pos, dimId, region, newConfig)) {
+                p.sendMessage(txt.getMessage("chest.config_saved"));
             } else {
-                p.sendMessage("§c箱子设置保存失败！");
+                p.sendMessage(txt.getMessage("chest.config_fail"));
             }
 
-            auto [isLocked, ownerUuid, type] = getChestDetails(pos, dimId, region);
-            showChestLockForm(p, pos, dimId, isLocked, ownerUuid, type, region);
+            auto info = svc.getChestInfo(pos, dimId, region);
+            showChestLockForm(
+                p,
+                pos,
+                dimId,
+                info.has_value(),
+                info ? info->ownerUuid : "",
+                info ? info->type : ChestType::Invalid,
+                region
+            );
         }
     );
 }

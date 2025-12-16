@@ -8,12 +8,8 @@ namespace ll::form {
 class CustomForm;
 }
 class BlockSource;
-#include <atomic>
-#include <chrono>
-#include <mutex>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -29,78 +25,6 @@ struct ChestInfo {
     bool        enableFloatingText = true;
     bool        enableFakeItem     = true;
     bool        isPublic           = true;
-};
-
-
-// 箱子信息缓存结构
-struct ChestCacheEntry {
-    bool                                  isLocked;
-    std::string                           ownerUuid;
-    ChestType                             chestType;
-    std::chrono::steady_clock::time_point timestamp;
-
-    ChestCacheEntry() : isLocked(false), chestType(ChestType::Invalid) {}
-    ChestCacheEntry(bool locked, std::string uuid, ChestType type)
-    : isLocked(locked),
-      ownerUuid(std::move(uuid)),
-      chestType(type),
-      timestamp(std::chrono::steady_clock::now()) {}
-};
-
-// 箱子缓存管理器
-class ChestCacheManager {
-private:
-    // 使用 (dimId, x, y, z) 作为键
-    struct PositionKey {
-        int dimId;
-        int x, y, z;
-
-        bool operator==(const PositionKey& other) const {
-            return dimId == other.dimId && x == other.x && y == other.y && z == other.z;
-        }
-    };
-
-    struct PositionKeyHash {
-        std::size_t operator()(const PositionKey& key) const {
-            // 使用更好的哈希组合，避免冲突
-            std::size_t seed  = 0;
-            seed             ^= std::hash<int>{}(key.dimId) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed             ^= std::hash<int>{}(key.x) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed             ^= std::hash<int>{}(key.y) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            seed             ^= std::hash<int>{}(key.z) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            return seed;
-        }
-    };
-
-    std::unordered_map<PositionKey, ChestCacheEntry, PositionKeyHash> mCache;
-    mutable std::mutex                                                mCacheMutex;
-    std::atomic<int>                                                  mCacheTimeoutSeconds{300}; // 默认缓存5分钟
-
-    ChestCacheManager() = default;
-
-public:
-    static ChestCacheManager& getInstance() {
-        static ChestCacheManager instance;
-        return instance;
-    }
-
-    // 获取缓存的箱子信息
-    bool getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEntry& entry);
-
-    // 设置缓存的箱子信息
-    void setCachedChestInfo(BlockPos pos, int dimId, const ChestCacheEntry& entry);
-
-    // 使缓存失效
-    void invalidateCache(BlockPos pos, int dimId);
-
-    // 清除所有缓存
-    void clearAllCache();
-
-    // 设置缓存超时时间（秒）
-    void setCacheTimeout(int seconds);
-
-    // 清理过期缓存
-    void cleanupExpiredCache();
 };
 
 // 检查箱子状态，返回是否锁定、主人UUID和箱子类型

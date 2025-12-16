@@ -6,7 +6,6 @@
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
-#include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
@@ -22,6 +21,11 @@
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "nlohmann/json.hpp"
+#include "repository/ItemRepository.h"
+#include "repository/ShopRepository.h"
+#include "service/ChestService.h"
+#include "service/RecycleService.h"
+#include "service/TextService.h"
 
 
 namespace CT {
@@ -34,58 +38,43 @@ void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& regio
 void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("回收商店 - 物品列表");
-    fm.setContent("选择你想要回收的物品：");
+    auto& txt = TextService::getInstance();
 
-    // 1. 获取此回收箱的所有回收委托
-    auto& db          = Sqlite3Wrapper::getInstance();
-    auto  commissions = db.query(
-        "SELECT d.item_nbt, r.price, r.min_durability, r.required_enchants "
-         "FROM recycle_shop_items r JOIN item_definitions d ON r.item_id = d.item_id "
-         "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z
-    );
+    auto commissions = RecycleService::getInstance().getCommissions(pos, dimId);
 
     if (commissions.empty()) {
         fm.setContent("该回收商店没有任何回收委托。");
     } else {
         fm.setContent("以下是该回收商店的所有回收委托：");
-        for (const auto& row : commissions) {
-            std::string commissionNbtStr    = row[0];
-            double      price               = std::stod(row[1]); // 从数据库读取时使用 stod
-            int         minDurability       = std::stoi(row[2]);
-            std::string requiredEnchantsStr = row[3];
-
-            auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
+        for (const auto& commission : commissions) {
+            auto itemNbt = CT::NbtUtils::parseSNBT(commission.itemNbt);
             if (!itemNbt) {
                 fm.appendButton("§c[数据损坏] 无法加载委托物品 (NBT解析失败)", [](Player& p) {
-                    p.sendMessage("§c该委托物品数据已损坏，无法回收。");
+                    p.sendMessage(TextService::getInstance().getMessage("recycle.data_corrupt"));
                 });
                 continue;
             }
-            itemNbt->at("Count") = ByteTag(1); // 从NBT创建物品需要Count标签
+            itemNbt->at("Count") = ByteTag(1);
             auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
             if (!itemPtr) {
                 fm.appendButton("§c[数据损坏] 无法加载委托物品 (创建失败)", [](Player& p) {
-                    p.sendMessage("§c该委托物品数据已损坏，无法回收。");
+                    p.sendMessage(TextService::getInstance().getMessage("recycle.data_corrupt"));
                 });
                 continue;
             }
             ItemStack item = *itemPtr;
-            item.mCount    = 1; // 确保 item 的数量为 1，用于显示
+            item.mCount    = 1;
 
             std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"
-                                   + " §6[回收单价: " + CT::MoneyFormat::format(price) + "]§r";
+                                   + " §6[回收单价: " + CT::MoneyFormat::format(commission.price) + "]§r";
 
             std::string itemInfo;
-            if (minDurability > 0) {
-                itemInfo += "\n§a最低耐久: " + std::to_string(minDurability) + "§r";
+            if (commission.minDurability > 0) {
+                itemInfo += "\n§a最低耐久: " + std::to_string(commission.minDurability) + "§r";
             }
-            if (!requiredEnchantsStr.empty()) {
+            if (!commission.requiredEnchants.empty()) {
                 try {
-                    nlohmann::json enchants = nlohmann::json::parse(requiredEnchantsStr);
+                    nlohmann::json enchants = nlohmann::json::parse(commission.requiredEnchants);
                     if (enchants.is_array() && !enchants.empty()) {
                         itemInfo += "\n§d要求附魔: ";
                         for (const auto& enchant : enchants) {
@@ -106,7 +95,9 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             if (itemName.rfind("minecraft:", 0) == 0) {
                 itemName = itemName.substr(10);
             }
-            std::string texturePath = CT::ItemTextureManager::getInstance().getTexture(itemName);
+            std::string texturePath      = CT::ItemTextureManager::getInstance().getTexture(itemName);
+            std::string commissionNbtStr = commission.itemNbt;
+            double      price            = commission.price;
 
             if (!texturePath.empty()) {
                 fm.appendButton(
@@ -128,10 +119,17 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     }
 
     fm.appendButton("返回", [pos, dimId](Player& p) {
-        // 返回到箱子已锁定界面
-        auto& region                          = p.getDimensionBlockSource();
-        auto [isLocked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
-        CT::showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
+        auto& region = p.getDimensionBlockSource();
+        auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+        CT::showChestLockForm(
+            p,
+            pos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
     fm.sendTo(player);
 }
@@ -163,36 +161,26 @@ void showRecycleConfirmForm(
 ) {
     ll::form::CustomForm fm;
     fm.setTitle("确认回收物品");
+    auto& txt = TextService::getInstance();
 
-    // 查找玩家背包中所有可回收的此种物品
-    int   totalPlayerCount = 0;
-    auto& db               = Sqlite3Wrapper::getInstance();
-    int   itemId           = db.getOrCreateItemId(commissionNbtStr);
+    int totalPlayerCount = 0;
+    int itemId           = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     if (itemId < 0) {
-        player.sendMessage("§c无法找到此回收委托的物品定义。");
-        return;
-    }
-    auto commission = db.query(
-        "SELECT min_durability, required_enchants FROM recycle_shop_items WHERE dim_id = ? "
-        "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z,
-        itemId
-    );
-
-    if (commission.empty()) {
-        player.sendMessage("§c无法找到此回收委托。");
+        player.sendMessage(txt.getMessage("recycle.no_item_def"));
         return;
     }
 
-    int            minDurability       = std::stoi(commission[0][0]);
-    std::string    requiredEnchantsStr = commission[0][1];
+    auto commission = RecycleService::getInstance().getCommission(pos, dimId, itemId);
+    if (!commission) {
+        player.sendMessage(txt.getMessage("recycle.no_commission"));
+        return;
+    }
+
+    int            minDurability = commission->minDurability;
     nlohmann::json requiredEnchants;
-    if (!requiredEnchantsStr.empty()) {
+    if (!commission->requiredEnchants.empty()) {
         try {
-            requiredEnchants = nlohmann::json::parse(requiredEnchantsStr);
+            requiredEnchants = nlohmann::json::parse(commission->requiredEnchants);
         } catch (const std::exception& e) {
             logger.error("Failed to parse required_enchants JSON in showRecycleConfirmForm: {}", e.what());
         }
@@ -288,8 +276,9 @@ void showRecycleConfirmForm(
             ll::form::FormCancelReason        reason
         ) {
             auto& region = p.getDimensionBlockSource();
+            auto& txt    = TextService::getInstance();
             if (!result.has_value()) {
-                p.sendMessage("§c你取消了回收。");
+                p.sendMessage(txt.getMessage("action.cancelled"));
                 showRecycleForm(p, pos, dimId, region); // 返回回收商店主界面
                 return;
             }
@@ -299,9 +288,12 @@ void showRecycleConfirmForm(
                 recycleCount = std::stoi(std::get<std::string>(result.value().at("recycle_count")));
 
                 if (recycleCount <= 0 || recycleCount > totalPlayerCount) {
-                    p.sendMessage(
-                        "§c回收数量无效！请输入一个介于1和" + std::to_string(totalPlayerCount) + "之间的整数。"
-                    );
+                    p.sendMessage(txt.getMessage(
+                        "input.invalid_recycle_count",
+                        {
+                            {"max", std::to_string(totalPlayerCount)}
+                    }
+                    ));
                     showRecycleConfirmForm(
                         p,
                         item,
@@ -315,7 +307,7 @@ void showRecycleConfirmForm(
                     return;
                 }
             } catch (const std::exception& e) {
-                p.sendMessage("§c输入无效，请输入正整数。");
+                p.sendMessage(txt.getMessage("input.invalid_number"));
                 showRecycleConfirmForm(
                     p,
                     item,
@@ -359,22 +351,13 @@ void showRecycleFinalConfirmForm(
     const std::string& commissionNbtStr,
     double             unitPrice
 ) {
-    // 查询最大回收数量
-    auto& db              = Sqlite3Wrapper::getInstance();
-    int   itemId          = db.getOrCreateItemId(commissionNbtStr);
+    auto& txt             = TextService::getInstance();
+    int   itemId          = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     int   maxRecycleCount = 0;
     if (itemId >= 0) {
-        auto commission = db.query(
-            "SELECT max_recycle_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = "
-            "? AND item_id = ?",
-            dimId,
-            pos.x,
-            pos.y,
-            pos.z,
-            itemId
-        );
-        if (!commission.empty()) {
-            maxRecycleCount = std::stoi(commission[0][0]);
+        auto commission = RecycleService::getInstance().getCommission(pos, dimId, itemId);
+        if (commission) {
+            maxRecycleCount = commission->maxRecycleCount;
         }
     }
 
@@ -394,37 +377,34 @@ void showRecycleFinalConfirmForm(
         "§a确认回收",
         [item, pos, dimId, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
             auto& region = p.getDimensionBlockSource();
-            // 2. 获取箱子所有者
-            auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, dimId, region);
-            if (!isLocked) {
-                p.sendMessage("§c回收失败，此箱子不再是回收商店。");
+            auto& txt    = TextService::getInstance();
+
+            auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            if (!chestInfo) {
+                p.sendMessage(txt.getMessage("recycle.not_recycle_shop"));
                 return;
             }
+            std::string ownerUuid = chestInfo->ownerUuid;
 
-            // 3. 检查店主
             auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
             if (!ownerInfo) {
-                p.sendMessage("§c回收失败，找不到商店主人。");
+                p.sendMessage(txt.getMessage("recycle.owner_not_found"));
                 return;
             }
 
-            // 提前检查店主余额
-            if (Economy::getMoney(ownerInfo->xuid)
-                < recyclePrice) { // getMoney 仍然可以使用 xuid，因为它最终会转换为 uuid
-                p.sendMessage("§c回收失败，商店主人余额不足。");
+            if (Economy::getMoney(ownerInfo->xuid) < recyclePrice) {
+                p.sendMessage(txt.getMessage("recycle.owner_insufficient"));
                 return;
             }
 
-            // 4. 获取箱子实体
             auto* blockActor = region.getBlockEntity(pos);
             if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-                p.sendMessage("§c回收失败，无法获取箱子实体。");
+                p.sendMessage(txt.getMessage("recycle.chest_entity_fail"));
                 return;
             }
             auto* chest = static_cast<ChestBlockActor*>(blockActor);
 
-            // 预检查箱子容量
-            int chestAvailableSpace = 0; // 可以容纳的物品总数
+            int chestAvailableSpace = 0;
             for (int i = 0; i < chest->getContainerSize(); ++i) {
                 const auto& chestItemInSlot = chest->getItem(i);
                 if (chestItemInSlot.isNull()) {
@@ -440,48 +420,41 @@ void showRecycleFinalConfirmForm(
                 }
             }
             if (chestAvailableSpace < recycleCount) {
-                p.sendMessage("§c回收失败，箱子空间不足，请清理箱子后再试。");
+                p.sendMessage(txt.getMessage("recycle.chest_full"));
                 return;
             }
 
-            // 重新获取委托条件
-            auto& db     = Sqlite3Wrapper::getInstance();
-            int   itemId = db.getOrCreateItemId(commissionNbtStr);
+            int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
             if (itemId < 0) {
-                p.sendMessage("§c回收失败，无法获取物品ID。");
+                p.sendMessage(txt.getMessage("recycle.item_id_fail"));
                 return;
             }
-            auto commission = db.query(
-                "SELECT min_durability, required_enchants, max_recycle_count, "
-                "current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z "
-                "= ? AND item_id = ?",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId
-            );
-            if (commission.empty()) {
-                p.sendMessage("§c回收失败，无法找到回收委托。");
-                return;
-            }
-            int         minDurability        = std::stoi(commission[0][0]);
-            std::string requiredEnchantsStr  = commission[0][1];
-            int         maxRecycleCount      = std::stoi(commission[0][2]);
-            int         currentRecycledCount = std::stoi(commission[0][3]);
 
+            auto commission = RecycleService::getInstance().getCommission(pos, dimId, itemId);
+            if (!commission) {
+                p.sendMessage(txt.getMessage("recycle.no_commission"));
+                return;
+            }
+
+            int            minDurability        = commission->minDurability;
+            int            maxRecycleCount      = commission->maxRecycleCount;
+            int            currentRecycledCount = commission->currentRecycledCount;
             nlohmann::json requiredEnchants;
-            if (!requiredEnchantsStr.empty()) {
+            if (!commission->requiredEnchants.empty()) {
                 try {
-                    requiredEnchants = nlohmann::json::parse(requiredEnchantsStr);
+                    requiredEnchants = nlohmann::json::parse(commission->requiredEnchants);
                 } catch (const std::exception& e) {
                     logger.error("Failed to parse required_enchants JSON in showRecycleFinalConfirmForm: {}", e.what());
                 }
             }
 
-            // 检查是否达到最大回收数量
             if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
-                p.sendMessage("§c回收失败，该委托已达到最大回收数量 (" + std::to_string(maxRecycleCount) + ")。");
+                p.sendMessage(txt.getMessage(
+                    "recycle.max_reached",
+                    {
+                        {"max", std::to_string(maxRecycleCount)}
+                }
+                ));
                 return;
             }
 
@@ -535,20 +508,18 @@ void showRecycleFinalConfirmForm(
                 }
             }
 
-            // 2. 检查找到的物品数量是否足够
             if (removedCount < recycleCount) {
-                p.sendMessage("§c回收失败，背包中可回收物品不足或中途消失。");
+                p.sendMessage(txt.getMessage("recycle.item_insufficient"));
                 return;
             }
 
-            // 3. 执行物品转移
             for (const auto& itemAction : itemsToRemove) {
                 const auto& originalItem  = playerInventory.getItem(itemAction.first);
                 ItemStack   itemToRecycle = originalItem;
                 itemToRecycle.setStackSize(itemAction.second);
 
                 if (!chest->addItem(itemToRecycle)) {
-                    p.sendMessage("§c回收失败，箱子已满。部分物品可能已转移，请联系管理员处理。");
+                    p.sendMessage(txt.getMessage("recycle.chest_full"));
                     logger.error(
                         "Recycle failed mid-transfer due to full chest. Player: {}, Item: {}, Count: {}",
                         p.getRealName(),
@@ -561,11 +532,7 @@ void showRecycleFinalConfirmForm(
                 playerInventory.removeItem(itemAction.first, itemAction.second);
             }
 
-            // --- 物品转移成功后，执行金钱交易和数据更新 ---
-
-            // 4. 扣除商店主人金钱
             if (!Economy::reduceMoneyByUuid(ownerUuid, recyclePrice)) {
-                // 扣钱失败，回滚物品：从箱子移除并放回玩家背包
                 int remaining = recycleCount;
                 for (int i = 0; i < chest->getContainerSize() && remaining > 0; ++i) {
                     const auto& chestItem = chest->getItem(i);
@@ -587,7 +554,7 @@ void showRecycleFinalConfirmForm(
                     }
                 }
                 p.refreshInventory();
-                p.sendMessage("§c回收失败，商店主人余额不足，物品已退回。");
+                p.sendMessage(txt.getMessage("recycle.money_refund"));
                 logger.error(
                     "Recycle failed at money reduction. Player: {}, OwnerUUID: {}, Amount: {}",
                     p.getRealName(),
@@ -597,52 +564,23 @@ void showRecycleFinalConfirmForm(
                 return;
             }
 
-            // 5. 给予玩家金钱
             Economy::addMoney(p, recyclePrice);
 
-            // 6. 更新数据库（使用事务保证原子性）
-            {
-                Transaction txn(db);
-                if (!txn.isActive()) {
-                    p.sendMessage("§c回收失败，数据库事务启动失败。");
-                    return;
-                }
-
-                db.execute(
-                    "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = "
-                    "? "
-                    "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
-                    recycleCount,
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    itemId
-                );
-
-                db.execute(
-                    "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, "
-                    "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    itemId,
-                    p.getUuid().asString(),
-                    recycleCount,
-                    recyclePrice // total_price 作为 double 传递
-                );
-
-                if (!txn.commit()) {
-                    p.sendMessage("§c回收失败，数据库更新失败。");
-                    return;
-                }
+            auto result =
+                RecycleService::getInstance().executeRecycle(p, pos, dimId, itemId, recycleCount, ownerUuid, region);
+            if (!result.success) {
+                p.sendMessage(txt.getMessage("recycle.db_fail"));
+                return;
             }
 
-            p.sendMessage(
-                "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
-                + CT::MoneyFormat::format(recyclePrice) + "§a 金币。"
-            );
+            p.sendMessage(txt.getMessage(
+                "recycle.success",
+                {
+                    {"item",  std::string(item.getName())          },
+                    {"count", std::to_string(recycleCount)         },
+                    {"price", CT::MoneyFormat::format(recyclePrice)}
+            }
+            ));
             p.refreshInventory();
             showRecycleForm(p, pos, dimId, region);
         }
@@ -670,24 +608,26 @@ void showCommissionDetailsForm(
 void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
     fm.setTitle("设置回收商店名称");
+    auto& txt = TextService::getInstance();
 
-    std::string currentName = getShopName(pos, dimId, region);
+    std::string currentName = ChestService::getInstance().getShopName(pos, dimId, region);
     fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
     fm.appendInput("shop_name", "请输入商店名称", "", currentName);
 
     fm.sendTo(player, [pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
         auto& region = p.getDimensionBlockSource();
+        auto& txt    = TextService::getInstance();
         if (!result.has_value()) {
-            p.sendMessage("§c你取消了设置商店名称。");
+            p.sendMessage(txt.getMessage("action.cancelled"));
             showRecycleShopManageForm(p, pos, dimId, region);
             return;
         }
 
         std::string newName = std::get<std::string>(result.value().at("shop_name"));
-        if (setShopName(pos, dimId, region, newName)) {
-            p.sendMessage("§a商店名称设置成功！");
+        if (ChestService::getInstance().setShopName(pos, dimId, region, newName)) {
+            p.sendMessage(txt.getMessage("shop.name_set_success"));
         } else {
-            p.sendMessage("§c商店名称设置失败！");
+            p.sendMessage(txt.getMessage("shop.name_set_fail"));
         }
         showRecycleShopManageForm(p, pos, dimId, region);
     });
@@ -715,9 +655,17 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
 
     fm.appendButton("返回", [pos, dimId](Player& p) {
         // 返回到箱子已锁定界面
-        auto& region                          = p.getDimensionBlockSource();
-        auto [isLocked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
-        CT::showChestLockForm(p, pos, dimId, isLocked, ownerUuid, chestType, region);
+        auto& region = p.getDimensionBlockSource();
+        auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+        CT::showChestLockForm(
+            p,
+            pos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
 
     fm.sendTo(player);
@@ -730,49 +678,39 @@ void showEditCommissionForm(
     BlockSource&       region,
     const std::string& commissionNbtStr
 ) {
-    // 先解析物品信息
+    auto& txt = TextService::getInstance();
+
     auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
     if (!itemNbt) {
-        player.sendMessage("§c无法加载物品信息。");
+        player.sendMessage(txt.getMessage("recycle.load_fail"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
         return;
     }
     itemNbt->at("Count") = ByteTag(1);
     auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
-        player.sendMessage("§c无法加载物品信息。");
+        player.sendMessage(txt.getMessage("recycle.load_fail"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
         return;
     }
     ItemStack item = *itemPtr;
 
-    // 获取当前委托信息
-    auto& db     = Sqlite3Wrapper::getInstance();
-    int   itemId = db.getOrCreateItemId(commissionNbtStr);
+    int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     if (itemId < 0) {
-        player.sendMessage("§c无法获取物品ID。");
+        player.sendMessage(txt.getMessage("recycle.item_id_fail"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
         return;
     }
 
-    auto commission = db.query(
-        "SELECT price, max_recycle_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND "
-        "pos_z = ? AND item_id = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z,
-        itemId
-    );
-
-    if (commission.empty()) {
-        player.sendMessage("§c无法找到该委托信息。");
+    auto commission = RecycleService::getInstance().getCommission(pos, dimId, itemId);
+    if (!commission) {
+        player.sendMessage(txt.getMessage("recycle.no_commission"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
         return;
     }
 
-    double currentPrice           = std::stod(commission[0][0]); // 修改为 stod
-    int    currentMaxRecycleCount = std::stoi(commission[0][1]);
+    double currentPrice           = commission->price;
+    int    currentMaxRecycleCount = commission->maxRecycleCount;
 
     ll::form::CustomForm fm;
     fm.setTitle("编辑回收委托");
@@ -797,51 +735,42 @@ void showEditCommissionForm(
          commissionNbtStr,
          itemId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
             auto& region = p.getDimensionBlockSource();
+            auto& txt    = TextService::getInstance();
             if (!result.has_value()) {
-                p.sendMessage("§c你取消了编辑。");
+                p.sendMessage(txt.getMessage("action.cancelled"));
                 showCommissionDetailsForm(p, pos, dimId, region, commissionNbtStr);
                 return;
             }
 
             try {
-                double newPrice = std::stod(std::get<std::string>(result.value().at("price_input"))); // 修改为 stod
-                if (newPrice < 0.0) { // 修改为 double 比较
-                    p.sendMessage("§c价格不能为负数！");
+                double newPrice = std::stod(std::get<std::string>(result.value().at("price_input")));
+                if (newPrice < 0.0) {
+                    p.sendMessage(txt.getMessage("input.negative_price"));
                     showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                     return;
                 }
 
                 int newMaxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
                 if (newMaxRecycleCount < 0) {
-                    p.sendMessage("§c最大回收数量不能为负数！");
+                    p.sendMessage(txt.getMessage("input.negative_max_count"));
                     showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                     return;
                 }
 
-                // 更新数据库
-                auto& db = Sqlite3Wrapper::getInstance();
-                if (db.execute(
-                        "UPDATE recycle_shop_items SET price = ?, max_recycle_count = ? WHERE dim_id = ? AND pos_x = ? "
-                        "AND pos_y = ? AND pos_z = ? AND item_id = ?",
-                        newPrice, // price 作为 double 传递
-                        newMaxRecycleCount,
-                        dimId,
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        itemId
-                    )) {
-                    p.sendMessage(
-                        "§a委托信息更新成功！新价格: " + std::to_string(newPrice)
-                        + "，新最大回收数量: " + std::to_string(newMaxRecycleCount)
-                    ); // 使用 std::to_string 显示 double
-                    FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop);
+                if (RecycleService::getInstance().updateCommission(pos, dimId, itemId, newPrice, newMaxRecycleCount)) {
+                    p.sendMessage(txt.getMessage(
+                        "recycle.commission_update",
+                        {
+                            {"price", CT::MoneyFormat::format(newPrice) },
+                            {"max",   std::to_string(newMaxRecycleCount)}
+                    }
+                    ));
                 } else {
-                    p.sendMessage("§c委托信息更新失败！");
+                    p.sendMessage(txt.getMessage("recycle.fail"));
                 }
 
             } catch (const std::exception& e) {
-                p.sendMessage("§c输入无效，请输入一个数字。"); // 提示修改
+                p.sendMessage(txt.getMessage("input.invalid_number"));
                 showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
                 return;
             }
@@ -858,29 +787,28 @@ void showCommissionDetailsForm(
     BlockSource&       region,
     const std::string& commissionNbtStr
 ) {
-    // 先解析物品信息（在主线程）
+    auto& txt = TextService::getInstance();
+
     auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
     if (!itemNbt) {
-        player.sendMessage("§c无法加载物品信息。");
+        player.sendMessage(txt.getMessage("recycle.load_fail"));
         return;
     }
     itemNbt->at("Count") = ByteTag(1);
     auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
-        player.sendMessage("§c无法加载物品信息。");
+        player.sendMessage(txt.getMessage("recycle.load_fail"));
         return;
     }
     std::string itemName = itemPtr->getName();
 
-    // 异步查询回收记录和委托信息
     auto& db = Sqlite3Wrapper::getInstance();
 
-    // 获取玩家UUID用于后续回调
     std::string playerUuid = player.getUuid().asString();
 
-    int itemId = db.getOrCreateItemId(commissionNbtStr);
+    int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     if (itemId < 0) {
-        player.sendMessage("§c无法加载回收记录。");
+        player.sendMessage(txt.getMessage("recycle.load_records_fail"));
         return;
     }
 
@@ -1126,16 +1054,17 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
         player,
         [item, pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
             auto& region = p.getDimensionBlockSource();
+            auto& txt    = TextService::getInstance();
             if (!result.has_value()) {
-                p.sendMessage("§c你取消了设置回收委托。");
+                p.sendMessage(txt.getMessage("action.cancelled"));
                 showAddItemToRecycleShopForm(p, pos, dimId, region);
                 return;
             }
 
             try {
-                double price = std::stod(std::get<std::string>(result.value().at("price_input"))); // 直接解析为 double
+                double price = std::stod(std::get<std::string>(result.value().at("price_input")));
                 if (price < 0.0) {
-                    p.sendMessage("§c价格不能为负数！");
+                    p.sendMessage(txt.getMessage("input.negative_price"));
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                     return;
                 }
@@ -1144,7 +1073,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 if (item.isDamageableItem()) {
                     minDurability = std::stoi(std::get<std::string>(result.value().at("min_durability")));
                     if (minDurability < 0) {
-                        p.sendMessage("§c最低耐久度不能为负数！");
+                        p.sendMessage(txt.getMessage("input.negative_durability"));
                         showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                         return;
                     }
@@ -1167,7 +1096,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                                 enchant["level"] = level;
                                 enchantsJson.push_back(enchant);
                             } catch (const std::exception& e) {
-                                p.sendMessage("§c附魔格式无效，请使用 ID:等级,ID:等级 的格式。");
+                                p.sendMessage(txt.getMessage("input.invalid_enchant"));
                                 showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                                 return;
                             }
@@ -1176,73 +1105,46 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 }
                 std::string enchantsJsonStr = enchantsJson.is_null() || enchantsJson.empty() ? "" : enchantsJson.dump();
 
-
                 int maxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
                 if (maxRecycleCount < 0) {
-                    p.sendMessage("§c最大回收数量不能为负数！");
+                    p.sendMessage(txt.getMessage("input.negative_max_count"));
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                     return;
                 }
 
-
-                // 获取物品NBT
                 auto itemNbt = CT::NbtUtils::getItemNbt(item);
                 if (!itemNbt) {
-                    p.sendMessage("§c无法获取物品NBT数据。");
+                    p.sendMessage(txt.getMessage("input.nbt_fail"));
                     return;
                 }
 
-                // 获取物品NBT，并移除数量和损坏标签，以便进行物品类型聚合和数据库存储
                 auto        cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt);
                 std::string itemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
 
                 logger.info("Setting recycle commission for item '{}'.", item.getName());
-                logger.info("Original NBT: {}", CT::NbtUtils::toSNBT(*itemNbt));
-                logger.info("Cleaned NBT for DB: {}", itemNbtStr);
 
-                // 插入或更新到数据库
-                auto& db     = Sqlite3Wrapper::getInstance();
-                int   itemId = db.getOrCreateItemId(itemNbtStr);
-                if (itemId < 0) {
-                    p.sendMessage("§c回收委托设置失败！无法创建物品定义。");
-                    return;
-                }
+                auto result =
+                    RecycleService::getInstance()
+                        .setCommission(pos, dimId, itemNbtStr, price, minDurability, enchantsJsonStr, maxRecycleCount);
 
-                std::string sql = "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, "
-                                  "min_durability, required_enchants, max_recycle_count, current_recycled_count) "
-                                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) "
-                                  "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = "
-                                  "excluded.price, min_durability = excluded.min_durability, required_enchants = "
-                                  "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count;";
-
-                if (db.execute(
-                        sql,
-                        dimId,
-                        pos.x,
-                        pos.y,
-                        pos.z,
-                        itemId,
-                        price, // price 作为 double 传递
-                        minDurability,
-                        enchantsJsonStr,
-                        maxRecycleCount
-                    )) {
-                    p.sendMessage(
-                        "§a回收委托设置成功！价格: " + CT::MoneyFormat::format(price)
-                        + "，最大回收数量: " + std::to_string(maxRecycleCount)
-                    );
-                    FloatingTextManager::getInstance()
-                        .updateShopFloatingText(pos, dimId, ChestType::RecycleShop); // 更新悬浮字
+                if (result.success) {
+                    p.sendMessage(txt.getMessage(
+                        "recycle.commission_set",
+                        {
+                            {"price", CT::MoneyFormat::format(price) },
+                            {"max",   std::to_string(maxRecycleCount)}
+                    }
+                    ));
                 } else {
-                    p.sendMessage("§c回收委托设置失败！请联系管理员检查数据库表结构。");
+                    p.sendMessage(txt.getMessage("recycle.fail"));
                 }
 
             } catch (const std::exception& e) {
-                p.sendMessage("§c输入无效，请输入一个数字。"); // 提示修改为数字
+                p.sendMessage(txt.getMessage("input.invalid_number"));
                 showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                 return;
             }
-            showRecycleShopManageForm(p, pos, dimId, region); // 返回管理界面
+            showRecycleShopManageForm(p, pos, dimId, region);
         }
     );
 }
