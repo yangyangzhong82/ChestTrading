@@ -40,6 +40,7 @@ namespace CT {
 
 // 定义一个全局map来存储每个玩家的上次交互时间
 std::map<std::string, std::chrono::steady_clock::time_point> lastInteractionTime;
+std::mutex                                                   lastInteractionTimeMutex; // 保护 lastInteractionTime
 // 定义防抖间隔，例如500毫秒
 const std::chrono::milliseconds DEBOUNCE_INTERVAL(500);
 // 清理间隔（60秒未交互的条目将被清理）
@@ -67,22 +68,25 @@ void registerEventListener() {
         // 防抖处理（仅对箱子交互）
         auto currentTime = std::chrono::steady_clock::now();
 
-        // 清理过期条目
-        for (auto it = lastInteractionTime.begin(); it != lastInteractionTime.end();) {
-            if (currentTime - it->second > CLEANUP_THRESHOLD) {
-                it = lastInteractionTime.erase(it);
-            } else {
-                ++it;
+        {
+            std::lock_guard<std::mutex> lock(lastInteractionTimeMutex);
+            // 清理过期条目
+            for (auto it = lastInteractionTime.begin(); it != lastInteractionTime.end();) {
+                if (currentTime - it->second > CLEANUP_THRESHOLD) {
+                    it = lastInteractionTime.erase(it);
+                } else {
+                    ++it;
+                }
             }
-        }
 
-        if (lastInteractionTime.count(player_uuid)
-            && std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid])
-                   < DEBOUNCE_INTERVAL) {
-            ev.cancel();
-            return;
+            if (lastInteractionTime.count(player_uuid)
+                && std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - lastInteractionTime[player_uuid])
+                       < DEBOUNCE_INTERVAL) {
+                ev.cancel();
+                return;
+            }
+            lastInteractionTime[player_uuid] = currentTime;
         }
-        lastInteractionTime[player_uuid] = currentTime;
 
         // 始终使用主箱子位置进行逻辑判断
         BlockPos pos = CT::internal::GetMainChestPos(originalPos, region);

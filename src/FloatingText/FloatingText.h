@@ -3,9 +3,9 @@
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
 #include "ll/api/coro/CoroTask.h"
+#include "ll/api/coro/SleepAwaiter.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
-#include "ll/api/coro/SleepAwaiter.h"
 #include "mc/legacy/ActorUniqueID.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+
 
 namespace CT {
 enum class ChestType {
@@ -34,15 +35,15 @@ struct ChestFloatingText {
     std::string                              text;
     std::unique_ptr<debug_shape::IDebugText> debugText; // 对应的 DebugText 对象
     ChestType                                type;
-    bool                                     isDynamic        = false;
-    bool                                     enableFakeItem   = true; // 单箱子假物品配置
+    bool                                     isDynamic      = false;
+    bool                                     enableFakeItem = true; // 单箱子假物品配置
     std::vector<std::string>                 itemNames;
-    size_t                                   currentItemIndex = 0;
+    size_t                                   currentItemIndex     = 0;
     size_t                                   currentFakeItemIndex = 0; // 假物品独立索引
-    
+
     // 假物品相关
-    std::vector<ItemStack>                          items;           // 存储物品
-    std::map<std::string, ActorUniqueID>            playerFakeItemIds; // 玩家UUID -> 假物品ID
+    std::vector<ItemStack>               items;             // 存储物品
+    std::map<std::string, ActorUniqueID> playerFakeItemIds; // 玩家UUID -> 假物品ID
 
     // 构造函数
     ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct, bool fakeItem = true)
@@ -60,11 +61,13 @@ public:
     // 使用 map 存储悬浮字，键为 (dimId, BlockPos)
     std::map<std::pair<int, BlockPos>, ChestFloatingText> mFloatingTexts;
     std::optional<ll::coro::CoroTask<>>                   mUpdateTask; // 用于更新悬浮字的协程任务
-    bool                                                  mIsLoaded = false; // 标志，指示是否已从数据库加载悬浮字
+    bool              mIsLoaded = false;        // 标志，指示是否已从数据库加载悬浮字
+    std::atomic<bool> mShouldStopUpdate{false}; // 控制协程停止
 
     FloatingTextManager() = default; // 私有构造函数，实现单例模式
 
     void startDynamicTextUpdateLoop(); // 启动动态更新循环
+    void stopDynamicTextUpdateLoop();  // 停止动态更新循环
 
 private:
     ll::coro::CoroTask<> dynamicTextUpdateCoroutine(); // 新增协程函数声明
@@ -73,7 +76,13 @@ public:
     // 获取单例实例
     static FloatingTextManager& getInstance();
     // 添加或更新一个箱子的悬浮字
-    void addOrUpdateFloatingText(BlockPos pos, int dimId, const std::string& ownerUuid, const std::string& text, ChestType type);
+    void addOrUpdateFloatingText(
+        BlockPos           pos,
+        int                dimId,
+        const std::string& ownerUuid,
+        const std::string& text,
+        ChestType          type
+    );
 
     // 移除一个箱子的悬浮字
     void removeFloatingText(BlockPos pos, int dimId);

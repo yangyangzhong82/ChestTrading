@@ -24,7 +24,7 @@ ActorUniqueID AddFakeitem(Vec3 pos, Player& player, BlockSource& region, ItemSta
     auto  level = ll::service::getLevel();
     auto& spaw  = level->getSpawner();
     auto  is    = spaw.spawnItem(region, item, nullptr, pos, 0);
-    if (is) {
+    if (!is) {
         return ActorUniqueID{};
     }
 

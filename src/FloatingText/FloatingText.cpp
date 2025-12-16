@@ -316,7 +316,7 @@ void FloatingTextManager::loadAllLockedChests() {
 ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
     logger.debug("dynamicTextUpdateCoroutine: 协程开始运行");
     bool updateText = true; // 交替标志：true更新悬浮字，false更新假物品
-    while (true) {
+    while (!mShouldStopUpdate.load()) {
         logger.trace(
             "dynamicTextUpdateCoroutine: 开始更新循环，共 {} 个悬浮字, updateText={}",
             mFloatingTexts.size(),
@@ -360,9 +360,16 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
 }
 
 void FloatingTextManager::startDynamicTextUpdateLoop() {
+    mShouldStopUpdate.store(false);
     mUpdateTask.emplace(dynamicTextUpdateCoroutine()); // 调用协程函数获取 CoroTask
     mUpdateTask->launch(ll::thread::ServerThreadExecutor::getDefault());
     logger.debug("动态悬浮字更新循环已启动。");
+}
+
+void FloatingTextManager::stopDynamicTextUpdateLoop() {
+    mShouldStopUpdate.store(true);
+    mUpdateTask.reset();
+    logger.debug("动态悬浮字更新循环已停止。");
 }
 
 // 更新商店/回收商店的悬浮字物品列表

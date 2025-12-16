@@ -227,7 +227,7 @@ bool setChest(const std::string& player_uuid, BlockPos pos, int dimId, BlockSour
 
     // 设置/移除箱子名称
     auto* mainBlockActor = region.getBlockEntity(mainPos);
-    if (mainBlockActor) {
+    if (mainBlockActor && mainBlockActor->mType == BlockActorType::Chest) {
         auto nbt = NbtUtils::getBlockEntityNbt(mainBlockActor);
         if (nbt) {
             if (type == ChestType::Locked || type == ChestType::Public) {

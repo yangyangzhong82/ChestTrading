@@ -1,12 +1,13 @@
 #include "Entry/Entry.h"
 
 #include "Config/ConfigManager.h"
-#include "FloatingText/FloatingText.h" 
-#include "Utils/ItemTextureManager.h"  
+#include "FloatingText/FloatingText.h"
+#include "Utils/ItemTextureManager.h"
+#include "command/command.h"
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/event.h"
 #include "ll/api/mod/RegisterHelper.h"
-#include "command/command.h"
+
 namespace CT {
 
 Entry& Entry::getInstance() {
@@ -44,8 +45,6 @@ bool Entry::enable() {
     std::vector<std::string> defaultTextureFiles = {"terrain_texture.json", "item_texture.json"};
     CT::ItemTextureManager::getInstance().loadTextures(defaultTextureFiles);
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
-    registerEventListener();
-    registerPlayerConnectionListener(); // 注册玩家连接事件
 
     std::string db_path = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
     if (db.open(db_path)) {
@@ -58,6 +57,9 @@ bool Entry::enable() {
 
         FloatingTextManager::getInstance().loadAllLockedChests(); // 在模组启用时加载所有悬浮字
 
+        // 数据库打开成功后再注册事件监听器
+        registerEventListener();
+        registerPlayerConnectionListener(); // 注册玩家连接事件
     } else {
         getSelf().getLogger().error("Failed to open database: " + db_path);
         return false; // 数据库打开失败，模组启用失败
@@ -68,8 +70,9 @@ bool Entry::enable() {
 bool Entry::disable() {
     getSelf().getLogger().debug("Disabling...");
     // Code for disabling the mod goes here.
-    Sqlite3Wrapper::getInstance().close();                       // 关闭数据库
-    FloatingTextManager::getInstance().removeAllFloatingTexts(); // 移除所有悬浮字
+    FloatingTextManager::getInstance().stopDynamicTextUpdateLoop(); // 先停止协程
+    FloatingTextManager::getInstance().removeAllFloatingTexts();    // 移除所有悬浮字
+    Sqlite3Wrapper::getInstance().close();                          // 关闭数据库
     getSelf().getLogger().info("Database closed and all floating texts removed.");
     return true;
 }
