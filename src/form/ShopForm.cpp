@@ -782,80 +782,56 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
         pos.z
     );
 
-    // 在后台线程等待查询完成，然后回调到主线程显示表单
-    std::thread([future = std::move(future), playerUuid, pos, dimId]() mutable {
-        try {
-            // 等待查询完成
-            auto records = future.get();
+    // 使用线程池等待查询完成，然后回调到主线程显示表单
+    db.thenOnMainThread(std::move(future), [playerUuid, pos, dimId](std::vector<std::vector<std::string>> records) {
+        logger.debug("showPurchaseRecordsForm: 异步查询完成，记录数: {}", records.size());
 
-            logger.debug("showPurchaseRecordsForm: 异步查询完成，记录数: {}", records.size());
-
-            // 回调到主线程显示表单
-            ll::thread::ServerThreadExecutor::getDefault().execute(
-                [records = std::move(records), playerUuid, pos, dimId]() {
-                    // 重新获取玩家对象
-                    auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                    if (!player) {
-                        logger.warn("showPurchaseRecordsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
-                        return;
-                    }
-
-                    auto* region = &player->getDimensionBlockSource();
-
-                    ll::form::SimpleForm fm;
-                    fm.setTitle("购买记录");
-
-                    if (records.empty()) {
-                        fm.setContent("§7该商店暂无购买记录。");
-                    } else {
-                        std::string content = "§a最近的购买记录:\n";
-                        for (const auto& row : records) {
-                            // int itemId             = std::stoi(row[0]);
-                            std::string buyerUuid     = row[1];
-                            std::string purchaseCount = row[2];
-                            std::string totalPrice    = row[3]; // totalPrice 已经是 string，直接使用
-                            std::string timestamp     = row[4];
-                            std::string itemNbtStr    = row[5];
-
-                            auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
-                            std::string itemName = "未知物品";
-                            if (itemPtr) {
-                                itemName = itemPtr->getName();
-                            }
-
-                            std::string buyerName = buyerUuid;
-                            auto        playerInfo =
-                                ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(buyerUuid));
-                            if (playerInfo) {
-                                buyerName = playerInfo->name;
-                            }
-
-                            content += "§f" + timestamp + " - " + buyerName + " 购买了 " + itemName + " x"
-                                     + purchaseCount + "，花费 " + totalPrice + " 金币\n";
-                        }
-                        fm.setContent(content);
-                    }
-
-                    fm.appendButton("返回", [pos, dimId](Player& p) {
-                        auto& region = p.getDimensionBlockSource();
-                        showShopChestManageForm(p, pos, dimId, region);
-                    });
-
-                    fm.sendTo(*player);
-                }
-            );
-        } catch (const std::exception& e) {
-            logger.error("showPurchaseRecordsForm: 异步查询失败: {}", e.what());
-
-            // 错误时也要回调到主线程通知玩家
-            ll::thread::ServerThreadExecutor::getDefault().execute([playerUuid, e_msg = std::string(e.what())]() {
-                auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                if (player) {
-                    player->sendMessage("§c查询购买记录失败: " + e_msg);
-                }
-            });
+        // 重新获取玩家对象
+        auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
+        if (!player) {
+            logger.warn("showPurchaseRecordsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
+            return;
         }
-    }).detach();
+
+        ll::form::SimpleForm fm;
+        fm.setTitle("购买记录");
+
+        if (records.empty()) {
+            fm.setContent("§7该商店暂无购买记录。");
+        } else {
+            std::string content = "§a最近的购买记录:\n";
+            for (const auto& row : records) {
+                std::string buyerUuid     = row[1];
+                std::string purchaseCount = row[2];
+                std::string totalPrice    = row[3];
+                std::string timestamp     = row[4];
+                std::string itemNbtStr    = row[5];
+
+                auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+                std::string itemName = "未知物品";
+                if (itemPtr) {
+                    itemName = itemPtr->getName();
+                }
+
+                std::string buyerName = buyerUuid;
+                auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(buyerUuid));
+                if (playerInfo) {
+                    buyerName = playerInfo->name;
+                }
+
+                content += "§f" + timestamp + " - " + buyerName + " 购买了 " + itemName + " x" + purchaseCount
+                         + "，花费 " + totalPrice + " 金币\n";
+            }
+            fm.setContent(content);
+        }
+
+        fm.appendButton("返回", [pos, dimId](Player& p) {
+            auto& region = p.getDimensionBlockSource();
+            showShopChestManageForm(p, pos, dimId, region);
+        });
+
+        fm.sendTo(*player);
+    });
 }
 
 } // namespace CT

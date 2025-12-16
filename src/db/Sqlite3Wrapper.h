@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ThreadPool.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -114,6 +115,15 @@ public:
 
     // 等待所有异步任务完成
     void waitForAllAsyncTasks();
+
+    // 在线程池中等待 future 完成，然后在主线程执行回调
+    // 用于替代 std::thread([]{future.get(); callback();}).detach() 模式
+    template <typename T, typename Callback>
+    void thenOnMainThread(std::future<T> fut, Callback&& callback);
+
+    // 在线程池中等待两个 future 完成，然后在主线程执行回调
+    template <typename T1, typename T2, typename Callback>
+    void thenOnMainThread(std::future<T1> fut1, std::future<T2> fut2, Callback&& callback);
 
     // 获取数据库统计信息
     struct DbStats {
@@ -407,5 +417,49 @@ std::future<std::vector<std::vector<std::string>>> Sqlite3Wrapper::queryAsync(co
             [this, &sql](auto&&... args) { return this->query(sql, std::forward<decltype(args)>(args)...); },
             params
         );
+    });
+}
+
+// 在线程池中等待 future 完成，然后在主线程执行回调
+template <typename T, typename Callback>
+void Sqlite3Wrapper::thenOnMainThread(std::future<T> fut, Callback&& callback) {
+    if (!mThreadPool) {
+        throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+
+    mThreadPool->enqueue([fut = std::make_shared<std::future<T>>(std::move(fut)),
+                          cb  = std::forward<Callback>(callback)]() mutable {
+        try {
+            T result = fut->get();
+            ll::thread::ServerThreadExecutor::getDefault().execute([result = std::move(result), cb = std::move(cb)]() {
+                cb(std::move(result));
+            });
+        } catch (const std::exception& e) {
+            std::cerr << "thenOnMainThread: future.get() failed: " << e.what() << std::endl;
+        }
+    });
+}
+
+// 在线程池中等待两个 future 完成，然后在主线程执行回调
+template <typename T1, typename T2, typename Callback>
+void Sqlite3Wrapper::thenOnMainThread(std::future<T1> fut1, std::future<T2> fut2, Callback&& callback) {
+    if (!mThreadPool) {
+        throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+
+    mThreadPool->enqueue([fut1 = std::make_shared<std::future<T1>>(std::move(fut1)),
+                          fut2 = std::make_shared<std::future<T2>>(std::move(fut2)),
+                          cb   = std::forward<Callback>(callback)]() mutable {
+        try {
+            T1 result1 = fut1->get();
+            T2 result2 = fut2->get();
+            ll::thread::ServerThreadExecutor::getDefault().execute(
+                [result1 = std::move(result1), result2 = std::move(result2), cb = std::move(cb)]() {
+                    cb(std::move(result1), std::move(result2));
+                }
+            );
+        } catch (const std::exception& e) {
+            std::cerr << "thenOnMainThread: future.get() failed: " << e.what() << std::endl;
+        }
     });
 }

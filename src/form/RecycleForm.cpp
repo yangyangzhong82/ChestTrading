@@ -915,105 +915,79 @@ void showCommissionDetailsForm(
         itemId
     );
 
-    // 在后台线程等待查询完成，然后回调到主线程显示表单
-    std::thread([recordsFuture    = std::move(recordsFuture),
-                 commissionFuture = std::move(commissionFuture),
-                 playerUuid,
-                 pos,
-                 dimId,
-                 itemName,
-                 commissionNbtStr]() mutable {
-        try {
-            // 等待查询完成
-            auto records        = recordsFuture.get();
-            auto commissionInfo = commissionFuture.get();
-
+    // 使用线程池等待查询完成，然后回调到主线程显示表单
+    db.thenOnMainThread(
+        std::move(recordsFuture),
+        std::move(commissionFuture),
+        [playerUuid, pos, dimId, itemName, commissionNbtStr](
+            std::vector<std::vector<std::string>> records,
+            std::vector<std::vector<std::string>> commissionInfo
+        ) {
             logger.debug("showCommissionDetailsForm: 异步查询完成，记录数: {}", records.size());
 
-            // 回调到主线程显示表单
-            ll::thread::ServerThreadExecutor::getDefault().execute([records        = std::move(records),
-                                                                    commissionInfo = std::move(commissionInfo),
-                                                                    playerUuid,
-                                                                    pos,
-                                                                    dimId,
-                                                                    itemName,
-                                                                    commissionNbtStr]() {
-                // 重新获取玩家对象
-                auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                if (!player) {
-                    logger.warn("showCommissionDetailsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
-                    return;
-                }
+            // 重新获取玩家对象
+            auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
+            if (!player) {
+                logger.warn("showCommissionDetailsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
+                return;
+            }
 
-                auto* region = &player->getDimensionBlockSource();
+            ll::form::SimpleForm fm;
+            fm.setTitle("回收记录详情");
 
-                ll::form::SimpleForm fm;
-                fm.setTitle("回收记录详情");
+            std::string content = "物品: " + itemName + "\n\n";
 
-                std::string content = "物品: " + itemName + "\n\n";
+            // 显示委托信息
+            if (!commissionInfo.empty()) {
+                double price                = std::stod(commissionInfo[0][0]);
+                int    maxRecycleCount      = std::stoi(commissionInfo[0][1]);
+                int    currentRecycledCount = std::stoi(commissionInfo[0][2]);
 
-                // 显示委托信息
-                if (!commissionInfo.empty()) {
-                    double price                = std::stod(commissionInfo[0][0]); // 修改为 stod
-                    int    maxRecycleCount      = std::stoi(commissionInfo[0][1]);
-                    int    currentRecycledCount = std::stoi(commissionInfo[0][2]);
-
-                    content += "§6当前回收单价: " + CT::MoneyFormat::format(price) + "§r\n";
-                    if (maxRecycleCount > 0) {
-                        content += "§e最大回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
-                        content += "§a已回收数量: " + std::to_string(currentRecycledCount) + "§r\n\n";
-                    } else {
-                        content += "§e最大回收数量: 无限制§r\n\n";
-                    }
-                }
-
-                if (records.empty()) {
-                    content += "§7该委托暂无回收记录。";
+                content += "§6当前回收单价: " + CT::MoneyFormat::format(price) + "§r\n";
+                if (maxRecycleCount > 0) {
+                    content += "§e最大回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
+                    content += "§a已回收数量: " + std::to_string(currentRecycledCount) + "§r\n\n";
                 } else {
-                    content += "§a最近的回收记录:\n";
-                    for (const auto& row : records) {
-                        std::string recyclerUuid = row[0];
-                        std::string recycleCount = row[1];
-                        std::string totalPrice   = row[2];
-                        std::string timestamp    = row[3];
+                    content += "§e最大回收数量: 无限制§r\n\n";
+                }
+            }
 
-                        std::string recyclerName = recyclerUuid;
-                        auto        playerInfo =
-                            ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(recyclerUuid));
-                        if (playerInfo) {
-                            recyclerName = playerInfo->name;
-                        }
+            if (records.empty()) {
+                content += "§7该委托暂无回收记录。";
+            } else {
+                content += "§a最近的回收记录:\n";
+                for (const auto& row : records) {
+                    std::string recyclerUuid = row[0];
+                    std::string recycleCount = row[1];
+                    std::string totalPrice   = row[2];
+                    std::string timestamp    = row[3];
 
-                        content += "§f" + timestamp + " - " + recyclerName + " 回收了 " + recycleCount + " 个，花费 "
-                                 + totalPrice + " 金币\n";
+                    std::string recyclerName = recyclerUuid;
+                    auto        playerInfo =
+                        ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(recyclerUuid));
+                    if (playerInfo) {
+                        recyclerName = playerInfo->name;
                     }
+
+                    content += "§f" + timestamp + " - " + recyclerName + " 回收了 " + recycleCount + " 个，花费 "
+                             + totalPrice + " 金币\n";
                 }
-                fm.setContent(content);
+            }
+            fm.setContent(content);
 
-                fm.appendButton("§e编辑委托", [pos, dimId, commissionNbtStr](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
-                });
-
-                fm.appendButton("返回", [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showViewRecycleCommissionsForm(p, pos, dimId, region);
-                });
-
-                fm.sendTo(*player);
+            fm.appendButton("§e编辑委托", [pos, dimId, commissionNbtStr](Player& p) {
+                auto& region = p.getDimensionBlockSource();
+                showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
             });
-        } catch (const std::exception& e) {
-            logger.error("showCommissionDetailsForm: 异步查询失败: {}", e.what());
 
-            // 错误时也要回调到主线程通知玩家
-            ll::thread::ServerThreadExecutor::getDefault().execute([playerUuid, e_msg = std::string(e.what())]() {
-                auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                if (player) {
-                    player->sendMessage("§c查询回收记录详情失败: " + e_msg);
-                }
+            fm.appendButton("返回", [pos, dimId](Player& p) {
+                auto& region = p.getDimensionBlockSource();
+                showViewRecycleCommissionsForm(p, pos, dimId, region);
             });
+
+            fm.sendTo(*player);
         }
-    }).detach();
+    );
 }
 
 void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
@@ -1037,81 +1011,59 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
         pos.z
     );
 
-    // 在后台线程等待查询完成，然后回调到主线程显示表单
-    std::thread([future = std::move(future), playerUuid, pos, dimId]() mutable {
-        try {
-            // 等待查询完成
-            auto commissions = future.get();
+    // 使用线程池等待查询完成，然后回调到主线程显示表单
+    db.thenOnMainThread(std::move(future), [playerUuid, pos, dimId](std::vector<std::vector<std::string>> commissions) {
+        logger.debug("showViewRecycleCommissionsForm: 异步查询完成，委托数: {}", commissions.size());
 
-            logger.debug("showViewRecycleCommissionsForm: 异步查询完成，委托数: {}", commissions.size());
-
-            // 回调到主线程显示表单
-            ll::thread::ServerThreadExecutor::getDefault().execute(
-                [commissions = std::move(commissions), playerUuid, pos, dimId]() {
-                    // 重新获取玩家对象
-                    auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                    if (!player) {
-                        logger.warn("showViewRecycleCommissionsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
-                        return;
-                    }
-
-                    auto* region = &player->getDimensionBlockSource();
-
-                    ll::form::SimpleForm fm;
-                    fm.setTitle("查看回收委托");
-
-                    if (commissions.empty()) {
-                        fm.setContent("该商店没有设置任何回收委托。");
-                    } else {
-                        fm.setContent("点击查看每个委托的详细回收记录：");
-                        for (const auto& row : commissions) {
-                            std::string itemNbtStr           = row[0];
-                            double      price                = std::stod(row[1]); // 修改为 stod
-                            int         maxRecycleCount      = std::stoi(row[2]);
-                            int         currentRecycledCount = std::stoi(row[3]);
-
-                            auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
-                            if (!itemNbt) continue;
-                            itemNbt->at("Count") = ByteTag(1);
-                            auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
-                            if (!itemPtr) continue;
-                            ItemStack item = *itemPtr;
-
-                            std::string progress = "§7(无限)";
-                            if (maxRecycleCount > 0) {
-                                progress = "§a[" + std::to_string(currentRecycledCount) + " / "
-                                         + std::to_string(maxRecycleCount) + "]§r";
-                            }
-
-                            std::string buttonText = std::string(item.getName()) + " §e" + progress
-                                                   + " §6[单价: " + CT::MoneyFormat::format(price) + "]§r";
-                            fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
-                                auto& region = p.getDimensionBlockSource();
-                                showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
-                            });
-                        }
-                    }
-
-                    fm.appendButton("返回", [pos, dimId](Player& p) {
-                        auto& region = p.getDimensionBlockSource();
-                        showRecycleShopManageForm(p, pos, dimId, region);
-                    });
-
-                    fm.sendTo(*player);
-                }
-            );
-        } catch (const std::exception& e) {
-            logger.error("showViewRecycleCommissionsForm: 异步查询失败: {}", e.what());
-
-            // 错误时也要回调到主线程通知玩家
-            ll::thread::ServerThreadExecutor::getDefault().execute([playerUuid, e_msg = std::string(e.what())]() {
-                auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-                if (player) {
-                    player->sendMessage("§c查询回收委托失败: " + e_msg);
-                }
-            });
+        // 重新获取玩家对象
+        auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
+        if (!player) {
+            logger.warn("showViewRecycleCommissionsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
+            return;
         }
-    }).detach();
+
+        ll::form::SimpleForm fm;
+        fm.setTitle("查看回收委托");
+
+        if (commissions.empty()) {
+            fm.setContent("该商店没有设置任何回收委托。");
+        } else {
+            fm.setContent("点击查看每个委托的详细回收记录：");
+            for (const auto& row : commissions) {
+                std::string itemNbtStr           = row[0];
+                double      price                = std::stod(row[1]);
+                int         maxRecycleCount      = std::stoi(row[2]);
+                int         currentRecycledCount = std::stoi(row[3]);
+
+                auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
+                if (!itemNbt) continue;
+                itemNbt->at("Count") = ByteTag(1);
+                auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+                if (!itemPtr) continue;
+                ItemStack item = *itemPtr;
+
+                std::string progress = "§7(无限)";
+                if (maxRecycleCount > 0) {
+                    progress =
+                        "§a[" + std::to_string(currentRecycledCount) + " / " + std::to_string(maxRecycleCount) + "]§r";
+                }
+
+                std::string buttonText = std::string(item.getName()) + " §e" + progress
+                                       + " §6[单价: " + CT::MoneyFormat::format(price) + "]§r";
+                fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
+                });
+            }
+        }
+
+        fm.appendButton("返回", [pos, dimId](Player& p) {
+            auto& region = p.getDimensionBlockSource();
+            showRecycleShopManageForm(p, pos, dimId, region);
+        });
+
+        fm.sendTo(*player);
+    });
 }
 
 
