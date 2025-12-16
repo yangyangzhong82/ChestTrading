@@ -65,6 +65,10 @@ public:
     template <typename... Args>
     bool execute(const std::string& sql, Args&&... args);
 
+    // 执行并返回受影响的行数（用于 UPDATE/DELETE 等需要检查实际更新行数的场景）
+    template <typename... Args>
+    int executeAndGetChanges(const std::string& sql, Args&&... args);
+
     // 支持参数绑定的安全 query 方法
     template <typename... Args>
     std::vector<std::vector<std::string>> query(const std::string& sql, Args&&... args);
@@ -206,6 +210,34 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     }
 
     return result;
+}
+
+template <typename... Args>
+int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args) {
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
+
+    if (!db) return -1;
+
+    mStats.queryCount++;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        return -1;
+    }
+
+    bind_args(stmt, std::forward<Args>(args)...);
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    int  changes = success ? sqlite3_changes(db) : -1;
+
+    sqlite3_finalize(stmt);
+
+    if (success) {
+        clearCache();
+    }
+
+    return changes;
 }
 
 template <typename... Args>

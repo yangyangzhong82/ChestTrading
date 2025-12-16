@@ -565,45 +565,79 @@ void showRecycleFinalConfirmForm(
 
             // 4. 扣除商店主人金钱
             if (!Economy::reduceMoneyByUuid(ownerUuid, recyclePrice)) {
-                p.sendMessage("§c回收失败，扣除商店主人金钱失败。请联系管理员。");
+                // 扣钱失败，回滚物品：从箱子移除并放回玩家背包
+                int remaining = recycleCount;
+                for (int i = 0; i < chest->getContainerSize() && remaining > 0; ++i) {
+                    const auto& chestItem = chest->getItem(i);
+                    if (!chestItem.isNull()) {
+                        auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItem);
+                        if (chestItemNbt) {
+                            auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                            if (CT::NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+                                int       removeCount = std::min(remaining, (int)chestItem.mCount);
+                                ItemStack returnItem  = chestItem;
+                                returnItem.setStackSize(removeCount);
+                                chest->removeItem(i, removeCount);
+                                if (!p.add(returnItem)) {
+                                    p.drop(returnItem, true);
+                                }
+                                remaining -= removeCount;
+                            }
+                        }
+                    }
+                }
+                p.refreshInventory();
+                p.sendMessage("§c回收失败，商店主人余额不足，物品已退回。");
                 logger.error(
                     "Recycle failed at money reduction. Player: {}, OwnerUUID: {}, Amount: {}",
                     p.getRealName(),
                     ownerUuid,
                     recyclePrice
                 );
-                // 致命错误，物品已转移但钱无法扣除，需要回滚物品
-                // 暂时只提示
                 return;
             }
 
             // 5. 给予玩家金钱
             Economy::addMoney(p, recyclePrice);
 
-            // 6. 更新数据库
-            db.execute(
-                "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = ? "
-                "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
-                recycleCount,
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId
-            );
+            // 6. 更新数据库（使用事务保证原子性）
+            {
+                Transaction txn(db);
+                if (!txn.isActive()) {
+                    p.sendMessage("§c回收失败，数据库事务启动失败。");
+                    return;
+                }
 
-            db.execute(
-                "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, "
-                "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z,
-                itemId,
-                p.getUuid().asString(),
-                recycleCount,
-                recyclePrice // total_price 作为 double 传递
-            );
+                db.execute(
+                    "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? WHERE dim_id = "
+                    "? "
+                    "AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?",
+                    recycleCount,
+                    dimId,
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    itemId
+                );
+
+                db.execute(
+                    "INSERT INTO recycle_records (dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, "
+                    "total_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    dimId,
+                    pos.x,
+                    pos.y,
+                    pos.z,
+                    itemId,
+                    p.getUuid().asString(),
+                    recycleCount,
+                    recyclePrice // total_price 作为 double 传递
+                );
+
+                if (!txn.commit()) {
+                    p.sendMessage("§c回收失败，数据库更新失败。");
+                    return;
+                }
+            }
 
             p.sendMessage(
                 "§a成功回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + "，获得 §6"
