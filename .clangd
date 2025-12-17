@@ -11,3 +11,4 @@ CompileFlags:
     - "-ferror-limit=0"
     - '-D__FUNCTION__="dummy"'
     - '-D__clangd__'
+    - '-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH'

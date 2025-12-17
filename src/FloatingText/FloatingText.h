@@ -56,17 +56,17 @@ public:
     bool              mIsLoaded = false;        // 标志，指示是否已从数据库加载悬浮字
     std::atomic<bool> mShouldStopUpdate{false}; // 控制协程停止
 
-    FloatingTextManager() = default; // 私有构造函数，实现单例模式
-
     void startDynamicTextUpdateLoop(); // 启动动态更新循环
     void stopDynamicTextUpdateLoop();  // 停止动态更新循环
 
-private:
-    ll::coro::CoroTask<> dynamicTextUpdateCoroutine(); // 新增协程函数声明
-
-public:
     // 获取单例实例
     static FloatingTextManager& getInstance();
+
+private:
+    FloatingTextManager() = default;                   // 私有构造函数，实现单例模式
+    ll::coro::CoroTask<> dynamicTextUpdateCoroutine(); // 协程函数声明
+
+public:
     // 添加或更新一个箱子的悬浮字
     void addOrUpdateFloatingText(
         BlockPos           pos,

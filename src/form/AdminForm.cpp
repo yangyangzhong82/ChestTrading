@@ -1,8 +1,8 @@
 #include "AdminForm.h"
-#include "interaction/chestprotect.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
+#include "repository/ChestRepository.h"
 #include <map>
 #include <sstream>
 #include <vector>
@@ -141,12 +141,12 @@ void showAdminForm(
     ll::form::CustomForm fm;
     fm.setTitle("服务器箱子管理");
 
-    auto allChests = getAllChests();
-    std::vector<ChestInfo> filteredChests;
+    auto allChests = ChestRepository::getInstance().findAll();
+    std::vector<ChestData> filteredChests;
 
     // 应用筛选
     std::copy_if(allChests.begin(), allChests.end(), std::back_inserter(filteredChests),
-        [&](const ChestInfo& chest) {
+        [&](const ChestData& chest) {
             bool dimMatch = dimIdFilter.empty() || 
                             std::find(dimIdFilter.begin(), dimIdFilter.end(), chest.dimId) != dimIdFilter.end();
             bool typeMatch = chestTypeFilter.empty() ||
@@ -179,7 +179,7 @@ void showAdminForm(
             fm.appendSlider("page_slider", "翻页", 1, totalPages, 1, currentPage, "§7拖动滑块选择页面 (当前: " + std::to_string(currentPage) + "/" + std::to_string(totalPages) + ")");
         }
 
-        std::map<std::string, std::vector<ChestInfo>> playerChests;
+        std::map<std::string, std::vector<ChestData>> playerChests;
         for (const auto& chest : filteredChests) {
             playerChests[chest.ownerUuid].push_back(chest);
         }
@@ -190,7 +190,7 @@ void showAdminForm(
         int startIndex = (currentPage - 1) * itemsPerPage;
         int endIndex = std::min(startIndex + itemsPerPage, (int)filteredChests.size());
         
-        std::vector<ChestInfo> pagedChests;
+        std::vector<ChestData> pagedChests;
         for (const auto& pair : playerChests) {
             pagedChests.insert(pagedChests.end(), pair.second.begin(), pair.second.end());
         }

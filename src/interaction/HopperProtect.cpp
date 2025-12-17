@@ -1,5 +1,4 @@
 
-#include "interaction/chestprotect.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
 #include "mc/world/actor/Hopper.h"
@@ -7,6 +6,7 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/HopperBlock.h"
+#include "service/ChestService.h"
 
 namespace CT {
 LL_AUTO_TYPE_INSTANCE_HOOK(
@@ -29,8 +29,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
     int dimId = static_cast<int>(region.getDimensionId());
 
-    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
-    if (locked) {
+    if (ChestService::getInstance().isChestLocked(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试从上锁的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
             chestPos.x,
@@ -82,8 +81,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     }
     int dimId = static_cast<int>(region.getDimensionId());
 
-    auto [locked, ownerUuid, chestType] = CT::getChestDetails(chestPos, dimId, region);
-    if (locked) {
+    if (ChestService::getInstance().isChestLocked(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试向上锁的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
             chestPos.x,

@@ -3,9 +3,8 @@
 #include "form/LockForm.h"
 #include "form/RecycleForm.h"
 #include "form/ShopForm.h"
+#include "service/ChestService.h"
 #include "service/TextService.h"
-
-#include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerInteractBlockEvent.h"
 #include "ll/api/memory/Hook.h"
@@ -90,9 +89,13 @@ void registerEventListener() {
         }
 
         // 始终使用主箱子位置进行逻辑判断
-        BlockPos pos = CT::internal::GetMainChestPos(originalPos, region);
+        auto& chestService = ChestService::getInstance();
+        BlockPos pos = chestService.getMainChestPos(originalPos, region);
 
-        auto [isLocked, ownerUuid, chestType] = getChestDetails(pos, static_cast<int>(dimId), region);
+        auto chestInfo = chestService.getChestInfo(pos, static_cast<int>(dimId), region);
+        bool isLocked = chestInfo.has_value();
+        std::string ownerUuid = isLocked ? chestInfo->ownerUuid : "";
+        ChestType chestType = isLocked ? chestInfo->type : ChestType::Invalid;
         bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player_uuid, "chest.admin");
         bool isOwner = (ownerUuid == player_uuid) || isAdmin;
 
@@ -111,7 +114,7 @@ void registerEventListener() {
         }
 
         // 玩家没有手持木棍：尝试打开箱子
-        if (canPlayerOpenChest(player_uuid, pos, static_cast<int>(dimId), region) || isAdmin) {
+        if (chestService.canPlayerAccess(player_uuid, pos, static_cast<int>(dimId), region) || isAdmin) {
             // 权限检查通过，允许打开
             // 如果是商店或回收商店，主人和管理员可以直接打开箱子放入物品
             if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
@@ -153,14 +156,15 @@ void registerEventListener() {
             auto& block  = region.getBlock(pos);
 
             if (block.getTypeName() == "minecraft:chest") {
-                auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, region);
-                if (locked) {
+                auto& chestService = ChestService::getInstance();
+                auto chestInfo = chestService.getChestInfo(pos, dimId, region);
+                if (chestInfo) {
                     bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(
                         player.getUuid().asString(),
                         "chest.admin"
                     );
                     if (isAdmin) {
-                        CT::removeChest(pos, dimId, region);
+                        chestService.removeChest(pos, dimId, region);
                         player.sendMessage("§a管理员权限：已移除箱子锁定数据。");
                         return;
                     }
@@ -169,7 +173,7 @@ void registerEventListener() {
                     logger.debug(
                         "玩家 {} 尝试破坏被玩家 {} 锁定的箱子 ({}, {}, {}) in dim {}，已阻止。",
                         player.getUuid().asString(),
-                        ownerUuid,
+                        chestInfo->ownerUuid,
                         pos.x,
                         pos.y,
                         pos.z,

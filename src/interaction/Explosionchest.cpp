@@ -1,9 +1,9 @@
-#include "chestprotect.h"
 #include "ll/api/memory/Hook.h"
 #include "mc/world/events/ExplosionStartedEvent.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Explosion.h"
 #include "mc/world/level/block/Block.h"
+#include "service/ChestService.h"
 
 namespace CT {
 
@@ -38,8 +38,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         if (region->getBlock(pos).getTypeName() == "minecraft:chest") {
             // 检查是否是上锁的箱子
             int dimId = static_cast<int>(region->getDimensionId());
-            auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, *region);
-            if (locked) {
+            if (ChestService::getInstance().isChestLocked(pos, dimId, *region)) {
                 // 如果是上锁的箱子，则跳过，不添加到 replaced 中
                 continue;
             }
@@ -48,9 +47,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         if (region->getExtraBlock(pos).getTypeName() == "minecraft:chest") {
             // 检查是否是上锁的箱子
             int dimId = static_cast<int>(region->getDimensionId());
-            auto [locked, ownerUuid, chestType] = CT::getChestDetails(pos, dimId, *region);
-            if (locked) {
-                // 如果是上锁的箱子，则跳过，不添加到 replaced 中
+            if (ChestService::getInstance().isChestLocked(pos, dimId, *region)) {
                 continue;
             }
         }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "interaction/chestprotect.h" // 包含 ChestType 定义
+#include "Types.h"
 #include "mc/world/actor/player/Player.h"
 #include <optional>
 #include <vector>
