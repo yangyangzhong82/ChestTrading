@@ -88,12 +88,6 @@ public:
     // 检查列是否存在
     bool isColumnExists(const std::string& tableName, const std::string& columnName);
 
-    // 获取或创建 item_id（用于 item_definitions 表）
-    int getOrCreateItemId(const std::string& itemNbt);
-
-    // 根据 item_id 获取 item_nbt
-    std::string getItemNbtById(int itemId);
-
     // === 异步操作接口 ===
 
     // 异步执行 SQL 语句
@@ -154,6 +148,14 @@ private:
 
     // 初始化数据库表结构
     bool initializeSchema();
+
+    // Schema 版本管理
+    int  getSchemaVersion();
+    void setSchemaVersion(int version);
+    bool runMigrations(int fromVersion);
+
+    // 迁移函数 - 后续版本在此添加 migrateToV2, migrateToV3 等
+    bool migrateToV1();
 
     sqlite3*             db;
     std::recursive_mutex mDbMutex; // 数据库操作互斥锁
