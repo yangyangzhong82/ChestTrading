@@ -154,8 +154,9 @@ private:
     void setSchemaVersion(int version);
     bool runMigrations(int fromVersion);
 
-    // 迁移函数 - 后续版本在此添加 migrateToV2, migrateToV3 等
+    // 迁移函数 - 后续版本在此添加 migrateToV3, migrateToV4 等
     bool migrateToV1();
+    bool migrateToV2();
 
     sqlite3*             db;
     std::recursive_mutex mDbMutex; // 数据库操作互斥锁

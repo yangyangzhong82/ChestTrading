@@ -7,11 +7,8 @@
 #include "service/TextService.h"
 #include "ll/api/event/EventBus.h"
 #include "ll/api/event/player/PlayerInteractBlockEvent.h"
-#include "ll/api/memory/Hook.h"
 #include "logger.h"
-#include "mc/platform/UUID.h" // 引入 UUID
-#include "mc/world/events/ExplosionStartedEvent.h"
-#include "mc/world/level/BlockSource.h"
+#include "mc/platform/UUID.h" 
 #include "mc/world/level/Explosion.h"
 #include "mc/world/level/block/Block.h"
 #include "mc\world\level\block\actor\ChestBlockActor.h"

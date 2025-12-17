@@ -128,6 +128,7 @@ bool Sqlite3Wrapper::runMigrations(int fromVersion) {
     using MigrationFunc                   = std::function<bool()>;
     std::vector<MigrationFunc> migrations = {
         [this]() { return migrateToV1(); },
+        [this]() { return migrateToV2(); },
     };
 
     for (int v = fromVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -204,6 +205,41 @@ bool Sqlite3Wrapper::migrateToV1() {
         "CREATE INDEX IF NOT EXISTS idx_chests_position ON chests(dim_id, pos_x, pos_y, pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_shared_chests_position ON shared_chests(dim_id, pos_x, pos_y, pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_shop_items_position ON shop_items(dim_id, pos_x, pos_y, pos_z);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!execute_unsafe(sql)) return false;
+    }
+    return true;
+}
+
+bool Sqlite3Wrapper::migrateToV2() {
+    const char* sqls[] = {
+        // chests 表索引 - 优化按玩家查询和按玩家+类型统计
+        "CREATE INDEX IF NOT EXISTS idx_chests_player_uuid ON chests(player_uuid);",
+        "CREATE INDEX IF NOT EXISTS idx_chests_player_type ON chests(player_uuid, type);",
+
+        // shared_chests 表索引 - 优化按玩家查询被分享的箱子
+        "CREATE INDEX IF NOT EXISTS idx_shared_chests_player ON shared_chests(player_uuid);",
+
+        // shop_items 表索引 - 优化 JOIN 和 item_id 查询
+        "CREATE INDEX IF NOT EXISTS idx_shop_items_item_id ON shop_items(item_id);",
+
+        // purchase_records 表索引 - 优化按位置和时间查询记录
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_position ON purchase_records(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_timestamp ON purchase_records(timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_buyer ON purchase_records(buyer_uuid);",
+
+        // recycle_shop_items 表索引 - 优化按位置查询
+        "CREATE INDEX IF NOT EXISTS idx_recycle_shop_items_position ON recycle_shop_items(dim_id, pos_x, pos_y, "
+        "pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_shop_items_item_id ON recycle_shop_items(item_id);",
+
+        // recycle_records 表索引 - 优化按位置、item_id 和时间查询
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_position ON recycle_records(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_timestamp ON recycle_records(timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_recycler ON recycle_records(recycler_uuid);"
     };
 
     for (const char* sql : sqls) {
