@@ -32,6 +32,11 @@ struct ChestCreationCosts {
     double shopCost        = 500.0; // 创建商店的费用
 };
 
+struct TeleportSettings {
+    double teleportCost        = 100.0; // 传送到商店的费用
+    int    teleportCooldownSec = 60;    // 传送冷却时间（秒）
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -43,4 +48,5 @@ struct Config {
     FloatingTextSettings floatingText;                                 // 悬浮字相关设置
     ChestLimits          chestLimits;                                  // 箱子数量限制
     ChestCreationCosts   chestCosts;                                   // 箱子创建费用
+    TeleportSettings     teleportSettings;                             // 传送相关设置
 };

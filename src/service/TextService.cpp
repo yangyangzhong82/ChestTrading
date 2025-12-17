@@ -99,6 +99,12 @@ void TextService::initMessages() {
 
     // 箱子实体相关
     mMessages["chest.entity_fail"] = "§c无法获取箱子数据。";
+
+    // 传送相关
+    mMessages["teleport.success"]            = "§a已传送到目标位置！花费 §6{cost}§a 金币。";
+    mMessages["teleport.insufficient_money"] = "§c金币不足！传送需要 §6{cost}§c 金币。";
+    mMessages["teleport.cooldown"]           = "§c传送冷却中！还需等待 §e{seconds}§c 秒。";
+    mMessages["teleport.admin_success"]      = "§a已将你传送至箱子位置: {x}, {y}, {z}";
 }
 
 std::string TextService::getMessage(const std::string& key, const std::map<std::string, std::string>& params) {
