@@ -1,5 +1,6 @@
 #include "FloatingText/FloatingText.h"
 #include "Config/ConfigManager.h"
+#include "service/TextService.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/NetworkPacket.h"
 #include "Utils/fakeitem.h"
@@ -188,28 +189,24 @@ void FloatingTextManager::loadAllLockedChests() {
                 ownerName = playerInfo->name;
             }
 
-            // 根据箱子类型生成不同的悬浮字文本
+            // 根据箱子类型检查配置
             switch (chestType) {
             case ChestType::Locked:
                 if (!config.floatingText.enableLockedChest) continue;
-                text = "§e[上锁箱子]§r 拥有者: " + ownerName;
                 break;
             case ChestType::RecycleShop:
                 if (!config.floatingText.enableRecycleShop) continue;
-                text = "§a[回收商店]§r 拥有者: " + ownerName;
                 break;
             case ChestType::Shop:
                 if (!config.floatingText.enableShopChest) continue;
-                text = "§b[商店箱子]§r 拥有者: " + ownerName;
                 break;
             case ChestType::Public:
                 if (!config.floatingText.enablePublicChest) continue;
-                text = "§d[公共箱子]";
                 break;
             default:
-                text = "§f[未知箱子类型]§r 拥有者: " + ownerName;
                 break;
             }
+            text = TextService::getInstance().generateChestText(chestType, ownerName);
             addOrUpdateFloatingText(pos, dimId, ownerUuid, text, chestType);
 
             // 如果是商店或回收商店，加载物品信息
@@ -279,8 +276,7 @@ void FloatingTextManager::loadAllLockedChests() {
                     }
                 }
                 if (!ft.itemNames.empty()) {
-                    ft.text = (chestType == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ")
-                            + ft.itemNames[0];
+                    ft.text = TextService::getInstance().generateDynamicShopText(chestType, ft.itemNames[0]);
                     if (ft.debugText) {
                         ft.debugText->setText(ft.text);
                         ft.debugText->update();
@@ -294,7 +290,7 @@ void FloatingTextManager::loadAllLockedChests() {
                         ft.text
                     );
                 } else {
-                    ft.text = (chestType == ChestType::Shop ? "§b[商店箱子]§r (无物品)" : "§a[回收商店]§r (无物品)");
+                    ft.text = TextService::getInstance().generateEmptyShopText(chestType);
                     logger.warn(
                         "箱子 ({}, {}, {}) in dim {} 是商店/回收商店，但未加载任何物品名称。",
                         pos.x,
@@ -328,8 +324,7 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                 if (updateText) {
                     // 更新悬浮字文本
                     ft.currentItemIndex = (ft.currentItemIndex + 1) % ft.itemNames.size();
-                    ft.text = (ft.type == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ")
-                            + ft.itemNames[ft.currentItemIndex];
+                    ft.text = TextService::getInstance().generateDynamicShopText(ft.type, ft.itemNames[ft.currentItemIndex]);
                     logger.trace(
                         "dynamicTextUpdateCoroutine: 更新悬浮字 ({},{},{}) 到物品索引 {}: {}",
                         ft.pos.x,
@@ -453,7 +448,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         // 更新悬浮字文本
         if (!ft.itemNames.empty()) {
             ft.currentItemIndex = 0; // 重置索引
-            ft.text = (type == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ") + ft.itemNames[0];
+            ft.text = TextService::getInstance().generateDynamicShopText(type, ft.itemNames[0]);
             logger.debug(
                 "updateShopFloatingText: 箱子 ({}, {}, {}) in dim {} 的动态悬浮字已更新为: {}",
                 pos.x,
@@ -463,7 +458,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 ft.text
             );
         } else {
-            ft.text = (type == ChestType::Shop ? "§b[商店箱子]§r (无物品)" : "§a[回收商店]§r (无物品)");
+            ft.text = TextService::getInstance().generateEmptyShopText(type);
             logger.debug(
                 "updateShopFloatingText: 箱子 ({}, {}, {}) in dim {} 的动态悬浮字已更新为: {}",
                 pos.x,

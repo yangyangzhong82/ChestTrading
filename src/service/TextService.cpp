@@ -138,6 +138,14 @@ std::string TextService::generateChestText(ChestType type, const std::string& ow
     }
 }
 
+std::string TextService::generateDynamicShopText(ChestType type, const std::string& itemName) {
+    return (type == ChestType::Shop ? "§b[商店箱子]§r 出售: " : "§a[回收商店]§r 回收: ") + itemName;
+}
+
+std::string TextService::generateEmptyShopText(ChestType type) {
+    return type == ChestType::Shop ? "§b[商店箱子]§r (无物品)" : "§a[回收商店]§r (无物品)";
+}
+
 std::string TextService::generateShopItemText(const std::string& itemName, double price, int stock, int chestStock) {
     return itemName + " §b[库存: " + std::to_string(stock) + "/" + std::to_string(chestStock) + "]§r"
          + " §6[价格: " + MoneyFormat::format(price) + "]§r";

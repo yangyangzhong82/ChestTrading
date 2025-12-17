@@ -20,6 +20,8 @@ public:
     // === 悬浮字文本 ===
     std::string generateChestText(ChestType type, const std::string& ownerName);
     std::string generateShopItemText(const std::string& itemName, double price, int stock, int chestStock);
+    std::string generateDynamicShopText(ChestType type, const std::string& itemName);
+    std::string generateEmptyShopText(ChestType type);
 
     // === 消息模板 ===
     std::string getMessage(const std::string& key, const std::map<std::string, std::string>& params = {});
