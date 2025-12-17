@@ -3,6 +3,7 @@
 #include "form/LockForm.h"
 #include "form/RecycleForm.h"
 #include "form/ShopForm.h"
+#include "service/TextService.h"
 
 #include "interaction/chestprotect.h"
 #include "ll/api/event/EventBus.h"
@@ -95,11 +96,13 @@ void registerEventListener() {
         bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player_uuid, "chest.admin");
         bool isOwner = (ownerUuid == player_uuid) || isAdmin;
 
+        auto& txt = TextService::getInstance();
+
         // 玩家手持木棍：打开管理菜单
         if (isHoldingStick) {
             // 只有主人才能用木棍管理
             if (isLocked && !isOwner) {
-                player.sendMessage("§c只有箱子主人才能使用木棍管理。");
+                player.sendMessage(txt.getMessage("chest.not_owner"));
             } else {
                 showChestLockForm(player, pos, static_cast<int>(dimId), isLocked, ownerUuid, chestType, region);
             }
@@ -135,7 +138,7 @@ void registerEventListener() {
             } else if (chestType == ChestType::RecycleShop) {
                 showRecycleForm(player, pos, static_cast<int>(dimId), region);
             } else {
-                player.sendMessage("§c这个箱子已经被锁定了，你无法打开。");
+                player.sendMessage(txt.getMessage("chest.locked"));
             }
             ev.cancel();
             return;

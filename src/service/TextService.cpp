@@ -27,13 +27,25 @@ void TextService::initMessages() {
     mMessages["shop.insufficient_money"] = "§c你的金币不足！需要 §6{price}§c 金币。";
     mMessages["shop.insufficient_stock"] = "§c箱子中没有足够的商品！实际库存: {stock}";
     mMessages["shop.purchase_success"] = "§a购买成功！你花费了 §6{price}§a 金币购买了 {item} x{count}。";
-    mMessages["shop.purchase_fail"]     = "§c购买失败！";
-    mMessages["shop.price_set_success"] = "§a物品价格设置成功！价格: {price}，数量: {count}";
-    mMessages["shop.price_set_fail"]    = "§c物品价格设置失败！";
-    mMessages["shop.item_removed"]      = "§a商品已成功移除！";
-    mMessages["shop.empty"]             = "商店是空的，没有可购买的商品。\n";
-    mMessages["shop.name_set_success"]  = "§a商店名称设置成功！";
-    mMessages["shop.name_set_fail"]     = "§c商店名称设置失败！";
+    mMessages["shop.purchase_fail"]       = "§c购买失败！";
+    mMessages["shop.purchase_chest_fail"] = "§c购买失败，箱子中物品数量不足！";
+    mMessages["shop.purchase_money_fail"] = "§c购买失败，金币扣除失败。";
+    mMessages["shop.item_not_exist"]      = "§c商品不存在！";
+    mMessages["shop.price_set_success"]   = "§a物品价格设置成功！价格: {price}，数量: {count}";
+    mMessages["shop.price_set_fail"]      = "§c物品价格设置失败！";
+    mMessages["shop.item_def_fail"]       = "§c无法创建物品定义！";
+    mMessages["shop.item_removed"]        = "§a商品已成功移除！";
+    mMessages["shop.item_remove_fail"]    = "§c商品移除失败！";
+    mMessages["shop.empty"]               = "商店是空的，没有可购买的商品。\n";
+    mMessages["shop.name_set_success"]    = "§a商店名称设置成功！";
+    mMessages["shop.name_set_fail"]       = "§c商店名称设置失败！";
+    mMessages["shop.data_corrupt"]        = "§c该物品数据已损坏，无法购买。";
+    mMessages["shop.item_manage_fail"]    = "§c无法管理该物品，无法从NBT创建物品。";
+    mMessages["shop.item_id_fail"]        = "§c无法管理该物品，无法获取物品ID。";
+    mMessages["shop.chest_empty"]         = "箱子是空的。\n";
+    mMessages["shop.no_records"]          = "§7该商店暂无购买记录。";
+    mMessages["shop.records_title"]       = "§a最近的购买记录:\n";
+    mMessages["shop.purchase_id_fail"]    = "§c购买失败，无法获取商品ID。";
 
     // 回收商店消息
     mMessages["recycle.success"]        = "§a成功回收 {item} x{count}，获得 §6{price}§a 金币。";
@@ -55,6 +67,8 @@ void TextService::initMessages() {
     mMessages["recycle.data_corrupt"]       = "§c该委托物品数据已损坏，无法回收。";
     mMessages["recycle.load_fail"]          = "§c无法加载物品信息。";
     mMessages["recycle.load_records_fail"]  = "§c无法加载回收记录。";
+    mMessages["recycle.empty"]              = "该回收商店没有任何回收委托。";
+    mMessages["recycle.list_content"]       = "以下是该回收商店的所有回收委托：";
 
     // 经济相关
     mMessages["economy.insufficient"] = "§c金钱不足！需要 {price}";
@@ -70,16 +84,21 @@ void TextService::initMessages() {
     mMessages["share.remove_success"]   = "§a成功从分享列表移除玩家 {player}！";
     mMessages["share.remove_fail"]      = "§c移除分享玩家失败！";
     mMessages["share.player_not_found"] = "§c未找到玩家 {player}！";
+    mMessages["share.name_empty"]       = "§c玩家名称不能为空！";
 
     // 输入验证
-    mMessages["input.invalid_number"] = "§c输入无效，请输入一个数字。";
-    mMessages["input.invalid_count"]  = "§c购买数量必须大于0！";
-    mMessages["input.negative_price"] = "§c价格不能为负数！";
+    mMessages["input.invalid_number"]    = "§c输入无效，请输入一个数字。";
+    mMessages["input.invalid_count"]     = "§c购买数量必须大于0！";
+    mMessages["input.invalid_buy_count"] = "§c购买数量输入无效，请输入一个正整数。";
+    mMessages["input.negative_price"]    = "§c价格不能为负数！";
     mMessages["input.invalid_recycle_count"] = "§c回收数量无效！请输入一个介于1和{max}之间的整数。";
     mMessages["input.negative_durability"] = "§c最低耐久度不能为负数！";
     mMessages["input.negative_max_count"]  = "§c最大回收数量不能为负数！";
     mMessages["input.invalid_enchant"]     = "§c附魔格式无效，请使用 ID:等级,ID:等级 的格式。";
     mMessages["input.nbt_fail"]            = "§c无法获取物品NBT数据。";
+
+    // 箱子实体相关
+    mMessages["chest.entity_fail"] = "§c无法获取箱子数据。";
 }
 
 std::string TextService::getMessage(const std::string& key, const std::map<std::string, std::string>& params) {

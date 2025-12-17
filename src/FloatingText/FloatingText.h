@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Types.h" // ChestType 定义
 #include "debug_shape/api/IDebugShapeDrawer.h"
 #include "debug_shape/api/shape/IDebugText.h"
 #include "ll/api/coro/CoroTask.h"
@@ -18,15 +19,6 @@
 
 
 namespace CT {
-enum class ChestType {
-    Locked       = 0,
-    Public       = 1,
-    Shop         = 2,
-    RecycleShop  = 3,
-    Invalid      = 4, // 无效或未定义
-    AdminShop    = 5,
-    AdminRecycle = 6
-};
 // 存储每个箱子的悬浮字信息
 struct ChestFloatingText {
     BlockPos                                 pos;

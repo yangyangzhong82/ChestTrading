@@ -1,6 +1,7 @@
 #include "ShopService.h"
 #include "ChestService.h"
 #include "FloatingText/FloatingText.h"
+#include "TextService.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -29,10 +30,12 @@ SetPriceResult ShopService::setItemPrice(
 ) {
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
+    auto& txt = TextService::getInstance();
+
     // 获取或创建物品ID
     int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbt);
     if (itemId < 0) {
-        return {false, "§c无法创建物品定义！", -1};
+        return {false, txt.getMessage("shop.item_def_fail"), -1};
     }
 
     // 创建商品数据
@@ -45,7 +48,7 @@ SetPriceResult ShopService::setItemPrice(
     data.slot    = 0;
 
     if (!ShopRepository::getInstance().upsertItem(data)) {
-        return {false, "§c物品价格设置失败！", -1};
+        return {false, txt.getMessage("shop.price_set_fail"), -1};
     }
 
     // 更新悬浮字
@@ -53,7 +56,10 @@ SetPriceResult ShopService::setItemPrice(
 
     return {
         true,
-        "§a物品价格设置成功！价格: " + MoneyFormat::format(price) + "，数量: " + std::to_string(initialCount),
+        txt.getMessage(
+            "shop.price_set_success",
+            {{"price", MoneyFormat::format(price)}, {"count", std::to_string(initialCount)}}
+        ),
         itemId
     };
 }
@@ -81,25 +87,34 @@ PurchaseResult ShopService::purchaseItem(
     BlockSource&       region,
     const std::string& itemNbt
 ) {
+    auto&    txt     = TextService::getInstance();
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     // 获取商品信息
     auto itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
     if (!itemOpt) {
-        return {false, "§c商品不存在！"};
+        return {false, txt.getMessage("shop.item_not_exist")};
     }
 
     double totalPrice = quantity * itemOpt->price;
 
     // 检查金钱
     if (!Economy::hasMoney(buyer, totalPrice)) {
-        return {false, "§c你的金币不足！需要 §6" + MoneyFormat::format(totalPrice) + "§c 金币。"};
+        return {
+            false,
+            txt.getMessage("shop.insufficient_money", {{"price", MoneyFormat::format(totalPrice)}}
+             )
+        };
     }
 
     // 检查箱子库存
     int actualAvailable = countItemsInChest(region, mainPos, dimId, itemNbt);
     if (actualAvailable < quantity) {
-        return {false, "§c箱子中没有足够的商品！实际库存: " + std::to_string(actualAvailable)};
+        return {
+            false,
+            txt.getMessage("shop.insufficient_stock", {{"stock", std::to_string(actualAvailable)}}
+             )
+        };
     }
 
     // 从箱子移除物品
@@ -109,14 +124,14 @@ PurchaseResult ShopService::purchaseItem(
         if (actualRemoved > 0) {
             addItemsToChest(region, mainPos, itemNbt, actualRemoved);
         }
-        return {false, "§c购买失败，箱子中物品数量不足！"};
+        return {false, txt.getMessage("shop.purchase_chest_fail")};
     }
 
     // 扣钱
     if (!Economy::reduceMoney(buyer, totalPrice)) {
         // 放回物品
         addItemsToChest(region, mainPos, itemNbt, quantity);
-        return {false, "§c购买失败，金币扣除失败。"};
+        return {false, txt.getMessage("shop.purchase_money_fail")};
     }
 
     // 更新数据库库存
@@ -158,7 +173,16 @@ PurchaseResult ShopService::purchaseItem(
     // 更新悬浮字
     FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
 
-    return {true, "§a购买成功！", quantity, totalPrice};
+    std::string itemName = itemPtr ? std::string(itemPtr->getName()) : "未知物品";
+    return {
+        true,
+        txt.getMessage(
+            "shop.purchase_success",
+            {{"price", MoneyFormat::format(totalPrice)}, {"item", itemName}, {"count", std::to_string(quantity)}}
+        ),
+        quantity,
+        totalPrice
+    };
 }
 
 int ShopService::countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& itemNbt) {

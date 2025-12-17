@@ -43,9 +43,9 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
     auto commissions = RecycleService::getInstance().getCommissions(pos, dimId);
 
     if (commissions.empty()) {
-        fm.setContent("该回收商店没有任何回收委托。");
+        fm.setContent(txt.getMessage("recycle.empty"));
     } else {
-        fm.setContent("以下是该回收商店的所有回收委托：");
+        fm.setContent(txt.getMessage("recycle.list_content"));
         for (const auto& commission : commissions) {
             auto itemNbt = CT::NbtUtils::parseSNBT(commission.itemNbt);
             if (!itemNbt) {

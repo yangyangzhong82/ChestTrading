@@ -149,7 +149,7 @@ void showAddOfflineShareForm(
                             logger.warn("玩家 {} 尝试分享给不存在的玩家 {}.", ownerUuid, offlinePlayerName);
                         }
                     } else {
-                        p.sendMessage("§c玩家名称不能为空！");
+                        p.sendMessage(TextService::getInstance().getMessage("share.name_empty"));
                     }
                 }
             }

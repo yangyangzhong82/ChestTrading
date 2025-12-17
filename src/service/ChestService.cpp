@@ -1,6 +1,8 @@
 #include "ChestService.h"
 #include "Bedrock-Authority/permission/PermissionManager.h"
 #include "Config/ConfigManager.h"
+#include "FloatingText/FloatingText.h"
+#include "TextService.h"
 #include "Utils/NbtUtils.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -437,18 +439,7 @@ std::vector<ChestData> ChestService::getAllPublicChests() {
 }
 
 std::string ChestService::generateFloatingText(ChestType type, const std::string& ownerName) {
-    switch (type) {
-    case ChestType::Locked:
-        return "§e[上锁箱子]§r 拥有者: " + ownerName;
-    case ChestType::RecycleShop:
-        return "§a[回收商店]§r 拥有者: " + ownerName;
-    case ChestType::Shop:
-        return "§b[商店箱子]§r 拥有者: " + ownerName;
-    case ChestType::Public:
-        return "§d[公共箱子]§r 拥有者: " + ownerName;
-    default:
-        return "§f[未知箱子类型]§r 拥有者: " + ownerName;
-    }
+    return TextService::getInstance().generateChestText(type, ownerName);
 }
 
 void ChestService::updateFloatingText(BlockPos pos, int dimId, const std::string& ownerUuid, ChestType type) {

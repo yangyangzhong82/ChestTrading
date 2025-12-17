@@ -1,6 +1,6 @@
 #pragma once
 
-#include "FloatingText/FloatingText.h"
+#include "Types.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
