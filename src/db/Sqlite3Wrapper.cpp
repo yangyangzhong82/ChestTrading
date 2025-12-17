@@ -22,7 +22,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     }
 
     if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-        std::cerr << "Can't open database: " << sqlite3_errmsg(db) << std::endl;
+        CT::logger.error("无法打开数据库: {}", sqlite3_errmsg(db));
         return false;
     }
 
@@ -70,12 +70,22 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 }
 
 void Sqlite3Wrapper::close() {
+    mClosing = true;
+
+    // 等待所有异步任务完成
+    waitForAllAsyncTasks();
+
+    // 销毁线程池
+    mThreadPool.reset();
+
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     if (db) {
         sqlite3_close(db);
         db = nullptr;
     }
     clearCache();
+
+    mClosing = false;
 }
 
 bool Sqlite3Wrapper::initializeSchema() {
@@ -354,7 +364,7 @@ bool Sqlite3Wrapper::execute_unsafe(const std::string& sql) {
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     char*                                 err_msg = nullptr;
     if (sqlite3_exec(db, sql.c_str(), 0, 0, &err_msg) != SQLITE_OK) {
-        std::cerr << "SQL error: " << err_msg << std::endl;
+        CT::logger.error("SQL 错误: {}", err_msg);
         sqlite3_free(err_msg);
         return false;
     }
@@ -377,7 +387,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::st
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
     char*                                 err_msg = nullptr;
     if (sqlite3_exec(db, sql.c_str(), callback, &results, &err_msg) != SQLITE_OK) {
-        std::cerr << "SQL error: " << err_msg << std::endl;
+        CT::logger.error("SQL 错误: {}", err_msg);
         sqlite3_free(err_msg);
     }
     return results;
@@ -393,7 +403,7 @@ Transaction::Transaction(Sqlite3Wrapper& db) : mDb(db), mLock(db.mDbMutex) {
         mActive = true;
         mDb.mStats.transactionCount++;
     } else {
-        std::cerr << "Failed to begin transaction: " << err_msg << std::endl;
+        CT::logger.error("无法开始事务: {}", err_msg ? err_msg : "未知错误");
         if (err_msg) sqlite3_free(err_msg);
     }
 }
@@ -409,7 +419,7 @@ bool Transaction::commit() {
 
     char* err_msg = nullptr;
     if (sqlite3_exec(mDb.db, "COMMIT;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
-        std::cerr << "Failed to commit transaction: " << err_msg << std::endl;
+        CT::logger.error("无法提交事务: {}", err_msg ? err_msg : "未知错误");
         if (err_msg) sqlite3_free(err_msg);
         return false;
     }
@@ -425,7 +435,7 @@ void Transaction::rollback() {
 
     char* err_msg = nullptr;
     if (sqlite3_exec(mDb.db, "ROLLBACK;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
-        std::cerr << "Failed to rollback transaction: " << err_msg << std::endl;
+        CT::logger.error("无法回滚事务: {}", err_msg ? err_msg : "未知错误");
         if (err_msg) sqlite3_free(err_msg);
     }
 
@@ -585,9 +595,13 @@ std::future<bool> Sqlite3Wrapper::executeBatchAsync(
     const std::vector<std::string>&        sqlStatements,
     const std::vector<std::vector<Value>>& paramsList
 ) {
-
     if (!mThreadPool) {
         throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    if (mClosing) {
+        std::promise<bool> p;
+        p.set_value(false);
+        return p.get_future();
     }
 
     return mThreadPool->enqueue([this, sqlStatements, paramsList]() {

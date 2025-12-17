@@ -39,4 +39,4 @@ private:
     std::string             mConfigPath;
 };
 
-} // namespace CZET
+} // namespace CT

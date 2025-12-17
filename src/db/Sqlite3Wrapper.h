@@ -2,10 +2,10 @@
 
 #include "ThreadPool.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
+#include "logger.h"
 #include <atomic>
 #include <chrono>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <sqlite3.h>
@@ -174,6 +174,7 @@ private:
     // 线程池相关
     std::unique_ptr<ThreadPool> mThreadPool;
     size_t                      mThreadPoolSize = 4; // 默认4个线程
+    std::atomic<bool>           mClosing{false};     // 关闭状态标志
 
     // 内部辅助函数,用于绑定参数
     template <size_t I = 1, typename T, typename... Args>
@@ -216,7 +217,7 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
         return false;
     }
 
@@ -224,7 +225,7 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
 
     bool result = (sqlite3_step(stmt) == SQLITE_DONE);
     if (!result) {
-        std::cerr << "Failed to execute statement: " << sqlite3_errmsg(db) << std::endl;
+        CT::logger.error("无法执行 SQL 语句: {}", sqlite3_errmsg(db));
     }
 
     sqlite3_finalize(stmt);
@@ -246,7 +247,7 @@ int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args)
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
         return -1;
     }
 
@@ -293,7 +294,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
 
     sqlite3_stmt* stmt = nullptr;
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        std::cerr << "Failed to prepare statement: " << sqlite3_errmsg(db) << std::endl;
+        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
         return results;
     }
 
@@ -345,7 +346,7 @@ bool Sqlite3Wrapper::executeBatch(
     const std::vector<std::vector<Value>>& paramsList
 ) {
     if (sqlStatements.size() != paramsList.size()) {
-        std::cerr << "SQL statements count doesn't match parameters count" << std::endl;
+        CT::logger.error("SQL 语句数量与参数数量不匹配");
         return false;
     }
 
@@ -361,7 +362,7 @@ bool Sqlite3Wrapper::executeBatch(
 
         sqlite3_stmt* stmt = nullptr;
         if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-            std::cerr << "Failed to prepare batch statement: " << sqlite3_errmsg(db) << std::endl;
+            CT::logger.error("无法准备批量 SQL 语句: {}", sqlite3_errmsg(db));
             return false; // txn 析构时自动 rollback
         }
 
@@ -387,7 +388,7 @@ bool Sqlite3Wrapper::executeBatch(
         }
 
         if (sqlite3_step(stmt) != SQLITE_DONE) {
-            std::cerr << "Failed to execute batch statement: " << sqlite3_errmsg(db) << std::endl;
+            CT::logger.error("无法执行批量 SQL 语句: {}", sqlite3_errmsg(db));
             sqlite3_finalize(stmt);
             return false; // txn 析构时自动 rollback
         }
@@ -405,6 +406,11 @@ std::future<bool> Sqlite3Wrapper::executeAsync(const std::string& sql, Args&&...
     if (!mThreadPool) {
         throw std::runtime_error("Thread pool not initialized. Call open() first.");
     }
+    if (mClosing) {
+        std::promise<bool> p;
+        p.set_value(false);
+        return p.get_future();
+    }
 
     // 捕获参数的副本，避免悬空引用
     auto params = std::make_tuple(std::forward<Args>(args)...);
@@ -421,6 +427,11 @@ template <typename... Args>
 std::future<std::vector<std::vector<std::string>>> Sqlite3Wrapper::queryAsync(const std::string& sql, Args&&... args) {
     if (!mThreadPool) {
         throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    if (mClosing) {
+        std::promise<std::vector<std::vector<std::string>>> p;
+        p.set_value({});
+        return p.get_future();
     }
 
     // 捕获参数的副本
@@ -440,6 +451,9 @@ void Sqlite3Wrapper::thenOnMainThread(std::future<T> fut, Callback&& callback) {
     if (!mThreadPool) {
         throw std::runtime_error("Thread pool not initialized. Call open() first.");
     }
+    if (mClosing) {
+        return;
+    }
 
     mThreadPool->enqueue([fut = std::make_shared<std::future<T>>(std::move(fut)),
                           cb  = std::forward<Callback>(callback)]() mutable {
@@ -449,7 +463,7 @@ void Sqlite3Wrapper::thenOnMainThread(std::future<T> fut, Callback&& callback) {
                 cb(std::move(result));
             });
         } catch (const std::exception& e) {
-            std::cerr << "thenOnMainThread: future.get() failed: " << e.what() << std::endl;
+            CT::logger.error("异步回调获取结果失败: {}", e.what());
         }
     });
 }
@@ -459,6 +473,9 @@ template <typename T1, typename T2, typename Callback>
 void Sqlite3Wrapper::thenOnMainThread(std::future<T1> fut1, std::future<T2> fut2, Callback&& callback) {
     if (!mThreadPool) {
         throw std::runtime_error("Thread pool not initialized. Call open() first.");
+    }
+    if (mClosing) {
+        return;
     }
 
     mThreadPool->enqueue([fut1 = std::make_shared<std::future<T1>>(std::move(fut1)),
@@ -473,7 +490,7 @@ void Sqlite3Wrapper::thenOnMainThread(std::future<T1> fut1, std::future<T2> fut2
                 }
             );
         } catch (const std::exception& e) {
-            std::cerr << "thenOnMainThread: future.get() failed: " << e.what() << std::endl;
+            CT::logger.error("异步回调获取结果失败: {}", e.what());
         }
     });
 }
