@@ -247,8 +247,26 @@ std::optional<ChestData> ChestService::getChestInfo(BlockPos pos, int dimId, Blo
     return result;
 }
 
-bool ChestService::isChestLocked(BlockPos pos, int dimId, BlockSource& region) {
+bool ChestService::hasChestConfig(BlockPos pos, int dimId, BlockSource& region) {
     return getChestInfo(pos, dimId, region).has_value();
+}
+
+bool ChestService::isChestProtected(BlockPos pos, int dimId, BlockSource& region) {
+    // 当前所有有配置的箱子都需要保护
+    // 未来可以根据箱子类型或配置项进行更细粒度的控制
+    auto info = getChestInfo(pos, dimId, region);
+    if (!info) {
+        return false;
+    }
+    
+    // 目前所有类型的箱子都需要保护
+    // 未来如果需要，可以根据 info->type 或其他配置决定是否保护
+    return true;
+}
+
+bool ChestService::isChestLocked(BlockPos pos, int dimId, BlockSource& region) {
+    // 为保持向后兼容，委托给 hasChestConfig
+    return hasChestConfig(pos, dimId, region);
 }
 
 bool ChestService::isOwner(const std::string& playerUuid, BlockPos pos, int dimId, BlockSource& region) {

@@ -1,10 +1,11 @@
 #include "FormUtils.h"
-#include "Utils/NbtUtils.h"
 #include "Utils/ItemTextureManager.h"
-#include "mc/world/item/Item.h" 
-#include "mc/world/item/enchanting/ItemEnchants.h"
+#include "Utils/NbtUtils.h"
+#include "mc/world/item/Item.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
+#include "mc/world/item/enchanting/ItemEnchants.h"
+
 
 namespace CT::FormUtils {
 
@@ -37,7 +38,8 @@ std::string getItemDisplayString(const ItemStack& item, int count, bool showType
         if (!enchantList.empty()) {
             displayString += "\n§d附魔: ";
             for (const auto& enchant : enchantList) {
-                displayString += CT::NbtUtils::enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+                displayString +=
+                    CT::NbtUtils::enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
             }
             displayString += "§r";
         }
@@ -82,7 +84,7 @@ std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemN
         return nullptr;
     }
     itemNbt->at("Count") = ByteTag(1); // 从NBT创建物品需要Count标签
-    auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
+    auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
         logger.error("createItemStackFromNbtString: 无法从NBT创建物品。原始NBT: {}", itemNbtStr);
         return nullptr;
@@ -97,19 +99,29 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
         logger.warn("countItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
         return 0;
     }
-    auto chest = static_cast<class ChestBlockActor*>(blockActor);
-    if (!chest) {
-        logger.error("countItemsInChest: 无法将 BlockActor 转换为 ChestBlockActor 在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+
+    // 使用 mType 成员变量进行类型检查
+    if (blockActor->mType != BlockActorType::Chest) {
+        logger.error(
+            "countItemsInChest: BlockActor 不是箱子类型在 ({}, {}, {}) in dim {}，实际类型: {}",
+            pos.x,
+            pos.y,
+            pos.z,
+            dimId,
+            static_cast<int>(blockActor->mType)
+        );
         return 0;
     }
+
+    auto* chest = static_cast<ChestBlockActor*>(blockActor);
 
     for (int i = 0; i < chest->getContainerSize(); ++i) {
         const auto& chestItemInSlot = chest->getItem(i);
         if (!chestItemInSlot.isNull()) {
             auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
             if (chestItemNbt) {
-                auto cleanedChestItemNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                std::string currentItemNbtStr = CT::NbtUtils::toSNBT(*cleanedChestItemNbt);
+                auto        cleanedChestItemNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                std::string currentItemNbtStr   = CT::NbtUtils::toSNBT(*cleanedChestItemNbt);
                 if (currentItemNbtStr == targetItemNbtStr) {
                     totalCount += chestItemInSlot.mCount;
                 }

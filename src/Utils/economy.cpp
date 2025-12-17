@@ -4,10 +4,26 @@
 #include "Config/ConfigManager.h"      // 包含配置管理器
 #include "config.h"                    // 包含 EconomyType 定义
 #include "ll/api/service/PlayerInfo.h" // 用于 XUID 到 UUID 的转换
-#include "logger.h" // 包含 logger
+#include "logger.h"                    // 包含 logger
+#include <cmath>                       // 用于 std::floor
 
 namespace CT {
 namespace Economy {
+
+// ============================================================================
+// 货币舍入策略说明：
+// - LLMoney 仅支持整数货币，需要将 double 转换为 int
+// - 统一采用"向下取整"规则（std::floor），即小数部分直接舍去
+// - 例如：0.9 -> 0, 1.1 -> 1, 5.99 -> 5
+// - 这确保了所有操作的一致性，避免出现余额判断错误
+// ============================================================================
+
+/**
+ * @brief 将 double 金额转换为 LLMoney 的 int 金额（向下取整）
+ * @param amount 原始金额
+ * @return 转换后的整数金额
+ */
+inline int convertToLLMoneyAmount(double amount) { return static_cast<int>(std::floor(amount)); }
 
 // 辅助函数：通过 XUID 获取 UUID 字符串，如果没有找到则返回空字符串
 // 注意: 这个函数可能在某些情况下性能不高，因为它会查询所有在线/离线玩家信息。
@@ -24,21 +40,35 @@ std::string getUuidStringFromXuid(const std::string& xuid) {
 
 bool hasMoney(Player& player, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
-        return LLMoney_Get(player.getXuid()) >= static_cast<int>(amount);
+        return LLMoney_Get(player.getXuid()) >= convertToLLMoneyAmount(amount);
     } else { // CzMoney
         auto balance = czmoney::api::getRawPlayerBalance(player.getUuid().asString(), "money");
         if (balance.has_value()) {
-            logger.debug("hasMoney: Player {} (UUID: {}) balance: {}", player.getRealName(), player.getUuid().asString(), balance.value());
+            logger.debug(
+                "hasMoney: Player {} (UUID: {}) balance: {}",
+                player.getRealName(),
+                player.getUuid().asString(),
+                balance.value()
+            );
             return (balance.value()) >= amount; // CzMoney API的getRawPlayerBalance直接返回double
         }
-        logger.warn("hasMoney: Failed to get balance for player {} (UUID: {})", player.getRealName(), player.getUuid().asString());
+        logger.warn(
+            "hasMoney: Failed to get balance for player {} (UUID: {})",
+            player.getRealName(),
+            player.getUuid().asString()
+        );
         return false;
     }
 }
 
 bool reduceMoney(Player& player, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
-        return LLMoney_Reduce(player.getXuid(), static_cast<int>(amount));
+        int amountToReduce = convertToLLMoneyAmount(amount);
+        if (amountToReduce <= 0) {
+            logger.warn("reduceMoney: Amount {} converts to 0 or negative, no money will be reduced", amount);
+            return true; // 扣除 0 元视为成功
+        }
+        return LLMoney_Reduce(player.getXuid(), amountToReduce);
     } else { // CzMoney
         auto result = czmoney::api::subtractPlayerBalance(player.getUuid().asString(), "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
@@ -47,7 +77,12 @@ bool reduceMoney(Player& player, double amount) {
 
 bool addMoney(Player& player, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
-        return LLMoney_Add(player.getXuid(), static_cast<int>(amount));
+        int amountToAdd = convertToLLMoneyAmount(amount);
+        if (amountToAdd <= 0) {
+            logger.warn("addMoney: Amount {} converts to 0 or negative, no money will be added", amount);
+            return true; // 添加 0 元视为成功
+        }
+        return LLMoney_Add(player.getXuid(), amountToAdd);
     } else { // CzMoney
         auto result = czmoney::api::addPlayerBalance(player.getUuid().asString(), "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
@@ -56,7 +91,12 @@ bool addMoney(Player& player, double amount) {
 
 bool addMoneyByXuid(const std::string& xuid, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
-        return LLMoney_Add(xuid, static_cast<int>(amount));
+        int amountToAdd = convertToLLMoneyAmount(amount);
+        if (amountToAdd <= 0) {
+            logger.warn("addMoneyByXuid: Amount {} converts to 0 or negative for XUID {}", amount, xuid);
+            return true; // 添加 0 元视为成功
+        }
+        return LLMoney_Add(xuid, amountToAdd);
     } else { // CzMoney
         std::string uuid = getUuidStringFromXuid(xuid);
         if (!uuid.empty()) {
@@ -97,12 +137,11 @@ double getMoney(const std::string& xuid) {
 bool reduceMoneyByXuid(const std::string& xuid, double amount) {
     logger.debug("reduceMoneyByXuid: Attempting to reduce money for XUID {} by amount {}", xuid, amount);
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
-        // 对于 LLMoney，我们假设它只处理整数。
-        // 如果 amount > 0 但小于 1，将其视为 1 以确保扣除。
-        // 如果 amount >= 1，则正常转换为整数。
-        int amountToReduce = static_cast<int>(amount);
-        if (amount > 0 && amountToReduce == 0) {
-            amountToReduce = 1; // 向上取整，确保扣除至少1个单位
+        // 统一使用向下取整策略
+        int amountToReduce = convertToLLMoneyAmount(amount);
+        if (amountToReduce <= 0) {
+            logger.warn("reduceMoneyByXuid: Amount {} converts to 0 or negative for XUID {}", amount, xuid);
+            return true; // 扣除 0 元视为成功
         }
         bool success = LLMoney_Reduce(xuid, amountToReduce);
         if (success) {
@@ -119,7 +158,12 @@ bool reduceMoneyByXuid(const std::string& xuid, double amount) {
                 logger.debug("reduceMoneyByXuid (CzMoney): Successfully reduced {} for UUID {}", amount, uuid);
                 return true;
             } else {
-                logger.warn("reduceMoneyByXuid (CzMoney): Failed to reduce {} for UUID {}. Result code: {}", amount, uuid, static_cast<int>(result));
+                logger.warn(
+                    "reduceMoneyByXuid (CzMoney): Failed to reduce {} for UUID {}. Result code: {}",
+                    amount,
+                    uuid,
+                    static_cast<int>(result)
+                );
                 return false;
             }
         }
@@ -134,10 +178,15 @@ bool addMoneyByUuid(const std::string& uuid, double amount) {
         // LLMoney 使用 XUID，需要从 UUID 转换
         auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
         if (playerInfo) {
-            return LLMoney_Add(playerInfo->xuid, static_cast<int>(amount));
+            int amountToAdd = convertToLLMoneyAmount(amount);
+            if (amountToAdd <= 0) {
+                logger.warn("addMoneyByUuid: Amount {} converts to 0 or negative for UUID {}", amount, uuid);
+                return true; // 添加 0 元视为成功
+            }
+            return LLMoney_Add(playerInfo->xuid, amountToAdd);
         }
         return false; // 找不到玩家
-    } else { // CzMoney
+    } else {          // CzMoney
         auto result = czmoney::api::addPlayerBalance(uuid, "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
     }
@@ -149,10 +198,15 @@ bool reduceMoneyByUuid(const std::string& uuid, double amount) {
         // LLMoney 使用 XUID，需要从 UUID 转换
         auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
         if (playerInfo) {
-            return LLMoney_Reduce(playerInfo->xuid, static_cast<int>(amount));
+            int amountToReduce = convertToLLMoneyAmount(amount);
+            if (amountToReduce <= 0) {
+                logger.warn("reduceMoneyByUuid: Amount {} converts to 0 or negative for UUID {}", amount, uuid);
+                return true; // 扣除 0 元视为成功
+            }
+            return LLMoney_Reduce(playerInfo->xuid, amountToReduce);
         }
         return false; // 找不到玩家
-    } else { // CzMoney
+    } else {          // CzMoney
         auto result = czmoney::api::subtractPlayerBalance(uuid, "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
     }

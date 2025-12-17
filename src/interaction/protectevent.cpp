@@ -38,10 +38,10 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                 if (region.hasBlock(currentPos)) {
                     auto& block = region.getBlock(currentPos);
                     if (block.getTypeName() == "minecraft:chest") {
-                        // 检查是否是上锁的箱子
-                        if (ChestService::getInstance().isChestLocked(currentPos, dimId, region)) {
+                        // 检查箱子是否需要保护
+                        if (ChestService::getInstance().isChestProtected(currentPos, dimId, region)) {
                             logger.debug(
-                                "末影龙尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
+                                "末影龙尝试破坏受保护的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
                                 currentPos.x,
                                 currentPos.y,
                                 currentPos.z,
@@ -82,17 +82,18 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         dim
     );
 
-    // 检查当前箱子是否被锁定
-    auto& svc                = ChestService::getInstance();
-    bool  currentChestLocked = svc.isChestLocked(currentChestPos, dim, region);
-    bool  otherChestLocked   = svc.isChestLocked(otherChestPos, dim, region);
+    // 检查当前箱子是否受保护
+    auto& svc                   = ChestService::getInstance();
+    bool  currentChestProtected = svc.isChestProtected(currentChestPos, dim, region);
+    bool  otherChestProtected   = svc.isChestProtected(otherChestPos, dim, region);
 
-    logger.debug("hook4: currentChestLocked: {}, otherChestLocked: {}", currentChestLocked, otherChestLocked);
+    logger
+        .debug("hook4: currentChestProtected: {}, otherChestProtected: {}", currentChestProtected, otherChestProtected);
 
-    if (currentChestLocked || otherChestLocked) {
-        // 如果当前箱子或尝试配对的箱子中任何一个被锁定，则禁止其变成大箱子，直接返回
+    if (currentChestProtected || otherChestProtected) {
+        // 如果当前箱子或尝试配对的箱子中任何一个受保护，则禁止其变成大箱子，直接返回
         logger.debug(
-            "尝试将锁定的箱子 ({}, {}, {}) 或 ({}, {}, {}) in dim {} 变成大箱子被阻止。",
+            "尝试将受保护的箱子 ({}, {}, {}) 或 ({}, {}, {}) in dim {} 变成大箱子被阻止。",
             currentChestPos->x,
             currentChestPos->y,
             currentChestPos->z,
@@ -146,10 +147,10 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                     // 获取方块
                     auto block = griefingEvent->mBlock;
                     if (block->getTypeName() == "minecraft:chest") {
-                        // 检查是否是上锁的箱子
-                        if (ChestService::getInstance().isChestLocked(*pos, dim, region)) {
+                        // 检查箱子是否需要保护
+                        if (ChestService::getInstance().isChestProtected(*pos, dim, region)) {
                             logger.debug(
-                                "生物 {} 尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                                "生物 {} 尝试破坏受保护的箱子 ({}, {}, {}) in dim {}，已阻止。",
                                 actor->getTypeName(),
                                 pos->x,
                                 pos->y,
@@ -194,10 +195,10 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                 if (region.hasBlock(currentPos)) {
                     auto& block = region.getBlock(currentPos);
                     if (block.getTypeName() == "minecraft:chest") {
-                        // 检查是否是上锁的箱子
-                        if (ChestService::getInstance().isChestLocked(currentPos, dimId, region)) {
+                        // 检查箱子是否需要保护
+                        if (ChestService::getInstance().isChestProtected(currentPos, dimId, region)) {
                             logger.debug(
-                                "凋灵尝试破坏上锁的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
+                                "凋灵尝试破坏受保护的箱子 ({}, {}, {}) in dim {}，已阻止所有破坏。",
                                 currentPos.x,
                                 currentPos.y,
                                 currentPos.z,
@@ -231,9 +232,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         auto& block = region.getBlock(curPos);
         if (block.getTypeName() == "minecraft:chest") {
             int dimId = static_cast<int>(region.getDimensionId());
-            if (ChestService::getInstance().isChestLocked(curPos, dimId, region)) {
+            if (ChestService::getInstance().isChestProtected(curPos, dimId, region)) {
                 logger.debug(
-                    "活塞尝试推动上锁的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                    "活塞尝试推动受保护的箱子 ({}, {}, {}) in dim {}，已阻止。",
                     curPos.x,
                     curPos.y,
                     curPos.z,

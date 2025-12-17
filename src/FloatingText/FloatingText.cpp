@@ -154,8 +154,8 @@ void FloatingTextManager::removeAllFloatingTexts() {
     mFloatingTexts.clear();
 }
 
-// 从数据库加载所有已锁定的箱子并创建悬浮字
-void FloatingTextManager::loadAllLockedChests() {
+// 从数据库加载所有箱子并创建悬浮字
+void FloatingTextManager::loadAllChests() {
     if (mIsLoaded) {
         logger.debug("悬浮字已加载，跳过重复加载。");
         return;
@@ -303,7 +303,7 @@ void FloatingTextManager::loadAllLockedChests() {
         }
     }
     mIsLoaded = true;
-    logger.debug("已从数据库加载 {} 个已锁定箱子的悬浮字。", mFloatingTexts.size());
+    logger.debug("已从数据库加载 {} 个箱子的悬浮字。", mFloatingTexts.size());
 
     // 启动动态文本更新循环
     startDynamicTextUpdateLoop();
@@ -551,7 +551,7 @@ void registerPlayerConnectionListener() {
             auto& player = event.self();
             // 在第一个玩家加入时加载所有悬浮字
             if (!FloatingTextManager::getInstance().mIsLoaded) {
-                FloatingTextManager::getInstance().loadAllLockedChests();
+                FloatingTextManager::getInstance().loadAllChests();
             }
 
             FloatingTextManager::getInstance().drawAllFloatingTexts(player);

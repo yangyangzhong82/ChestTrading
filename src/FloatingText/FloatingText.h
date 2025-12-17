@@ -103,8 +103,8 @@ public:
     // 移除所有悬浮字给所有客户端
     void removeAllFloatingTexts();
 
-    // 从数据库加载所有已锁定的箱子并创建悬浮字
-    void loadAllLockedChests();
+    // 从数据库加载所有箱子并创建悬浮字
+    void loadAllChests();
 
     // 更新商店/回收商店的悬浮字物品列表
     void updateShopFloatingText(BlockPos pos, int dimId, ChestType type);

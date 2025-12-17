@@ -55,7 +55,7 @@ bool Entry::enable() {
         db.setCacheTimeout(60);
         getSelf().getLogger().info("Database cache enabled with 60s timeout.");
 
-        FloatingTextManager::getInstance().loadAllLockedChests(); // 在模组启用时加载所有悬浮字
+        FloatingTextManager::getInstance().loadAllChests(); // 在模组启用时加载所有悬浮字
 
         // 数据库打开成功后再注册事件监听器
         registerEventListener();

@@ -104,8 +104,29 @@ public:
 
     // === 查询 ===
     std::optional<ChestData> getChestInfo(BlockPos pos, int dimId, BlockSource& region);
-    bool                     isChestLocked(BlockPos pos, int dimId, BlockSource& region);
-    bool                     isOwner(const std::string& playerUuid, BlockPos pos, int dimId, BlockSource& region);
+    
+    /**
+     * @brief 检查箱子是否有配置记录（无论何种类型）
+     * @return true 如果箱子在数据库中有记录（可能是 Locked/Public/Shop/RecycleShop 等任意类型）
+     */
+    bool hasChestConfig(BlockPos pos, int dimId, BlockSource& region);
+    
+    /**
+     * @brief 检查箱子是否需要被保护（防止破坏/漏斗/活塞等）
+     * @return true 如果箱子需要保护（目前包括所有有配置的箱子）
+     * @note 未来可能根据箱子类型或配置返回不同结果
+     */
+    bool isChestProtected(BlockPos pos, int dimId, BlockSource& region);
+    
+    /**
+     * @brief [已废弃] 请使用 hasChestConfig() 或 isChestProtected()
+     * @deprecated 语义不清晰：实际检查的是"是否有配置"而非"是否上锁"
+     * @note 为保持向后兼容暂时保留，等同于 hasChestConfig()
+     */
+    [[deprecated("Use hasChestConfig() or isChestProtected() instead")]]
+    bool isChestLocked(BlockPos pos, int dimId, BlockSource& region);
+    
+    bool isOwner(const std::string& playerUuid, BlockPos pos, int dimId, BlockSource& region);
 
     // === 权限检查 ===
     bool canPlayerAccess(const std::string& playerUuid, BlockPos pos, int dimId, BlockSource& region);

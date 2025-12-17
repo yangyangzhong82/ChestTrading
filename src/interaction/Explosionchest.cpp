@@ -24,7 +24,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     return res;
 }
 
-//mc对爆炸处理是单线程，暂不用考虑并发问题
+// mc对爆炸处理是单线程，暂不用考虑并发问题
 LL_AUTO_TYPE_INSTANCE_HOOK(
     Test2,
     ll::memory::HookPriority::Normal,
@@ -36,18 +36,18 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     for (const auto& pos : *affectedBlocks) {
         // 检查主方块是否是箱子
         if (region->getBlock(pos).getTypeName() == "minecraft:chest") {
-            // 检查是否是上锁的箱子
+            // 检查箱子是否需要保护
             int dimId = static_cast<int>(region->getDimensionId());
-            if (ChestService::getInstance().isChestLocked(pos, dimId, *region)) {
-                // 如果是上锁的箱子，则跳过，不添加到 replaced 中
+            if (ChestService::getInstance().isChestProtected(pos, dimId, *region)) {
+                // 如果是受保护的箱子，则跳过，不添加到 replaced 中
                 continue;
             }
         }
         // 检查额外方块是否是箱子
         if (region->getExtraBlock(pos).getTypeName() == "minecraft:chest") {
-            // 检查是否是上锁的箱子
+            // 检查箱子是否需要保护
             int dimId = static_cast<int>(region->getDimensionId());
-            if (ChestService::getInstance().isChestLocked(pos, dimId, *region)) {
+            if (ChestService::getInstance().isChestProtected(pos, dimId, *region)) {
                 continue;
             }
         }

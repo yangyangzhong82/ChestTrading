@@ -29,9 +29,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
     int dimId = static_cast<int>(region.getDimensionId());
 
-    if (ChestService::getInstance().isChestLocked(chestPos, dimId, region)) {
+    if (ChestService::getInstance().isChestProtected(chestPos, dimId, region)) {
         logger.debug(
-            "漏斗尝试从上锁的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
+            "漏斗尝试从受保护的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
             chestPos.x,
             chestPos.y,
             chestPos.z,
@@ -81,9 +81,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     }
     int dimId = static_cast<int>(region.getDimensionId());
 
-    if (ChestService::getInstance().isChestLocked(chestPos, dimId, region)) {
+    if (ChestService::getInstance().isChestProtected(chestPos, dimId, region)) {
         logger.debug(
-            "漏斗尝试向上锁的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
+            "漏斗尝试向受保护的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
             chestPos.x,
             chestPos.y,
             chestPos.z,
