@@ -17,6 +17,12 @@ struct RecycleResult {
     double      totalEarned   = 0.0;
 };
 
+// 转移记录，用于精确回滚
+struct TransferRecord {
+    int slot;
+    int count;
+};
+
 // 设置委托结果
 struct SetCommissionResult {
     bool        success;
@@ -55,18 +61,23 @@ public:
     std::vector<RecycleRecordData> getRecycleRecords(BlockPos pos, int dimId, int itemId, int limit = 50);
 
     // === 回收交易 ===
-    RecycleResult executeRecycle(
+    // 完整的回收交易流程（包含物品转移、金钱处理、数据库更新）
+    RecycleResult executeFullRecycle(
         Player&            recycler,
         BlockPos           pos,
         int                dimId,
         int                itemId,
         int                quantity,
-        const std::string& ownerUuid,
+        double             unitPrice,
+        const std::string& commissionNbtStr,
         BlockSource&       region
     );
 
 private:
     RecycleService() = default;
+
+    // 内部方法：执行数据库更新（在事务中）
+    bool executeDbUpdate(Player& recycler, BlockPos pos, int dimId, int itemId, int quantity, double totalPrice);
 };
 
 } // namespace CT

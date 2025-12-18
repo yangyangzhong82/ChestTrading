@@ -35,10 +35,10 @@
 
 namespace CT {
 
-// 定义一个全局map来存储每个玩家的上次交互时间
+// 每个玩家的上次交互时间
 std::map<std::string, std::chrono::steady_clock::time_point> lastInteractionTime;
 std::mutex                                                   lastInteractionTimeMutex; // 保护 lastInteractionTime
-// 定义防抖间隔，例如500毫秒
+// 防抖间隔，
 const std::chrono::milliseconds DEBOUNCE_INTERVAL(500);
 // 清理间隔（60秒未交互的条目将被清理）
 const std::chrono::seconds CLEANUP_THRESHOLD(60);

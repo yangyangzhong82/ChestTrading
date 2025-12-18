@@ -379,197 +379,19 @@ void showRecycleFinalConfirmForm(
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
 
-            auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
-            if (!chestInfo) {
-                p.sendMessage(txt.getMessage("recycle.not_recycle_shop"));
-                return;
-            }
-            std::string ownerUuid = chestInfo->ownerUuid;
-
-            auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
-            if (!ownerInfo) {
-                p.sendMessage(txt.getMessage("recycle.owner_not_found"));
-                return;
-            }
-
-            if (Economy::getMoney(ownerInfo->xuid) < recyclePrice) {
-                p.sendMessage(txt.getMessage("recycle.owner_insufficient"));
-                return;
-            }
-
-            auto* blockActor = region.getBlockEntity(pos);
-            if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-                p.sendMessage(txt.getMessage("recycle.chest_entity_fail"));
-                return;
-            }
-            auto* chest = static_cast<ChestBlockActor*>(blockActor);
-
-            int chestAvailableSpace = 0;
-            for (int i = 0; i < chest->getContainerSize(); ++i) {
-                const auto& chestItemInSlot = chest->getItem(i);
-                if (chestItemInSlot.isNull()) {
-                    chestAvailableSpace += item.getMaxStackSize();
-                } else {
-                    auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
-                    if (chestItemNbt) {
-                        auto cleanedChestNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                        if (CT::NbtUtils::toSNBT(*cleanedChestNbt) == commissionNbtStr) {
-                            chestAvailableSpace += (item.getMaxStackSize() - chestItemInSlot.mCount);
-                        }
-                    }
-                }
-            }
-            if (chestAvailableSpace < recycleCount) {
-                p.sendMessage(txt.getMessage("recycle.chest_full"));
-                return;
-            }
-
             int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
             if (itemId < 0) {
                 p.sendMessage(txt.getMessage("recycle.item_id_fail"));
                 return;
             }
 
-            auto commission = RecycleService::getInstance().getCommission(pos, dimId, itemId);
-            if (!commission) {
-                p.sendMessage(txt.getMessage("recycle.no_commission"));
-                return;
-            }
-
-            int            minDurability        = commission->minDurability;
-            int            maxRecycleCount      = commission->maxRecycleCount;
-            int            currentRecycledCount = commission->currentRecycledCount;
-            nlohmann::json requiredEnchants;
-            if (!commission->requiredEnchants.empty()) {
-                try {
-                    requiredEnchants = nlohmann::json::parse(commission->requiredEnchants);
-                } catch (const std::exception& e) {
-                    logger.error("Failed to parse required_enchants JSON in showRecycleFinalConfirmForm: {}", e.what());
-                }
-            }
-
-            if (maxRecycleCount > 0 && (currentRecycledCount + recycleCount) > maxRecycleCount) {
-                p.sendMessage(txt.getMessage(
-                    "recycle.max_reached",
-                    {
-                        {"max", std::to_string(maxRecycleCount)}
-                }
-                ));
-                return;
-            }
-
-            // --- 物品转移操作 ---
-            int                              removedCount    = 0;
-            auto&                            playerInventory = p.getInventory();
-            std::vector<std::pair<int, int>> itemsToRemove; // slotIndex, count
-
-            // 1. 查找所有符合条件的物品
-            for (int i = 0; i < playerInventory.getContainerSize() && removedCount < recycleCount; ++i) {
-                const auto& itemInSlot = playerInventory.getItem(i);
-                if (itemInSlot.isNull()) continue;
-
-                auto itemNbt = CT::NbtUtils::getItemNbt(itemInSlot);
-                if (!itemNbt) continue;
-                auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt);
-
-                if (CT::NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                    // 检查耐久度
-                    if (itemInSlot.isDamageableItem()) {
-                        int maxDamage     = itemInSlot.getItem()->getMaxDamage();
-                        int currentDamage = itemInSlot.getDamageValue();
-                        if ((maxDamage - currentDamage) < minDurability) continue;
-                    }
-                    // 检查附魔
-                    if (!requiredEnchants.empty() && requiredEnchants.is_array()) {
-                        bool         allEnchantsMatch = true;
-                        ItemEnchants itemEnchants     = itemInSlot.constructItemEnchantsFromUserData();
-                        auto         allItemEnchants  = itemEnchants.getAllEnchants();
-                        for (const auto& reqEnchant : requiredEnchants) {
-                            bool currentEnchantFound = false;
-                            int  reqId               = reqEnchant["id"];
-                            int  reqLevel            = reqEnchant["level"];
-                            for (const auto& itemEnchant : allItemEnchants) {
-                                if ((int)itemEnchant.mEnchantType == reqId && itemEnchant.mLevel >= reqLevel) {
-                                    currentEnchantFound = true;
-                                    break;
-                                }
-                            }
-                            if (!currentEnchantFound) {
-                                allEnchantsMatch = false;
-                                break;
-                            }
-                        }
-                        if (!allEnchantsMatch) continue;
-                    }
-
-                    int countCanRemove = std::min((int)itemInSlot.mCount, recycleCount - removedCount);
-                    itemsToRemove.push_back({i, countCanRemove});
-                    removedCount += countCanRemove;
-                }
-            }
-
-            if (removedCount < recycleCount) {
-                p.sendMessage(txt.getMessage("recycle.item_insufficient"));
-                return;
-            }
-
-            for (const auto& itemAction : itemsToRemove) {
-                const auto& originalItem  = playerInventory.getItem(itemAction.first);
-                ItemStack   itemToRecycle = originalItem;
-                itemToRecycle.setStackSize(itemAction.second);
-
-                if (!chest->addItem(itemToRecycle)) {
-                    p.sendMessage(txt.getMessage("recycle.chest_full"));
-                    logger.error(
-                        "Recycle failed mid-transfer due to full chest. Player: {}, Item: {}, Count: {}",
-                        p.getRealName(),
-                        item.getName(),
-                        itemAction.second
-                    );
-                    // 理想情况下需要回滚已经addItem的物品
-                    return;
-                }
-                playerInventory.removeItem(itemAction.first, itemAction.second);
-            }
-
-            if (!Economy::reduceMoneyByUuid(ownerUuid, recyclePrice)) {
-                int remaining = recycleCount;
-                for (int i = 0; i < chest->getContainerSize() && remaining > 0; ++i) {
-                    const auto& chestItem = chest->getItem(i);
-                    if (!chestItem.isNull()) {
-                        auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItem);
-                        if (chestItemNbt) {
-                            auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                            if (CT::NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                                int       removeCount = std::min(remaining, (int)chestItem.mCount);
-                                ItemStack returnItem  = chestItem;
-                                returnItem.setStackSize(removeCount);
-                                chest->removeItem(i, removeCount);
-                                if (!p.add(returnItem)) {
-                                    p.drop(returnItem, true);
-                                }
-                                remaining -= removeCount;
-                            }
-                        }
-                    }
-                }
-                p.refreshInventory();
-                p.sendMessage(txt.getMessage("recycle.money_refund"));
-                logger.error(
-                    "Recycle failed at money reduction. Player: {}, OwnerUUID: {}, Amount: {}",
-                    p.getRealName(),
-                    ownerUuid,
-                    recyclePrice
-                );
-                return;
-            }
-
-            Economy::addMoney(p, recyclePrice);
-
+            // 调用服务层执行完整回收流程
             auto result =
-                RecycleService::getInstance().executeRecycle(p, pos, dimId, itemId, recycleCount, ownerUuid, region);
+                RecycleService::getInstance()
+                    .executeFullRecycle(p, pos, dimId, itemId, recycleCount, unitPrice, commissionNbtStr, region);
+
             if (!result.success) {
-                p.sendMessage(txt.getMessage("recycle.db_fail"));
+                p.sendMessage(result.message);
                 return;
             }
 
@@ -581,7 +403,6 @@ void showRecycleFinalConfirmForm(
                     {"price", CT::MoneyFormat::format(recyclePrice)}
             }
             ));
-            p.refreshInventory();
             showRecycleForm(p, pos, dimId, region);
         }
     );

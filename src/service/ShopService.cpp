@@ -5,6 +5,7 @@
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
+#include "db/Sqlite3Wrapper.h"
 #include "form/FormUtils.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
@@ -134,8 +135,46 @@ PurchaseResult ShopService::purchaseItem(
         return {false, txt.getMessage("shop.purchase_money_fail")};
     }
 
-    // 更新数据库库存
-    ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity);
+    // 使用事务更新数据库库存和记录购买
+    auto&       db = Sqlite3Wrapper::getInstance();
+    Transaction txn(db);
+    if (!txn.isActive()) {
+        // 事务启动失败，回滚金钱和物品
+        Economy::addMoney(buyer, totalPrice);
+        addItemsToChest(region, mainPos, itemNbt, quantity);
+        return {false, txt.getMessage("shop.purchase_db_fail")};
+    }
+
+    // 更新数据库库存（检查返回值）
+    if (!ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity)) {
+        // 扣库存失败，回滚
+        Economy::addMoney(buyer, totalPrice);
+        addItemsToChest(region, mainPos, itemNbt, quantity);
+        return {false, txt.getMessage("shop.purchase_db_fail")};
+    }
+
+    // 记录购买
+    PurchaseRecordData record;
+    record.dimId         = dimId;
+    record.pos           = mainPos;
+    record.itemId        = itemId;
+    record.buyerUuid     = buyer.getUuid().asString();
+    record.purchaseCount = quantity;
+    record.totalPrice    = totalPrice;
+    if (!ShopRepository::getInstance().addPurchaseRecord(record)) {
+        // 记录失败，回滚
+        Economy::addMoney(buyer, totalPrice);
+        addItemsToChest(region, mainPos, itemNbt, quantity);
+        return {false, txt.getMessage("shop.purchase_db_fail")};
+    }
+
+    // 提交事务
+    if (!txn.commit()) {
+        // 提交失败，回滚
+        Economy::addMoney(buyer, totalPrice);
+        addItemsToChest(region, mainPos, itemNbt, quantity);
+        return {false, txt.getMessage("shop.purchase_db_fail")};
+    }
 
     // 给店主加钱
     auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
@@ -159,16 +198,6 @@ PurchaseResult ShopService::purchaseItem(
         }
         buyer.refreshInventory();
     }
-
-    // 记录购买
-    PurchaseRecordData record;
-    record.dimId         = dimId;
-    record.pos           = mainPos;
-    record.itemId        = itemId;
-    record.buyerUuid     = buyer.getUuid().asString();
-    record.purchaseCount = quantity;
-    record.totalPrice    = totalPrice;
-    ShopRepository::getInstance().addPurchaseRecord(record);
 
     // 更新悬浮字
     FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
