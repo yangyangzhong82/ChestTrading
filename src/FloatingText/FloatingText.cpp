@@ -1,6 +1,5 @@
 #include "FloatingText/FloatingText.h"
 #include "Config/ConfigManager.h"
-#include "service/TextService.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/NetworkPacket.h"
 #include "Utils/fakeitem.h"
@@ -25,6 +24,8 @@
 #include "mc/world/level/ChangeDimensionRequest.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include "service/TextService.h"
+
 
 
 namespace CT {
@@ -75,6 +76,18 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
         auto& ft = mFloatingTexts.at(key);
         if (ft.debugText) {
             debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText); // 从所有客户端移除
+        }
+        // 移除所有玩家的假物品
+        if (!ft.playerFakeItemIds.empty()) {
+            auto level = ll::service::getLevel();
+            if (level) {
+                for (auto& [playerUuid, fakeItemId] : ft.playerFakeItemIds) {
+                    auto* playerPtr = level->getPlayer(playerUuid);
+                    if (playerPtr) {
+                        RemoveFakeitem(*playerPtr, fakeItemId);
+                    }
+                }
+            }
         }
         mFloatingTexts.erase(key);
         logger.debug("已移除箱子 ({}, {}, {}) in dim {} 的悬浮字。", pos.x, pos.y, pos.z, dimId);
@@ -324,7 +337,8 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                 if (updateText) {
                     // 更新悬浮字文本
                     ft.currentItemIndex = (ft.currentItemIndex + 1) % ft.itemNames.size();
-                    ft.text = TextService::getInstance().generateDynamicShopText(ft.type, ft.itemNames[ft.currentItemIndex]);
+                    ft.text =
+                        TextService::getInstance().generateDynamicShopText(ft.type, ft.itemNames[ft.currentItemIndex]);
                     logger.trace(
                         "dynamicTextUpdateCoroutine: 更新悬浮字 ({},{},{}) 到物品索引 {}: {}",
                         ft.pos.x,
@@ -448,7 +462,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         // 更新悬浮字文本
         if (!ft.itemNames.empty()) {
             ft.currentItemIndex = 0; // 重置索引
-            ft.text = TextService::getInstance().generateDynamicShopText(type, ft.itemNames[0]);
+            ft.text             = TextService::getInstance().generateDynamicShopText(type, ft.itemNames[0]);
             logger.debug(
                 "updateShopFloatingText: 箱子 ({}, {}, {}) in dim {} 的动态悬浮字已更新为: {}",
                 pos.x,
