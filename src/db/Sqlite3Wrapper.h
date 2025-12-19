@@ -150,6 +150,9 @@ private:
     sqlite3*             db;
     std::recursive_mutex mDbMutex; // 数据库操作互斥锁
 
+    // 预处理语句缓存
+    std::unordered_map<std::string, sqlite3_stmt*> mStmtCache;
+
     // 查询缓存相关
     struct CacheEntry {
         std::vector<std::vector<std::string>> result;
@@ -175,6 +178,16 @@ private:
     template <size_t I = 1>
     void bind_args(sqlite3_stmt* stmt) {} // 递归终止
 
+    // 获取或创建预处理语句（带缓存）
+    sqlite3_stmt* getOrPrepareStmt(const std::string& sql);
+
+    // 清理预处理语句缓存
+    void clearStmtCache();
+
+    // 生成缓存键（高效版本）
+    template <typename... Args>
+    std::string generateCacheKeyFast(const std::string& sql, Args&&... args);
+
     // 生成缓存键
     std::string generateCacheKey(const std::string& sql, const std::vector<Value>& params);
 
@@ -199,6 +212,26 @@ private:
 
 // --- 模板函数的实现需要放在头文件中 ---
 
+// 高效缓存键生成辅助
+namespace detail {
+inline void appendToKey(std::string& key, int v) { key += std::to_string(v); }
+inline void appendToKey(std::string& key, long long v) { key += std::to_string(v); }
+inline void appendToKey(std::string& key, double v) { key += std::to_string(v); }
+inline void appendToKey(std::string& key, const std::string& v) { key += v; }
+inline void appendToKey(std::string& key, const char* v) { key += v; }
+} // namespace detail
+
+template <typename... Args>
+std::string Sqlite3Wrapper::generateCacheKeyFast(const std::string& sql, Args&&... args) {
+    std::string key;
+    key.reserve(sql.size() + sizeof...(args) * 16);
+    key = sql;
+    if constexpr (sizeof...(args) > 0) {
+        ((key += '|', detail::appendToKey(key, args)), ...);
+    }
+    return key;
+}
+
 template <typename... Args>
 bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
@@ -207,11 +240,8 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
 
     mStats.queryCount++;
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
-        return false;
-    }
+    sqlite3_stmt* stmt = getOrPrepareStmt(sql);
+    if (!stmt) return false;
 
     bind_args(stmt, std::forward<Args>(args)...);
 
@@ -220,10 +250,11 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
         CT::logger.error("无法执行 SQL 语句: {}", sqlite3_errmsg(db));
     }
 
-    sqlite3_finalize(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
 
     if (result) {
-        clearCache(); // 成功执行后清除缓存
+        clearCache();
     }
 
     return result;
@@ -237,18 +268,16 @@ int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args)
 
     mStats.queryCount++;
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
-        return -1;
-    }
+    sqlite3_stmt* stmt = getOrPrepareStmt(sql);
+    if (!stmt) return -1;
 
     bind_args(stmt, std::forward<Args>(args)...);
 
     bool success = (sqlite3_step(stmt) == SQLITE_DONE);
     int  changes = success ? sqlite3_changes(db) : -1;
 
-    sqlite3_finalize(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
 
     if (success) {
         clearCache();
@@ -265,12 +294,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
     std::string cacheKey;
 
     if (mCacheEnabled && !skipCache) {
-        std::vector<Value> params;
-        if constexpr (sizeof...(args) > 0) {
-            params = {Value(std::forward<Args>(args))...};
-        }
-        cacheKey = generateCacheKey(sql, params);
-
+        cacheKey = generateCacheKeyFast(sql, args...);
         if (getCachedResult(cacheKey, results)) {
             mStats.cacheHits++;
             return results;
@@ -284,11 +308,8 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
 
     mStats.queryCount++;
 
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
-        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
-        return results;
-    }
+    sqlite3_stmt* stmt = getOrPrepareStmt(sql);
+    if (!stmt) return results;
 
     bind_args(stmt, std::forward<Args>(args)...);
 
@@ -302,7 +323,8 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
         results.push_back(row);
     }
 
-    sqlite3_finalize(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
 
     if (mCacheEnabled && !skipCache) {
         setCachedResult(cacheKey, results);

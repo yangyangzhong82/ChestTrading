@@ -88,6 +88,10 @@ void Sqlite3Wrapper::close() {
     mThreadPool.reset();
 
     std::lock_guard<std::recursive_mutex> lock(mDbMutex);
+
+    // 清理预处理语句缓存
+    clearStmtCache();
+
     if (db) {
         sqlite3_close(db);
         db = nullptr;
@@ -95,6 +99,29 @@ void Sqlite3Wrapper::close() {
     clearCache();
 
     mClosing = false;
+}
+
+sqlite3_stmt* Sqlite3Wrapper::getOrPrepareStmt(const std::string& sql) {
+    auto it = mStmtCache.find(sql);
+    if (it != mStmtCache.end()) {
+        return it->second;
+    }
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        CT::logger.error("无法准备 SQL 语句: {}", sqlite3_errmsg(db));
+        return nullptr;
+    }
+
+    mStmtCache[sql] = stmt;
+    return stmt;
+}
+
+void Sqlite3Wrapper::clearStmtCache() {
+    for (auto& [sql, stmt] : mStmtCache) {
+        if (stmt) sqlite3_finalize(stmt);
+    }
+    mStmtCache.clear();
 }
 
 bool Sqlite3Wrapper::execute_unsafe(const std::string& sql) {
