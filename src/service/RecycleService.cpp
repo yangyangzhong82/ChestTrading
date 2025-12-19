@@ -1,5 +1,6 @@
 #include "RecycleService.h"
 #include "ChestService.h"
+#include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
 #include "TextService.h"
 #include "Utils/NbtUtils.h"
@@ -316,8 +317,10 @@ RecycleResult RecycleService::executeFullRecycle(
         return {false, txt.getMessage("recycle.money_refund"), 0, 0.0};
     }
 
-    // 10. 给回收者加钱
-    Economy::addMoney(recycler, totalPrice);
+    // 10. 给回收者加钱（扣除税率）
+    double taxRate      = ConfigManager::getInstance().get().taxSettings.recycleTaxRate;
+    double recyclerGain = totalPrice * (1.0 - taxRate);
+    Economy::addMoney(recycler, recyclerGain);
 
     // 11. 更新数据库（事务）
     if (!executeDbUpdate(recycler, pos, dimId, itemId, quantity, totalPrice)) {

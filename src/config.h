@@ -37,6 +37,11 @@ struct TeleportSettings {
     int    teleportCooldownSec = 60;    // 传送冷却时间（秒）
 };
 
+struct TaxSettings {
+    double shopTaxRate    = 0.0; // 商店交易税率 (0.0 - 1.0, 例如 0.05 表示 5%)
+    double recycleTaxRate = 0.0; // 回收商店税率 (0.0 - 1.0, 例如 0.05 表示 5%)
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -49,4 +54,5 @@ struct Config {
     ChestLimits          chestLimits;                                  // 箱子数量限制
     ChestCreationCosts   chestCosts;                                   // 箱子创建费用
     TeleportSettings     teleportSettings;                             // 传送相关设置
+    TaxSettings          taxSettings;                                  // 税率设置
 };

@@ -1,5 +1,6 @@
 #include "ShopService.h"
 #include "ChestService.h"
+#include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
 #include "TextService.h"
 #include "Utils/MoneyFormat.h"
@@ -176,10 +177,12 @@ PurchaseResult ShopService::purchaseItem(
         return {false, txt.getMessage("shop.purchase_db_fail")};
     }
 
-    // 给店主加钱
+    // 给店主加钱（扣除税率）
     auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
     if (chestInfo && !chestInfo->ownerUuid.empty()) {
-        Economy::addMoneyByUuid(chestInfo->ownerUuid, totalPrice);
+        double taxRate     = ConfigManager::getInstance().get().taxSettings.shopTaxRate;
+        double ownerIncome = totalPrice * (1.0 - taxRate);
+        Economy::addMoneyByUuid(chestInfo->ownerUuid, ownerIncome);
     }
 
     // 给玩家物品
