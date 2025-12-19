@@ -1,12 +1,13 @@
 #include "ConfigManager.h"
-#include "config.h"
 #include "ConfigSerialization.h"
 #include "Entry/Entry.h"
+#include "config.h"
 #include "logger.h"
 #include <fstream>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <vector>
+
 namespace CT {
 
 ConfigManager& ConfigManager::getInstance() {
@@ -87,7 +88,7 @@ bool ConfigManager::save() {
     return true;
 }
 
-
+bool ConfigManager::reload() { return load(mConfigPath); }
 
 Config& ConfigManager::get() { return *mConfig; }
 

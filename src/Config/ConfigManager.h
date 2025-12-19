@@ -18,7 +18,8 @@ public:
     // 保存配置
     bool save();
 
-
+    // 重新加载配置
+    bool reload();
 
     // 获取配置对象的引用
     Config& get();

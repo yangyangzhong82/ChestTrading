@@ -1,5 +1,6 @@
 #include "command.h"
 #include "Bedrock-Authority/permission/PermissionManager.h"
+#include "Config/ConfigManager.h"
 #include "form/AdminForm.h"
 #include "form/PublicShopForm.h"
 #include "ll/api/command/CommandHandle.h"
@@ -68,6 +69,19 @@ void registerCommand() {
                 return;
             }
             showAdminMainForm(*player);
+        }
+    );
+
+    // 注册 /ctreload 命令 - 重新加载配置
+    auto& reloadCmd =
+        registrar.getOrCreateCommand("ctreload", "重新加载配置文件", CommandPermissionLevel::GameDirectors);
+    reloadCmd.overload<ll::command::EmptyParam>().execute(
+        [](CommandOrigin const&, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            if (ConfigManager::getInstance().reload()) {
+                output.success("§a配置文件重新加载成功。");
+            } else {
+                output.error("§c配置文件重新加载失败，请检查配置文件格式。");
+            }
         }
     );
 
