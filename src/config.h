@@ -3,6 +3,9 @@
 #include "Config/JsonMacros.h"
 #include "ll/api/io/LogLevel.h"
 
+#include <string>
+#include <vector>
+
 
 namespace CT { // 将 EconomyType 定义在 CT 命名空间下
 
@@ -42,6 +45,12 @@ struct TaxSettings {
     double recycleTaxRate = 0.0; // 回收商店税率 (0.0 - 1.0, 例如 0.05 表示 5%)
 };
 
+struct ResourcePaths {
+    std::string              databasePath            = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
+    std::string              customItemTextureFile   = "texture_path.json"; // 自定义物品贴图文件
+    std::vector<std::string> defaultItemTextureFiles = {"terrain_texture.json", "item_texture.json"};
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -55,4 +64,5 @@ struct Config {
     ChestCreationCosts   chestCosts;                                   // 箱子创建费用
     TeleportSettings     teleportSettings;                             // 传送相关设置
     TaxSettings          taxSettings;                                  // 税率设置
+    ResourcePaths        resourcePaths;                                // 数据库/贴图等路径配置
 };

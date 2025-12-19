@@ -5,7 +5,7 @@
 #include "Utils/ItemTextureManager.h"
 #include "command/command.h"
 #include "db/Sqlite3Wrapper.h"
-#include "interaction/event.h"
+#include "interaction/Event.h"
 #include "ll/api/mod/RegisterHelper.h"
 
 namespace CT {
@@ -33,20 +33,25 @@ bool Entry::load() {
 
 bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
-    // 优先加载用户指定的 texture_path.json
-    std::string customTexturePath = "texture_path.json";
+
+    const auto& config = CT::ConfigManager::getInstance().get();
+
+    // 优先加载用户指定的自定义物品贴图文件
+    const std::string& customTexturePath = config.resourcePaths.customItemTextureFile;
     if (CT::ItemTextureManager::getInstance().loadTextures(customTexturePath)) {
         getSelf().getLogger().info("成功加载自定义物品贴图文件: {}", customTexturePath);
     } else {
         getSelf().getLogger().warn("无法加载自定义物品贴图文件: {}，将只使用默认文件。", customTexturePath);
     }
+
     registerCommand();
+
     // 加载默认物品贴图文件
-    std::vector<std::string> defaultTextureFiles = {"terrain_texture.json", "item_texture.json"};
-    CT::ItemTextureManager::getInstance().loadTextures(defaultTextureFiles);
+    CT::ItemTextureManager::getInstance().loadTextures(config.resourcePaths.defaultItemTextureFiles);
+
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
 
-    std::string db_path = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
+    const std::string& db_path = config.resourcePaths.databasePath; // 数据库文件路径
     if (db.open(db_path)) {
         getSelf().getLogger().info("Successfully opened database: " + db_path);
 

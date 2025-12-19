@@ -42,6 +42,7 @@ private:
 class Sqlite3Wrapper {
 public:
     friend class Transaction;
+    friend class SchemaMigration;
 
     // 获取单例实例
     static Sqlite3Wrapper& getInstance() {
@@ -145,18 +146,6 @@ public:
 private:
     Sqlite3Wrapper();
     ~Sqlite3Wrapper();
-
-    // 初始化数据库表结构
-    bool initializeSchema();
-
-    // Schema 版本管理
-    int  getSchemaVersion();
-    void setSchemaVersion(int version);
-    bool runMigrations(int fromVersion);
-
-    // 迁移函数 - 后续版本在此添加 migrateToV3, migrateToV4 等
-    bool migrateToV1();
-    bool migrateToV2();
 
     sqlite3*             db;
     std::recursive_mutex mDbMutex; // 数据库操作互斥锁
