@@ -816,11 +816,20 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
 }
 
 
+void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+
 void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     fm.setTitle("添加回收委托 - 选择物品");
     fm.setContent("请选择你想要添加回收委托的物品：");
 
+    // 首先添加"通过物品ID添加"按钮
+    fm.appendButton("§e通过物品ID添加", [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
+        showAddItemByIdForm(p, pos, dimId, region);
+    });
+
+    // 然后添加背包中的物品
     auto& inventory = player.getInventory();
     for (int i = 0; i < inventory.getContainerSize(); ++i) {
         const auto& item = inventory.getItem(i);
@@ -966,6 +975,65 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 return;
             }
             showRecycleShopManageForm(p, pos, dimId, region);
+        }
+    );
+}
+
+
+void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+    ll::form::CustomForm fm;
+    fm.setTitle("通过物品ID添加委托");
+    fm.appendLabel("请输入物品的ID（如: diamond_sword）");
+    fm.appendInput("item_id", "物品ID", "", "");
+    fm.appendLabel("§e提示: 物品ID通常为物品名称，如 diamond_sword, iron_pickaxe 等");
+    fm.appendLabel("§e如果不带minecraft:前缀，会自动添加");
+
+    fm.sendTo(
+        player,
+        [pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+            auto& region = p.getDimensionBlockSource();
+            auto& txt    = TextService::getInstance();
+            if (!result.has_value()) {
+                p.sendMessage(txt.getMessage("action.cancelled"));
+                showAddItemToRecycleShopForm(p, pos, dimId, region);
+                return;
+            }
+
+            std::string itemIdStr = std::get<std::string>(result.value().at("item_id"));
+            if (itemIdStr.empty()) {
+                p.sendMessage(txt.getMessage("input.empty_item_id"));
+                showAddItemByIdForm(p, pos, dimId, region);
+                return;
+            }
+
+            // 处理物品ID：只有在没有命名空间前缀时才添加 minecraft:
+            // addon物品通常格式为 namespace:item_name (如 mypack:custom_sword)
+            std::string fullItemId = itemIdStr;
+            if (fullItemId.find(':') == std::string::npos) {
+                // 没有冒号，说明没有命名空间前缀，添加 minecraft:
+                fullItemId = "minecraft:" + fullItemId;
+            }
+
+            // 尝试创建物品
+            ItemStack item(fullItemId, 1, 0, nullptr);
+
+            if (item.isNull()) {
+                p.sendMessage(txt.getMessage("input.invalid_item_id"));
+                showAddItemByIdForm(p, pos, dimId, region);
+                return;
+            }
+
+            if (item.isNull()) {
+                p.sendMessage(txt.getMessage("input.invalid_item_id"));
+                showAddItemByIdForm(p, pos, dimId, region);
+                return;
+            }
+
+            // 设置数量为1
+            item.mCount = 1;
+
+            // 跳转到设置价格表单
+            showSetRecycleItemPriceForm(p, item, pos, dimId, region);
         }
     );
 }
