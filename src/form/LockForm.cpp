@@ -14,6 +14,8 @@
 namespace CT {
 
 void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType);
+void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 
 void showChestLockForm(
     Player&            player,
@@ -55,10 +57,18 @@ void showChestLockForm(
                     auto& region = p.getDimensionBlockSource();
                     showShopChestManageForm(p, pos, dimId, region);
                 });
+                fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showSetShopNameForm(p, pos, dimId, region);
+                });
             } else if (chestType == ChestType::RecycleShop) {
                 fm.appendButton("管理回收商店", [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showRecycleShopManageForm(p, pos, dimId, region);
+                });
+                fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showSetRecycleShopNameForm(p, pos, dimId, region);
                 });
             }
 

@@ -469,11 +469,6 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
         showViewRecycleCommissionsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
-        auto& region = p.getDimensionBlockSource();
-        showSetRecycleShopNameForm(p, pos, dimId, region);
-    });
-
     fm.appendButton("返回", [pos, dimId](Player& p) {
         // 返回到箱子已锁定界面
         auto& region = p.getDimensionBlockSource();

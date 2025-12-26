@@ -24,7 +24,7 @@ bool ItemTextureManager::loadTextures(const std::string& filePath) {
         return false;
     }
 
-    // 尝试解析扁平的 JSON 格式 (例如 texture_path.json)
+    // 尝试解析扁平的 JSON 格式 (例如 block_texture.json)
     bool isFlatFormat = true;
     if (j.is_object()) {
         for (auto const& [itemName, texturePath] : j.items()) {
@@ -39,7 +39,8 @@ bool ItemTextureManager::loadTextures(const std::string& filePath) {
 
     if (isFlatFormat) {
         for (auto const& [itemName, texturePath] : j.items()) {
-            mItemTextures[itemName].push_back(texturePath.get<std::string>());
+            std::string key = standardizeItemName(itemName);
+            mItemTextures[key].push_back(texturePath.get<std::string>());
         }
         logger.info("成功加载扁平格式物品贴图文件: {}，共 {} 个贴图。", filePath, mItemTextures.size());
         return true;

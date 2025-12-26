@@ -324,11 +324,6 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         showPurchaseRecordsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
-        auto& region = p.getDimensionBlockSource();
-        showSetShopNameForm(p, pos, dimId, region);
-    });
-
     fm.appendButton("返回", [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
