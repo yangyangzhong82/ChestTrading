@@ -63,6 +63,7 @@ bool ItemTextureManager::loadTextures(const std::string& filePath) {
     }
 }
 
+// 按顺序加载多个贴图文件，先加载的文件优先级更高（已存在的贴图不会被覆盖）
 bool ItemTextureManager::loadTextures(const std::vector<std::string>& filePaths) {
     bool all_succeeded = true;
     for (const auto& filePath : filePaths) {
@@ -125,7 +126,8 @@ std::string ItemTextureManager::getTexture(const std::string& rawItemName) const
 
     // 2. 尝试通用类型匹配 (例如 "iron_sword" 匹配 "sword")
     // 提取材质前缀 (例如 "iron", "diamond", "wood", "stone", "gold", "netherite", "leather", "chainmail")
-    std::vector<std::string> materials = {"iron", "diamond", "wood", "stone", "gold", "netherite", "leather", "chainmail"};
+    std::vector<std::string> materials =
+        {"iron", "diamond", "wood", "stone", "gold", "netherite", "leather", "chainmail"};
     std::string foundMaterial;
     std::string baseItemName = itemName;
 
@@ -163,4 +165,4 @@ std::string ItemTextureManager::getTexture(const std::string& rawItemName) const
     return ""; // 未找到贴图
 }
 
-} // namespace CT 的结束
+} // namespace CT

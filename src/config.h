@@ -46,9 +46,9 @@ struct TaxSettings {
 };
 
 struct ResourcePaths {
-    std::string              databasePath            = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
-    std::string              customItemTextureFile   = "texture_path.json"; // 自定义物品贴图文件
-    std::vector<std::string> defaultItemTextureFiles = {"terrain_texture.json", "item_texture.json"};
+    std::string              databasePath = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
+    std::vector<std::string> itemTextureFiles =
+        {"texture_path.json", "terrain_texture.json", "item_texture.json"}; // 物品贴图文件，按优先级排序，先加载的优先
 };
 
 struct Config {

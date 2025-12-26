@@ -36,18 +36,10 @@ bool Entry::enable() {
 
     const auto& config = CT::ConfigManager::getInstance().get();
 
-    // 优先加载用户指定的自定义物品贴图文件
-    const std::string& customTexturePath = config.resourcePaths.customItemTextureFile;
-    if (CT::ItemTextureManager::getInstance().loadTextures(customTexturePath)) {
-        getSelf().getLogger().info("成功加载自定义物品贴图文件: {}", customTexturePath);
-    } else {
-        getSelf().getLogger().warn("无法加载自定义物品贴图文件: {}，将只使用默认文件。", customTexturePath);
-    }
+    // 按优先级顺序加载物品贴图文件（先加载的优先）
+    CT::ItemTextureManager::getInstance().loadTextures(config.resourcePaths.itemTextureFiles);
 
     registerCommand();
-
-    // 加载默认物品贴图文件
-    CT::ItemTextureManager::getInstance().loadTextures(config.resourcePaths.defaultItemTextureFiles);
 
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
 
