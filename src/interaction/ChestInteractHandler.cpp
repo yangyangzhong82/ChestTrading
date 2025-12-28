@@ -1,6 +1,7 @@
 #include "interaction/ChestInteractHandler.h"
 
 #include "Bedrock-Authority/permission/PermissionManager.h"
+#include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "command/command.h"
 #include "form/LockForm.h"
@@ -25,19 +26,17 @@ namespace {
 std::map<std::string, std::chrono::steady_clock::time_point> gLastInteractionTime;
 std::mutex                                                   gLastInteractionTimeMutex;
 
-// 防抖间隔
-constexpr std::chrono::milliseconds kDebounceInterval{500};
-
-// 清理阈值：60秒未交互的条目将被清理
-constexpr std::chrono::seconds kCleanupThreshold{60};
-
 bool shouldDebounce(const std::string& playerUuid) {
     auto now = std::chrono::steady_clock::now();
+
+    auto& config           = CT::ConfigManager::getInstance().get();
+    auto  debounceInterval = std::chrono::milliseconds(config.interactionSettings.debounceIntervalMs);
+    auto  cleanupThreshold = std::chrono::seconds(config.interactionSettings.cleanupThresholdSec);
 
     std::lock_guard<std::mutex> lock(gLastInteractionTimeMutex);
 
     for (auto it = gLastInteractionTime.begin(); it != gLastInteractionTime.end();) {
-        if (now - it->second > kCleanupThreshold) {
+        if (now - it->second > cleanupThreshold) {
             it = gLastInteractionTime.erase(it);
         } else {
             ++it;
@@ -46,7 +45,7 @@ bool shouldDebounce(const std::string& playerUuid) {
 
     auto found = gLastInteractionTime.find(playerUuid);
     if (found != gLastInteractionTime.end()) {
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - found->second) < kDebounceInterval) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - found->second) < debounceInterval) {
             return true;
         }
     }

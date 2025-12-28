@@ -51,12 +51,18 @@ struct ResourcePaths {
         {"texture_path.json", "terrain_texture.json", "item_texture.json"}; // 物品贴图文件，按优先级排序，先加载的优先
 };
 
+struct InteractionSettings {
+    int debounceIntervalMs  = 500; // 箱子交互防抖间隔（毫秒）
+    int cleanupThresholdSec = 60;  // 交互记录清理阈值（秒）
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
     int  busyTimeoutMs = 5000; // 数据库繁忙超时时间（毫秒），避免 "database is locked" 错误
     int  floatingTextUpdateIntervalSeconds = 1;                        // 悬浮字更新间隔，单位秒
     int  databaseThreadPoolSize            = 4;                        // 数据库线程池线程数量
+    int  databaseCacheTimeoutSec           = 60;                       // 数据库查询缓存超时时间（秒）
     ll::io::LogLevel     logLevel          = ll::io::LogLevel::Info;   // 日志等级
     CT::EconomyType      economyType       = CT::EconomyType::CzMoney; // 经济类型
     FloatingTextSettings floatingText;                                 // 悬浮字相关设置
@@ -65,4 +71,5 @@ struct Config {
     TeleportSettings     teleportSettings;                             // 传送相关设置
     TaxSettings          taxSettings;                                  // 税率设置
     ResourcePaths        resourcePaths;                                // 数据库/贴图等路径配置
+    InteractionSettings  interactionSettings;                          // 交互相关设置
 };

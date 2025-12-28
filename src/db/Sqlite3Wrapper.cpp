@@ -75,6 +75,9 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         );
     }
 
+    // 初始化缓存超时时间
+    setCacheTimeout(CT::ConfigManager::getInstance().get().databaseCacheTimeoutSec);
+
     return true;
 }
 
