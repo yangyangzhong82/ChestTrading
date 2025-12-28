@@ -3,6 +3,7 @@
 #include "mc/world/actor/player/Player.h"
 #include <chrono>
 #include <map>
+#include <shared_mutex>
 #include <string>
 
 namespace CT {
@@ -45,6 +46,7 @@ private:
 
     // 存储玩家UUID和最后传送时间的映射
     std::map<std::string, std::chrono::steady_clock::time_point> mTeleportCooldowns;
+    mutable std::shared_mutex                                    mCooldownMutex;
 };
 
 } // namespace CT

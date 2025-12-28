@@ -10,7 +10,8 @@ TeleportService& TeleportService::getInstance() {
 }
 
 bool TeleportService::canTeleport(const std::string& playerUuid) {
-    auto it = mTeleportCooldowns.find(playerUuid);
+    std::shared_lock lock(mCooldownMutex);
+    auto             it = mTeleportCooldowns.find(playerUuid);
     if (it == mTeleportCooldowns.end()) {
         return true; // 没有记录，可以传送
     }
@@ -23,7 +24,8 @@ bool TeleportService::canTeleport(const std::string& playerUuid) {
 }
 
 int TeleportService::getRemainingCooldown(const std::string& playerUuid) {
-    auto it = mTeleportCooldowns.find(playerUuid);
+    std::shared_lock lock(mCooldownMutex);
+    auto             it = mTeleportCooldowns.find(playerUuid);
     if (it == mTeleportCooldowns.end()) {
         return 0; // 没有记录，没有冷却
     }
@@ -37,13 +39,15 @@ int TeleportService::getRemainingCooldown(const std::string& playerUuid) {
 }
 
 void TeleportService::recordTeleport(const std::string& playerUuid) {
+    std::unique_lock lock(mCooldownMutex);
     mTeleportCooldowns[playerUuid] = std::chrono::steady_clock::now();
     logger.debug("TeleportService: 记录玩家 {} 的传送时间", playerUuid);
 }
 
 void TeleportService::cleanupExpiredCooldowns() {
-    auto now             = std::chrono::steady_clock::now();
-    int  cooldownSeconds = ConfigManager::getInstance().get().teleportSettings.teleportCooldownSec;
+    std::unique_lock lock(mCooldownMutex);
+    auto             now             = std::chrono::steady_clock::now();
+    int              cooldownSeconds = ConfigManager::getInstance().get().teleportSettings.teleportCooldownSec;
 
     for (auto it = mTeleportCooldowns.begin(); it != mTeleportCooldowns.end();) {
         auto timeSinceLastTp = std::chrono::duration_cast<std::chrono::seconds>(now - it->second).count();

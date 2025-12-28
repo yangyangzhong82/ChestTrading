@@ -39,9 +39,9 @@ BlockPos ChestService::getMainChestPos(BlockPos pos, BlockSource& region) {
 // === ChestCacheManager 实现 ===
 
 bool ChestCacheManager::getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEntry& entry) {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    PositionKey                 key{dimId, pos.x, pos.y, pos.z};
-    auto                        it = mCache.find(key);
+    std::shared_lock lock(mCacheMutex);
+    PositionKey      key{dimId, pos.x, pos.y, pos.z};
+    auto             it = mCache.find(key);
     if (it == mCache.end()) return false;
 
     auto now     = std::chrono::steady_clock::now();
@@ -55,27 +55,27 @@ bool ChestCacheManager::getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEn
 }
 
 void ChestCacheManager::setCachedChestInfo(BlockPos pos, int dimId, const ChestCacheEntry& entry) {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    PositionKey                 key{dimId, pos.x, pos.y, pos.z};
+    std::unique_lock lock(mCacheMutex);
+    PositionKey      key{dimId, pos.x, pos.y, pos.z};
     mCache[key] = entry;
 }
 
 void ChestCacheManager::invalidateCache(BlockPos pos, int dimId) {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    PositionKey                 key{dimId, pos.x, pos.y, pos.z};
+    std::unique_lock lock(mCacheMutex);
+    PositionKey      key{dimId, pos.x, pos.y, pos.z};
     mCache.erase(key);
 }
 
 void ChestCacheManager::clearAllCache() {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
+    std::unique_lock lock(mCacheMutex);
     mCache.clear();
 }
 
 void ChestCacheManager::setCacheTimeout(int seconds) { mCacheTimeoutSeconds.store(seconds, std::memory_order_relaxed); }
 
 void ChestCacheManager::cleanupExpiredCache() {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    auto                        now = std::chrono::steady_clock::now();
+    std::unique_lock lock(mCacheMutex);
+    auto             now = std::chrono::steady_clock::now();
     for (auto it = mCache.begin(); it != mCache.end();) {
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
         if (elapsed > mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
@@ -258,7 +258,7 @@ bool ChestService::isChestProtected(BlockPos pos, int dimId, BlockSource& region
     if (!info) {
         return false;
     }
-    
+
     // 目前所有类型的箱子都需要保护
     // 未来如果需要，可以根据 info->type 或其他配置决定是否保护
     return true;
