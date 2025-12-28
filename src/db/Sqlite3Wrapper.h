@@ -83,6 +83,7 @@ public:
 
     // 缓存控制
     void clearCache();
+    void clearCacheForTable(const std::string& tableName);
     void setCacheTimeout(int seconds);
     void enableCache(bool enable);
 
@@ -200,6 +201,9 @@ private:
     // 判断查询是否应跳过缓存
     bool shouldSkipCache(const std::string& sql);
 
+    // 从 SQL 语句中提取表名
+    std::string extractTableName(const std::string& sql);
+
     // 执行准备好的语句
     template <typename... Args>
     bool executeStatement(sqlite3_stmt* stmt, Args&&... args);
@@ -254,7 +258,7 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     sqlite3_clear_bindings(stmt);
 
     if (result) {
-        clearCache();
+        clearCacheForTable(extractTableName(sql));
     }
 
     return result;
@@ -280,7 +284,7 @@ int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args)
     sqlite3_clear_bindings(stmt);
 
     if (success) {
-        clearCache();
+        clearCacheForTable(extractTableName(sql));
     }
 
     return changes;

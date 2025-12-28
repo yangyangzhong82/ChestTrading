@@ -215,6 +215,49 @@ void Sqlite3Wrapper::clearCache() {
     mQueryCache.clear();
 }
 
+void Sqlite3Wrapper::clearCacheForTable(const std::string& tableName) {
+    if (tableName.empty()) {
+        clearCache();
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mCacheMutex);
+    for (auto it = mQueryCache.begin(); it != mQueryCache.end();) {
+        if (it->first.find(tableName) != std::string::npos) {
+            it = mQueryCache.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+std::string Sqlite3Wrapper::extractTableName(const std::string& sql) {
+    std::string lowerSql = sql;
+    std::transform(lowerSql.begin(), lowerSql.end(), lowerSql.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    // INSERT INTO table_name
+    auto pos = lowerSql.find("insert into ");
+    if (pos != std::string::npos) {
+        pos      += 12;
+        auto end  = lowerSql.find_first_of(" (", pos);
+        return sql.substr(pos, end - pos);
+    }
+    // UPDATE table_name
+    pos = lowerSql.find("update ");
+    if (pos != std::string::npos) {
+        pos      += 7;
+        auto end  = lowerSql.find_first_of(" ", pos);
+        return sql.substr(pos, end - pos);
+    }
+    // DELETE FROM table_name
+    pos = lowerSql.find("delete from ");
+    if (pos != std::string::npos) {
+        pos      += 12;
+        auto end  = lowerSql.find_first_of(" ", pos);
+        return sql.substr(pos, end - pos);
+    }
+    return "";
+}
+
 void Sqlite3Wrapper::setCacheTimeout(int seconds) { mCacheTimeoutSeconds = seconds; }
 
 void Sqlite3Wrapper::enableCache(bool enable) {
