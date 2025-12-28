@@ -69,6 +69,9 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                                    + " §6[回收单价: " + CT::MoneyFormat::format(commission.price) + "]§r";
 
             std::string itemInfo;
+            if (commission.requiredAuxValue >= 0) {
+                itemInfo += "\n§e要求特殊值: " + std::to_string(commission.requiredAuxValue) + "§r";
+            }
             if (commission.minDurability > 0) {
                 itemInfo += "\n§a最低耐久: " + std::to_string(commission.minDurability) + "§r";
             }
@@ -176,7 +179,8 @@ void showRecycleConfirmForm(
         return;
     }
 
-    int            minDurability = commission->minDurability;
+    int            minDurability    = commission->minDurability;
+    int            requiredAuxValue = commission->requiredAuxValue;
     nlohmann::json requiredEnchants;
     if (!commission->requiredEnchants.empty()) {
         try {
@@ -200,6 +204,10 @@ void showRecycleConfirmForm(
         logger.trace("Comparing with commission: Commission NBT: {}", commissionNbtStr);
 
         if (itemNbtStr == commissionNbtStr) {
+            // 检查特殊值（如箭的类型）
+            if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
+                continue;
+            }
             // 检查耐久度
             if (itemInSlot.isDamageableItem()) {
                 int maxDamage         = itemInSlot.getItem()->getMaxDamage();
@@ -865,6 +873,11 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
     fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置回收委托。");
     fm.appendInput("price_input", "请输入回收价格", "0.0"); // 更改默认值为 "0.0"
 
+    // 显示当前物品的特殊值
+    short currentAuxValue = item.getAuxValue();
+    fm.appendLabel("§e当前物品特殊值: " + std::to_string(currentAuxValue) + "§r");
+    fm.appendInput("required_aux_value", "要求特殊值 (留空或-1为不筛选)", "-1", std::to_string(currentAuxValue));
+
     if (item.isDamageableItem()) {
         fm.appendInput("min_durability", "最低耐久度 (0为不限制)", "0");
     }
@@ -937,6 +950,17 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     return;
                 }
 
+                // 解析特殊值筛选
+                int         requiredAuxValue = -1;
+                std::string auxValueStr      = std::get<std::string>(result.value().at("required_aux_value"));
+                if (!auxValueStr.empty()) {
+                    try {
+                        requiredAuxValue = std::stoi(auxValueStr);
+                    } catch (...) {
+                        requiredAuxValue = -1; // 解析失败则不筛选
+                    }
+                }
+
                 auto itemNbt = CT::NbtUtils::getItemNbt(item);
                 if (!itemNbt) {
                     p.sendMessage(txt.getMessage("input.nbt_fail"));
@@ -948,9 +972,16 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
                 logger.info("Setting recycle commission for item '{}'.", item.getName());
 
-                auto result =
-                    RecycleService::getInstance()
-                        .setCommission(pos, dimId, itemNbtStr, price, minDurability, enchantsJsonStr, maxRecycleCount);
+                auto result = RecycleService::getInstance().setCommission(
+                    pos,
+                    dimId,
+                    itemNbtStr,
+                    price,
+                    minDurability,
+                    enchantsJsonStr,
+                    maxRecycleCount,
+                    requiredAuxValue
+                );
 
                 if (result.success) {
                     p.sendMessage(txt.getMessage(

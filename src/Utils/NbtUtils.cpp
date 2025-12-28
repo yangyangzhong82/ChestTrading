@@ -1,6 +1,6 @@
-#include "logger.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/service/Bedrock.h"
+#include "logger.h"
 #include "mc/dataloadhelper/DefaultDataLoadHelper.h"
 #include "mc/nbt/ByteArrayTag.h"
 #include "mc/nbt/ByteTag.h"
@@ -20,107 +20,108 @@
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/item/SaveContextFactory.h"
+#include "mc/world/item/enchanting/Enchant.h"             // 新增
+#include "mc/world/item/enchanting/EnchantmentInstance.h" // 新增
+#include "mc/world/item/enchanting/ItemEnchants.h"        // 新增
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/storage/DBStorage.h"
 #include "mc/world/level/storage/DBStorageConfig.h"
 #include "mc/world/level/storage/db_helpers/Category.h" // 新增
-#include "mc/world/item/enchanting/ItemEnchants.h" // 新增
-#include "mc/world/item/enchanting/Enchant.h" // 新增
-#include "mc/world/item/enchanting/EnchantmentInstance.h" // 新增
 #include "mc\world\item\SaveContextFactory.h"
 #include <string_view>
 
 
-namespace   CT::NbtUtils {
+
+namespace CT::NbtUtils {
 
 // 将附魔ID转换为可读的字符串 (从 ShopForm.cpp 复制)
 std::string enchantToString(const Enchant::Type type) {
     switch (type) {
-        case Enchant::Type::Protection:
-            return "保护";
-        case Enchant::Type::FireProtection:
-            return "火焰保护";
-        case Enchant::Type::FeatherFalling:
-            return "摔落保护";
-        case Enchant::Type::BlastProtection:
-            return "爆炸保护";
-        case Enchant::Type::ProjectileProtection:
-            return "弹射物保护";
-        case Enchant::Type::Thorns:
-            return "荆棘";
-        case Enchant::Type::Respiration:
-            return "水下呼吸";
-        case Enchant::Type::DepthStrider:
-            return "深海探索者";
-        case Enchant::Type::AquaAffinity:
-            return "水下速掘";
-        case Enchant::Type::Sharpness:
-            return "锋利";
-        case Enchant::Type::Smite:
-            return "亡灵杀手";
-        case Enchant::Type::BaneOfArthropods:
-            return "节肢杀手";
-        case Enchant::Type::Knockback:
-            return "击退";
-        case Enchant::Type::FireAspect:
-            return "火焰附加";
-        case Enchant::Type::Looting:
-            return "抢夺";
-        case Enchant::Type::Efficiency:
-            return "效率";
-        case Enchant::Type::SilkTouch:
-            return "精准采集";
-        case Enchant::Type::Unbreaking:
-            return "耐久";
-        case Enchant::Type::Fortune:
-            return "时运";
-        case Enchant::Type::Power:
-            return "力量";
-        case Enchant::Type::Punch:
-            return "冲击";
-        case Enchant::Type::Flame:
-            return "火矢";
-        case Enchant::Type::Infinity:
-            return "无限";
-        case Enchant::Type::LuckOfTheSea:
-            return "海之眷顾";
-        case Enchant::Type::Lure:
-            return "饵钓";
-        case Enchant::Type::FrostWalker:
-            return "冰霜行者";
-        case Enchant::Type::Mending:
-            return "经验修补";
-        case Enchant::Type::CurseOfBinding:
-            return "绑定诅咒";
-        case Enchant::Type::CurseOfVanishing:
-            return "消失诅咒";
-        case Enchant::Type::Impaling:
-            return "穿刺";
-        case Enchant::Type::Riptide:
-            return "激流";
-        case Enchant::Type::Loyalty:
-            return "忠诚";
-        case Enchant::Type::Channeling:
-            return "引雷";
-        case Enchant::Type::Multishot:
-            return "多重射击";
-        case Enchant::Type::Piercing:
-            return "穿透";
-        case Enchant::Type::QuickCharge:
-            return "快速装填";
-        case Enchant::Type::SoulSpeed:
-            return "灵魂疾行";
-        case Enchant::Type::SwiftSneak:
-            return "迅捷潜行";
-        case Enchant::Type::WindBurst:
-            return "风爆";
-        case Enchant::Type::Density:
-            return "密度";
-        case Enchant::Type::Breach:
-            return "破甲";
-        default:
-            return "未知附魔";
+    case Enchant::Type::Protection:
+        return "保护";
+    case Enchant::Type::FireProtection:
+        return "火焰保护";
+    case Enchant::Type::FeatherFalling:
+        return "摔落保护";
+    case Enchant::Type::BlastProtection:
+        return "爆炸保护";
+    case Enchant::Type::ProjectileProtection:
+        return "弹射物保护";
+    case Enchant::Type::Thorns:
+        return "荆棘";
+    case Enchant::Type::Respiration:
+        return "水下呼吸";
+    case Enchant::Type::DepthStrider:
+        return "深海探索者";
+    case Enchant::Type::AquaAffinity:
+        return "水下速掘";
+    case Enchant::Type::Sharpness:
+        return "锋利";
+    case Enchant::Type::Smite:
+        return "亡灵杀手";
+    case Enchant::Type::BaneOfArthropods:
+        return "节肢杀手";
+    case Enchant::Type::Knockback:
+        return "击退";
+    case Enchant::Type::FireAspect:
+        return "火焰附加";
+    case Enchant::Type::Looting:
+        return "抢夺";
+    case Enchant::Type::Efficiency:
+        return "效率";
+    case Enchant::Type::SilkTouch:
+        return "精准采集";
+    case Enchant::Type::Unbreaking:
+        return "耐久";
+    case Enchant::Type::Fortune:
+        return "时运";
+    case Enchant::Type::Power:
+        return "力量";
+    case Enchant::Type::Punch:
+        return "冲击";
+    case Enchant::Type::Flame:
+        return "火矢";
+    case Enchant::Type::Infinity:
+        return "无限";
+    case Enchant::Type::LuckOfTheSea:
+        return "海之眷顾";
+    case Enchant::Type::Lure:
+        return "饵钓";
+    case Enchant::Type::FrostWalker:
+        return "冰霜行者";
+    case Enchant::Type::Mending:
+        return "经验修补";
+    case Enchant::Type::CurseOfBinding:
+        return "绑定诅咒";
+    case Enchant::Type::CurseOfVanishing:
+        return "消失诅咒";
+    case Enchant::Type::Impaling:
+        return "穿刺";
+    case Enchant::Type::Riptide:
+        return "激流";
+    case Enchant::Type::Loyalty:
+        return "忠诚";
+    case Enchant::Type::Channeling:
+        return "引雷";
+    case Enchant::Type::Multishot:
+        return "多重射击";
+    case Enchant::Type::Piercing:
+        return "穿透";
+    case Enchant::Type::QuickCharge:
+        return "快速装填";
+    case Enchant::Type::SoulSpeed:
+        return "灵魂疾行";
+    case Enchant::Type::SwiftSneak:
+        return "迅捷潜行";
+    case Enchant::Type::WindBurst:
+        return "风爆";
+    case Enchant::Type::Density:
+        return "密度";
+    case Enchant::Type::Breach:
+        return "破甲";
+    default:
+        return "未知附魔";
     }
 }
 
@@ -452,7 +453,7 @@ std::string getShulkerBoxItems(const CompoundTag& shulkerNbt) {
                         // 从NBT创建临时的ItemStack以获取翻译名、耐久和附魔
                         auto tempItemNbt = itemTag.clone(); // 克隆整个物品NBT，包括可能的耐久和附魔信息
                         tempItemNbt->at("Count") = ByteTag(1); // 数量设为1，只为获取名称、耐久和附魔
-                        auto tempItemPtr = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
+                        auto        tempItemPtr  = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
                         std::string itemDisplayInfo = rawItemName; // 默认使用原始名称
 
                         if (tempItemPtr) {
@@ -460,19 +461,21 @@ std::string getShulkerBoxItems(const CompoundTag& shulkerNbt) {
 
                             // 添加耐久度信息
                             if (tempItemPtr->isDamageableItem()) {
-                                int maxDamage = tempItemPtr->getItem()->getMaxDamage();
-                                int currentDamage = tempItemPtr->getDamageValue();
-                                itemDisplayInfo += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/" + std::to_string(maxDamage) + "]§r";
+                                int maxDamage      = tempItemPtr->getItem()->getMaxDamage();
+                                int currentDamage  = tempItemPtr->getDamageValue();
+                                itemDisplayInfo   += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/"
+                                                 + std::to_string(maxDamage) + "]§r";
                             }
 
                             // 添加附魔信息
                             if (tempItemPtr->isEnchanted()) {
-                                ItemEnchants enchants = tempItemPtr->constructItemEnchantsFromUserData();
-                                auto enchantList = enchants.getAllEnchants();
+                                ItemEnchants enchants    = tempItemPtr->constructItemEnchantsFromUserData();
+                                auto         enchantList = enchants.getAllEnchants();
                                 if (!enchantList.empty()) {
                                     itemDisplayInfo += " §d[附魔: ";
                                     for (const auto& enchant : enchantList) {
-                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " "
+                                                         + std::to_string(enchant.mLevel) + " ";
                                     }
                                     itemDisplayInfo += "]§r";
                                 }
@@ -518,7 +521,7 @@ std::string getBundleItems(const CompoundTag& bundleNbt) {
                         // 从NBT创建临时的ItemStack以获取翻译名、耐久和附魔
                         auto tempItemNbt = itemTag.clone(); // 克隆整个物品NBT，包括可能的耐久和附魔信息
                         tempItemNbt->at("Count") = ByteTag(1); // 数量设为1，只为获取名称、耐久和附魔
-                        auto tempItemPtr = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
+                        auto        tempItemPtr  = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
                         std::string itemDisplayInfo = rawItemName; // 默认使用原始名称
 
                         if (tempItemPtr) {
@@ -526,19 +529,21 @@ std::string getBundleItems(const CompoundTag& bundleNbt) {
 
                             // 添加耐久度信息
                             if (tempItemPtr->isDamageableItem()) {
-                                int maxDamage = tempItemPtr->getItem()->getMaxDamage();
-                                int currentDamage = tempItemPtr->getDamageValue();
-                                itemDisplayInfo += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/" + std::to_string(maxDamage) + "]§r";
+                                int maxDamage      = tempItemPtr->getItem()->getMaxDamage();
+                                int currentDamage  = tempItemPtr->getDamageValue();
+                                itemDisplayInfo   += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/"
+                                                 + std::to_string(maxDamage) + "]§r";
                             }
 
                             // 添加附魔信息
                             if (tempItemPtr->isEnchanted()) {
-                                ItemEnchants enchants = tempItemPtr->constructItemEnchantsFromUserData();
-                                auto enchantList = enchants.getAllEnchants();
+                                ItemEnchants enchants    = tempItemPtr->constructItemEnchantsFromUserData();
+                                auto         enchantList = enchants.getAllEnchants();
                                 if (!enchantList.empty()) {
                                     itemDisplayInfo += " §d[附魔: ";
                                     for (const auto& enchant : enchantList) {
-                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
+                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " "
+                                                         + std::to_string(enchant.mLevel) + " ";
                                     }
                                     itemDisplayInfo += "]§r";
                                 }
@@ -568,8 +573,12 @@ std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt) {
     if (cleanedNbt->contains("Count")) {
         cleanedNbt->erase("Count");
     }
-    if (cleanedNbt->contains("Damage")) { // 移除损坏标签
-        cleanedNbt->erase("Damage");
+    // 只有可损坏物品才移除Damage标签，对于箭等物品Damage是特殊值需要保留
+    if (cleanedNbt->contains("Damage")) {
+        auto tempItem = createItemFromNbt(itemNbt);
+        if (tempItem && tempItem->isDamageableItem()) {
+            cleanedNbt->erase("Damage");
+        }
     }
     return cleanedNbt;
 }

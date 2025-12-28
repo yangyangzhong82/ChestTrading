@@ -29,6 +29,7 @@ struct RecycleItemData {
     std::string requiredEnchants;
     int         maxRecycleCount;
     int         currentRecycledCount;
+    int         requiredAuxValue = -1; // -1 表示不筛选特殊值
 };
 
 // 回收记录数据结构

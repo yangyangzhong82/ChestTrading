@@ -10,6 +10,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
     std::vector<MigrationFunc> migrations = {
         migrateToV1,
         migrateToV2,
+        migrateToV3,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -130,4 +131,10 @@ bool SchemaMigration::migrateToV2(Sqlite3Wrapper& db) {
         if (!db.execute_unsafe(sql)) return false;
     }
     return true;
+}
+
+bool SchemaMigration::migrateToV3(Sqlite3Wrapper& db) {
+    // 添加 required_aux_value 字段到 recycle_shop_items 表，-1 表示不筛选特殊值
+    const char* sql = "ALTER TABLE recycle_shop_items ADD COLUMN required_aux_value INTEGER NOT NULL DEFAULT -1;";
+    return db.execute_unsafe(sql);
 }

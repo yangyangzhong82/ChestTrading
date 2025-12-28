@@ -1,5 +1,5 @@
 #include "ItemTextureManager.h"
-#include "logger.h" // 假设有logger.h用于日志输出
+#include "logger.h"
 #include <fstream>
 
 namespace CT {
@@ -11,159 +11,374 @@ ItemTextureManager& ItemTextureManager::getInstance() {
 
 bool ItemTextureManager::loadTextures(const std::string& filePath) {
     std::ifstream ifs(filePath);
-    if (!ifs.is_open()) {
-        logger.error("无法打开物品贴图文件: {}", filePath);
-        return false;
-    }
+    if (!ifs.is_open()) return (logger.error("无法打开物品贴图文件: {}", filePath), false);
 
-    nlohmann::json j;
     try {
-        j = nlohmann::json::parse(ifs, nullptr, true, true); // 允许注释
-    } catch (const nlohmann::json::parse_error& e) {
+        nlohmann::json j    = nlohmann::json::parse(ifs, nullptr, true, true);
+        const auto&    data = j.contains("texture_data") ? j["texture_data"] : j;
+        if (data.is_object()) {
+            for (auto const& [itemName, itemData] : data.items()) {
+                std::string key = standardizeItemName(itemName);
+                parseTextureEntry(
+                    key,
+                    itemData.is_object() && itemData.contains("textures") ? itemData["textures"] : itemData
+                );
+            }
+            logger.info("成功加载贴图文件: {}，项目数: {}", filePath, mItemTextures.size());
+            return true;
+        }
+    } catch (const std::exception& e) {
         logger.error("解析物品贴图文件失败: {} - {}", filePath, e.what());
-        return false;
     }
-
-    // 尝试解析扁平的 JSON 格式 (例如 block_texture.json)
-    bool isFlatFormat = true;
-    if (j.is_object()) {
-        for (auto const& [itemName, texturePath] : j.items()) {
-            if (!texturePath.is_string()) {
-                isFlatFormat = false; // 如果有非字符串值，则不是扁平格式
-                break;
-            }
-        }
-    } else {
-        isFlatFormat = false;
-    }
-
-    if (isFlatFormat) {
-        for (auto const& [itemName, texturePath] : j.items()) {
-            std::string key = standardizeItemName(itemName);
-            mItemTextures[key].push_back(texturePath.get<std::string>());
-        }
-        logger.info("成功加载扁平格式物品贴图文件: {}，共 {} 个贴图。", filePath, mItemTextures.size());
-        return true;
-    }
-    // 如果不是扁平格式，或者扁平格式解析失败，则尝试解析旧的 texture_data 格式
-    else if (j.contains("texture_data") && j["texture_data"].is_object()) {
-        for (auto const& [itemName, itemData] : j["texture_data"].items()) {
-            if (itemData.is_object()) {
-                if (itemData.contains("textures")) {
-                    parseTextureEntry(itemName, itemData["textures"]);
-                } else if (itemData.contains("path")) { // 处理直接包含 "path" 字段的情况
-                    parseTextureEntry(itemName, itemData);
-                }
-            }
-        }
-        logger.info("成功加载旧格式物品贴图文件: {}，共 {} 个贴图。", filePath, mItemTextures.size());
-        return true;
-    } else {
-        logger.error("物品贴图文件 {} 格式不正确，既不是扁平格式，也缺少 'texture_data' 字段。", filePath);
-        return false;
-    }
+    return false;
 }
 
-// 按顺序加载多个贴图文件，先加载的文件优先级更高（已存在的贴图不会被覆盖）
 bool ItemTextureManager::loadTextures(const std::vector<std::string>& filePaths) {
-    bool all_succeeded = true;
-    for (const auto& filePath : filePaths) {
-        if (!loadTextures(filePath)) {
-            all_succeeded = false;
-        }
-    }
-    return all_succeeded;
+    bool ok = true;
+    for (const auto& path : filePaths) ok &= loadTextures(path);
+    return ok;
 }
 
-// 辅助函数：解析单个物品的纹理数据，支持嵌套数组
-void ItemTextureManager::parseTextureEntry(const std::string& itemName, const nlohmann::json& texturesValue) {
-    if (texturesValue.is_string()) {
-        mItemTextures[itemName].push_back(texturesValue.get<std::string>());
-    } else if (texturesValue.is_array()) {
-        for (const auto& element : texturesValue) {
-            // 递归处理嵌套数组或对象
-            parseTextureEntry(itemName, element);
-        }
-    } else if (texturesValue.is_object() && texturesValue.contains("path") && texturesValue["path"].is_string()) {
-        // 处理包含 "path" 字段的对象
-        mItemTextures[itemName].push_back(texturesValue["path"].get<std::string>());
-    }
+void ItemTextureManager::parseTextureEntry(const std::string& itemName, const nlohmann::json& val) {
+    if (val.is_string()) mItemTextures[itemName].push_back(val.get<std::string>());
+    else if (val.is_array())
+        for (const auto& e : val) parseTextureEntry(itemName, e);
+    else if (val.is_object() && val.contains("path") && val["path"].is_string())
+        mItemTextures[itemName].push_back(val["path"].get<std::string>());
 }
 
-// 辅助函数：标准化物品名称，使其更接近 item_texture.json 中的键
 std::string ItemTextureManager::standardizeItemName(std::string name) {
-    // 移除 "minecraft:" 前缀 (已经在 LockForm.cpp 中处理，但为了健壮性，这里也可以再处理一次)
-    if (name.rfind("minecraft:", 0) == 0) {
-        name = name.substr(10);
+    if (name.rfind("minecraft:", 0) == 0) name = name.substr(10);
+    if (name.rfind("waxed_", 0) == 0) name = name.substr(6);
+    if (name.length() > 5 && name.substr(name.length() - 5) == "_item") name = name.substr(0, name.length() - 5);
+
+    if (name == "tropical_fish_bucket") name = "tropical_bucket";
+    if (name == "fish_bucket") name = "cod_bucket";
+    if (name.rfind("music_disc_", 0) == 0) name = "record_" + name.substr(11);
+
+    if (name.size() > 10 && name.substr(name.size() - 10) == "_spawn_egg") {
+        name = "spawn_egg_" + name.substr(0, name.size() - 10);
     }
 
-    // 转换 cooked_xxx 为 xxx_cooked
-    if (name.rfind("cooked_", 0) == 0) {
-        std::string base = name.substr(7);
-        if (base == "porkchop") return "porkchop_cooked";
-        if (base == "beef") return "beef_cooked";
-        if (base == "chicken") return "chicken_cooked";
-        if (base == "mutton") return "mutton_cooked";
-        // 对于 fish 和 salmon，json 中是 cooked_fish 和 cooked_salmon，所以不需要转换
-    }
+    auto check = [&](const std::string& s) {
+        return name.size() > s.size() && name.substr(name.size() - s.size()) == s;
+    };
 
-    // 移除 _item 后缀 (例如 lodestonecompass_item -> lodestonecompass)
-    if (name.length() > 5 && name.substr(name.length() - 5) == "_item") {
-        name = name.substr(0, name.length() - 5);
-    }
-
-    // 更多标准化规则可以根据需要添加
-    return name;
-}
-
-std::string ItemTextureManager::getTexture(const std::string& rawItemName) const {
-    std::string itemName = standardizeItemName(rawItemName);
-
-    // 1. 尝试完全匹配标准化后的名称
-    auto it = mItemTextures.find(itemName);
-    if (it != mItemTextures.end() && !it->second.empty()) {
-        return it->second[0];
-    }
-
-    // 2. 尝试通用类型匹配 (例如 "iron_sword" 匹配 "sword")
-    // 提取材质前缀 (例如 "iron", "diamond", "wood", "stone", "gold", "netherite", "leather", "chainmail")
-    std::vector<std::string> materials =
-        {"iron", "diamond", "wood", "stone", "gold", "netherite", "leather", "chainmail"};
-    std::string foundMaterial;
-    std::string baseItemName = itemName;
-
-    for (const auto& material : materials) {
-        if (itemName.rfind(material + "_", 0) == 0) { // 检查是否以材质开头
-            foundMaterial = material;
-            baseItemName  = itemName.substr(material.length() + 1); // 移除材质前缀
+    static const std::vector<std::string> reversePrefixes = {"cooked_", "baked_", "raw_", "enchanted_", "golden_"};
+    for (const auto& pre : reversePrefixes) {
+        if (name.rfind(pre, 0) == 0) {
+            name = name.substr(pre.length()) + "_" + pre.substr(0, pre.length() - 1);
             break;
         }
     }
 
-    // 如果找到了材质，并且 baseItemName 存在于 mItemTextures 中
-    if (!foundMaterial.empty()) {
-        it = mItemTextures.find(baseItemName);
-        if (it != mItemTextures.end() && !it->second.empty()) {
-            // 在通用类型的贴图数组中查找包含材质的贴图
-            for (const auto& texture : it->second) {
-                if (texture.find(foundMaterial) != std::string::npos) {
-                    return texture;
+    if (name.length() > 7 && name.substr(name.length() - 7) == "_golden") {
+        if (name != "apple_golden" && name != "carrot_golden") {
+            name = "gold_" + name.substr(0, name.size() - 7);
+        }
+    }
+    if (name.rfind("wooden_", 0) == 0) {
+        name = (name == "wooden_door") ? "wooden_door" : "wood_" + name.substr(7);
+    }
+
+    static const std::vector<std::string> woods =
+        {"oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "crimson", "warped", "pale_oak"
+        };
+    for (const auto& w : woods) {
+        if (name.rfind(w + "_", 0) == 0) {
+            if (check("_fence") || check("_fence_gate") || check("_stairs") || check("_button")
+                || check("_pressure_plate") || check("_slab")) {
+                if (w == "bamboo" || w == "nether_brick") break;
+                return w + "_planks";
+            }
+        }
+    }
+    if (check("_wall")) name = name.substr(0, name.size() - 5);
+
+    static const std::vector<std::string> colors = {
+        "white",
+        "orange",
+        "magenta",
+        "light_blue",
+        "yellow",
+        "lime",
+        "pink",
+        "gray",
+        "light_gray",
+        "cyan",
+        "purple",
+        "blue",
+        "brown",
+        "green",
+        "red",
+        "black"
+    };
+    for (const auto& c : colors) {
+        if (name == c + "_wool" || name == c + "_carpet") return "wool_colored_" + (c == "light_gray" ? "silver" : c);
+    }
+
+    static const std::unordered_map<std::string, std::string> map = {
+        {"arrow",                    "arrow"                   },
+        {"tipped_arrow",             "tipped_arrow"            },
+        {"fence",                    "oak_planks"              },
+        {"fence_gate",               "oak_planks"              },
+        {"hay_block",                "hayblock_side"           },
+        {"honey_block",              "honey_side"              },
+        {"bee_nest",                 "bee_nest_front"          },
+        {"beehive",                  "beehive_front"           },
+        {"slime_ball",               "slimeball"               },
+        {"magma_cream",              "magma_cream"             },
+        {"totem_of_undying",         "totem"                   },
+        {"turtle_scute",             "turtle_shell_piece"      },
+        {"nether_brick",             "netherbrick"             },
+        {"fire_charge",              "fireball"                },
+        {"sugar_cane",               "reeds"                   },
+        {"redstone",                 "redstone_dust"           },
+        {"lapis_lazuli",             "dye_powder"              },
+        {"ink_sac",                  "dye_powder"              },
+        {"cocoa_beans",              "dye_powder"              },
+        {"bone_meal",                "dye_powder"              },
+        {"glass_bottle",             "potion_bottle_empty"     },
+        {"potion",                   "potion_bottle_drinkable" },
+        {"splash_potion",            "potion_bottle_splash"    },
+        {"lingering_potion",         "potion_bottle_lingering" },
+        {"map",                      "map_empty"               },
+        {"empty_map",                "map_empty"               },
+        {"filled_map",               "map_filled"              },
+        {"explorer_map",             "map_filled"              },
+        {"book",                     "book_normal"             },
+        {"enchanted_book",           "book_enchanted"          },
+        {"writable_book",            "book_writable"           },
+        {"written_book",             "book_written"            },
+        {"minecart",                 "minecart_normal"         },
+        {"chest_minecart",           "minecart_chest"          },
+        {"hopper_minecart",          "minecart_hopper"         },
+        {"tnt_minecart",             "minecart_tnt"            },
+        {"furnace_minecart",         "minecart_furnace"        },
+        {"command_block_minecart",   "minecart_command_block"  },
+        {"ender_pearl",              "ender_pearl"             },
+        {"eye_of_ender",             "ender_eye"               },
+        {"clock",                    "clock_item"              },
+        {"compass",                  "compass_item"            },
+        {"lodestone_compass",        "lodestonecompass_item"   },
+        {"white_dye",                "dye_powder"              },
+        {"orange_dye",               "dye_powder"              },
+        {"magenta_dye",              "dye_powder"              },
+        {"light_blue_dye",           "dye_powder"              },
+        {"yellow_dye",               "dye_powder"              },
+        {"lime_dye",                 "dye_powder"              },
+        {"pink_dye",                 "dye_powder"              },
+        {"gray_dye",                 "dye_powder"              },
+        {"light_gray_dye",           "dye_powder"              },
+        {"cyan_dye",                 "dye_powder"              },
+        {"purple_dye",               "dye_powder"              },
+        {"blue_dye",                 "dye_powder"              },
+        {"brown_dye",                "dye_powder"              },
+        {"green_dye",                "dye_powder"              },
+        {"red_dye",                  "dye_powder"              },
+        {"black_dye",                "dye_powder"              },
+        {"glow_ink_sac",             "dye_powder"              },
+        {"mooshroom_spawn_egg",      "spawn_egg_mooshroom"     },
+        {"polar_bear_spawn_egg",     "spawn_egg_polar_bear"    },
+        {"skeleton_horse_spawn_egg", "spawn_egg_skeleton_horse"},
+        {"zombie_horse_spawn_egg",   "spawn_egg_zombie_horse"  },
+        {"elder_guardian_spawn_egg", "spawn_egg_elder_guardian"}
+    };
+    if (auto it = map.find(name); it != map.end()) return it->second;
+
+    if (check("_slab")) {
+        std::string                                               b    = name.substr(0, name.size() - 5);
+        static const std::unordered_map<std::string, std::string> sMap = {
+            {"stone",             "smooth_stone"               },
+            {"smooth_stone",      "smooth_stone"               },
+            {"sandstone",         "flattened_sandstone"        },
+            {"quartz",            "flattened_quartz_block_side"},
+            {"red_sandstone",     "flattened_redsandstone"     },
+            {"purpur",            "flattened_purpur_block"     },
+            {"prismarine",        "flattened_prismarine"       },
+            {"mossy_cobblestone", "cobblestone_mossy"          },
+            {"end_stone_brick",   "end_bricks"                 }
+        };
+        if (auto it = sMap.find(b); it != sMap.end()) return it->second;
+    }
+    return name;
+}
+
+std::string ItemTextureManager::getTexture(const std::string& rawItemName, short aux) const {
+    std::string name = standardizeItemName(rawItemName);
+    auto        it   = mItemTextures.find(name);
+
+    if (it != mItemTextures.end() && !it->second.empty()) {
+        size_t idx = 0;
+        if (name.find("potion") != std::string::npos || name == "tipped_arrow" || (name == "arrow" && aux > 0)) {
+            // 如果是普通的 arrow 且 aux > 0，在 BE 中它实际上是 tipped_arrow
+            std::string textureKey = name;
+            if (name == "arrow" && aux > 0) {
+                textureKey = "tipped_arrow";
+                auto tit   = mItemTextures.find(textureKey);
+                if (tit != mItemTextures.end()) it = tit;
+            }
+
+            static const std::unordered_map<short, int> pMap = {
+                {0,  0 }, // 水瓶 / 药箭
+                {1,  1 }, // 平凡 (药水)
+                {2,  2 }, // 药箭 (平凡) / 延长 (药水)
+                {3,  2 }, // 延长 (平凡药箭) / 浓稠 (药水)
+                {4,  2 }, // 浓稠 (药箭) / 粗制 (药水)
+                {5,  2 }, // 粗制 (药箭) / 夜视 (药水)
+                {6,  11}, // 夜视 (药箭) / 延长 (夜视药水)
+                {7,  11}, // 延长 (夜视药箭) / 隐身 (药水)
+                {8,  10}, // 隐身 (药箭) / 延长 (隐身药水)
+                {9,  10}, // 延长 (隐身药箭) / 跳跃 (药水)
+                {10, 6 }, // 跳跃 (药箭) / 延长 (跳跃药水)
+                {11, 6 }, // 延长 (跳跃药箭) / 加强 (跳跃药水)
+                {12, 6 }, // 加强 (跳跃药箭) / 抗火 (药水)
+                {13, 8 }, // 抗火 (药箭) / 延长 (抗火药水)
+                {14, 8 }, // 延长 (抗火药箭) / 迅捷 (药水)
+                {15, 1 }, // 迅捷 (药箭) / 延长 (迅捷药水)
+                {16, 1 }, // 延长 (迅捷药箭) / 加强 (迅捷药水)
+                {17, 1 }, // 加强 (迅捷药箭) / 迟缓 (药水)
+                {18, 2 }, // 迟缓 (药箭) / 延长 (迟缓药水)
+                {19, 2 }, // 延长 (迟缓药箭) / 水肺 (药水)
+                {20, 9 }, // 水肺 (药箭) / 延长 (水肺药水)
+                {21, 9 }, // 延长 (水肺药箭) / 治疗 (药水)
+                {22, 4 }, // 治疗 (药箭) / 加强 (治疗药水)
+                {23, 4 }, // 加强 (治疗药箭) / 伤害 (药水)
+                {24, 5 }, // 伤害 (药箭) / 加强 (伤害药水)
+                {25, 5 }, // 加强 (伤害药箭) / 剧毒 (药水)
+                {26, 13}, // 剧毒 (药箭) / 延长 (剧毒药水)
+                {27, 13}, // 延长 (剧毒药箭) / 加强 (剧毒药水)
+                {28, 13}, // 加强 (剧毒药箭) / 再生 (药水)
+                {29, 7 }, // 再生 (药箭) / 延长 (再生药水)
+                {30, 7 }, // 延长 (再生药箭) / 加强 (再生药水)
+                {31, 7 }, // 加强 (再生药箭) / 力量 (药水)
+                {32, 3 }, // 力量 (药箭) / 延长 (力量药水)
+                {33, 3 }, // 延长 (力量药箭) / 加强 (力量药水)
+                {34, 3 }, // 加强 (力量药箭) / 虚弱 (药水)
+                {35, 12}, // 虚弱 (药箭) / 延长 (虚弱药水)
+                {36, 12}, // 延长 (虚弱药箭) / 衰变 (药水)
+                {37, 14}, // 衰变 (药箭) / 神龟 (药水)
+                {38, 15}, // 神龟 (药箭) / 延长 (神龟药水)
+                {39, 15}, // 延长 (神龟药箭) / 加强 (神龟药水)
+                {40, 15}, // 加强 (神龟药箭) / 缓降 (药水)
+                {41, 16}, // 缓降 (药箭) / 延长 (缓降药水)
+                {42, 16}, // 延长 (缓降药箭) / 加强 (迅捷药水-其实是迟缓加强)
+                {43, 2 }, // 加强迟缓 (药箭) / 蓄风 (药水)
+                {44, 17}, // 蓄风 (药箭) / 盘丝 (药水)
+                {45, 18}, // 盘丝 (药箭) / 渗浆 (药水)
+                {46, 19}, // 渗浆 (药箭) / 虫蚀 (药水)
+                {47, 20}  // 虫蚀 (药箭)
+            };
+            if (auto pit = pMap.find(aux); pit != pMap.end()) {
+                idx = pit->second;
+                if (textureKey != "tipped_arrow") {
+                    static const int off[] = {0,  1,  2,  5,  6,  7,  8,  10, 12, 13, 14,
+                                              16, 18, 19, 20, 25, 26, 27, 28, 29, 30};
+                    if (idx < (int)(sizeof(off) / sizeof(off[0]))) idx = off[idx];
                 }
             }
-            return it->second[0]; // 如果找不到特定材质的，返回第一个
+        } else if (name == "spawn_egg") {
+            // 处理 ID 383 的旧版刷怪蛋 (通过 aux 映射)
+            static const std::unordered_map<short, int> sMap = {
+                {10, 0 }, // Chicken
+                {11, 1 }, // Cow
+                {12, 2 }, // Pig
+                {13, 3 }, // Sheep
+                {14, 4 }, // Wolf
+                {15, 5 }, // Mooshroom
+                {16, 6 }, // Creeper
+                {17, 7 }, // Enderman
+                {18, 8 }, // Silverfish
+                {19, 9 }, // Skeleton
+                {20, 10}, // Slime
+                {21, 11}, // Spider
+                {22, 12}, // Zombie
+                {23, 13}, // Pigzombie
+                {24, 14}, // Villager
+                {25, 15}, // Squid
+                {26, 16}, // Ocelot
+                {27, 17}, // Witch
+                {28, 18}, // Bat
+                {29, 19}, // Ghast
+                {30, 20}, // Magma Cube
+                {31, 21}, // Blaze
+                {32, 22}, // Cave Spider
+                {33, 23}, // Horse
+                {34, 24}, // Rabbit
+                {35, 25}, // Endermite
+                {36, 26}, // Guardian
+                {37, 27}, // Stray
+                {38, 28}, // Husk
+                {39, 29}, // Wither Skeleton (Wither in json is 29)
+                {40, 30}, // Donkey
+                {41, 31}, // Mule
+                {42, 32}, // Skeleton Horse
+                {43, 33}, // Zombie Horse
+                {44, 34}, // Shulker
+                {45, 35}, // NPC
+                {46, 36}, // Elder Guardian
+                {47, 37}, // Polar Bear
+                {48, 38}, // Llama
+                {49, 39}, // Vindicator
+                {50, 40}, // Evoker
+                {51, 41}, // Vex
+                {52, 42}, // Zombie Villager
+                {53, 43}, // Parrot
+                {54, 44}, // Tropical Fish (Clownfish)
+                {55, 45}, // Cod
+                {56, 46}, // Pufferfish
+                {57, 47}, // Salmon
+                {58, 48}, // Drowned
+                {59, 49}, // Dolphin
+                {60, 50}, // Turtle
+                {61, 51}, // Phantom
+                {62, 52}, // Agent
+                {63, 53}, // Cat
+                {64, 54}, // Panda
+                {65, 55}, // Fox
+                {66, 56}, // Pillager
+                {67, 57}  // Ravager
+            };
+            if (auto sit = sMap.find(aux); sit != sMap.end()) {
+                idx = sit->second;
+            } else {
+                idx = 0;
+            }
+        } else idx = static_cast<size_t>(aux);
+        return it->second[idx < it->second.size() ? idx : 0];
+    }
+
+    for (const char* s : {"_side", "_top", "_front", ""}) {
+        if (auto it = mItemTextures.find(name + s); it != mItemTextures.end() && !it->second.empty())
+            return it->second[0];
+    }
+
+    static const std::vector<std::string> mats = {
+        "iron",   "diamond", "wood",       "stone",    "gold",    "netherite", "leather",    "chainmail",
+        "oak",    "spruce",  "birch",      "jungle",   "acacia",  "dark_oak",  "mangrove",   "cherry",
+        "bamboo", "crimson", "warped",     "pale_oak", "copper",  "water",     "lava",       "milk",
+        "cod",    "salmon",  "pufferfish", "tropical", "axolotl", "tadpole",   "powder_snow"
+    };
+    for (const auto& m : mats) {
+        if (name.rfind(m + "_", 0) == 0) {
+            std::string base = name.substr(m.length() + 1);
+            for (const char* s : {"", "_side"}) {
+                if (auto it = mItemTextures.find(base + s); it != mItemTextures.end() && !it->second.empty()) {
+                    for (const auto& t : it->second) {
+                        if (t.find(m) != std::string::npos) return t;
+                        if (m == "gold" && t.find("golden") != std::string::npos) return t;
+                        if (m == "wood" && t.find("wooden") != std::string::npos) return t;
+                    }
+                    return it->second[0];
+                }
+            }
         }
     }
 
-    // 3. 尝试更通用的部分匹配 (例如 "bow" 匹配 "bow_standby")
-    // 这种情况下，如果 itemName 是 "bow"，而 json 中有 "bow_standby"，我们可能想返回 "bow_standby" 的贴图
-    // 但这需要更复杂的逻辑来决定返回哪个，暂时先返回第一个找到的
-    for (const auto& [key, textures] : mItemTextures) {
-        if (itemName.find(key) != std::string::npos && !textures.empty()) {
-            return textures[0];
-        }
+    for (auto const& [k, v] : mItemTextures) {
+        if (!v.empty() && (k.rfind(name + "_", 0) == 0 || name.rfind(k + "_", 0) == 0)) return v[0];
     }
-
-    return ""; // 未找到贴图
+    return "";
 }
 
 } // namespace CT

@@ -192,7 +192,7 @@ std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, i
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
         "SELECT r.item_id, r.price, r.min_durability, r.required_enchants, r.max_recycle_count, "
-         "r.current_recycled_count, d.item_nbt FROM recycle_shop_items r "
+         "r.current_recycled_count, d.item_nbt, r.required_aux_value FROM recycle_shop_items r "
          "JOIN item_definitions d ON r.item_id = d.item_id "
          "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?;",
         dimId,
@@ -214,6 +214,7 @@ std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, i
             data.maxRecycleCount      = std::stoi(row[4]);
             data.currentRecycledCount = std::stoi(row[5]);
             data.itemNbt              = row[6];
+            data.requiredAuxValue     = row.size() >= 8 ? std::stoi(row[7]) : -1;
             items.push_back(data);
         }
     }
@@ -224,7 +225,7 @@ std::optional<RecycleItemData> ShopRepository::findRecycleItem(BlockPos pos, int
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
         "SELECT r.price, r.min_durability, r.required_enchants, r.max_recycle_count, "
-         "r.current_recycled_count, d.item_nbt FROM recycle_shop_items r "
+         "r.current_recycled_count, d.item_nbt, r.required_aux_value FROM recycle_shop_items r "
          "JOIN item_definitions d ON r.item_id = d.item_id "
          "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ? AND r.item_id = ?;",
         dimId,
@@ -249,6 +250,7 @@ std::optional<RecycleItemData> ShopRepository::findRecycleItem(BlockPos pos, int
     data.maxRecycleCount      = std::stoi(row[3]);
     data.currentRecycledCount = std::stoi(row[4]);
     data.itemNbt              = row[5];
+    data.requiredAuxValue     = row.size() >= 7 ? std::stoi(row[6]) : -1;
     return data;
 }
 
@@ -256,11 +258,12 @@ bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(
         "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, "
-        "min_durability, required_enchants, max_recycle_count, current_recycled_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) "
+        "min_durability, required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?) "
         "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = "
         "excluded.price, min_durability = excluded.min_durability, required_enchants = "
-        "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count;",
+        "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count, "
+        "required_aux_value = excluded.required_aux_value;",
         item.dimId,
         item.pos.x,
         item.pos.y,
@@ -269,7 +272,8 @@ bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
         item.price,
         item.minDurability,
         item.requiredEnchants,
-        item.maxRecycleCount
+        item.maxRecycleCount,
+        item.requiredAuxValue
     );
 }
 

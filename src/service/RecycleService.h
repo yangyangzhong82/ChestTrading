@@ -48,7 +48,8 @@ public:
         double             price,
         int                minDurability,
         const std::string& requiredEnchants,
-        int                maxRecycleCount
+        int                maxRecycleCount,
+        int                requiredAuxValue = -1
     );
 
     bool updateCommission(BlockPos pos, int dimId, int itemId, double price, int maxRecycleCount);

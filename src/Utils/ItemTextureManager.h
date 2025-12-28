@@ -1,24 +1,26 @@
 #pragma once
 
-#include <map>
-#include <string>
-#include <vector>
 #include <nlohmann/json.hpp>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+
 
 namespace CT {
 
 class ItemTextureManager {
 private:
-    std::map<std::string, std::vector<std::string>> mItemTextures;
+    std::unordered_map<std::string, std::vector<std::string>> mItemTextures;
 
     ItemTextureManager() = default; // 私有构造函数
 
 public:
-    static ItemTextureManager& getInstance(); 
+    static ItemTextureManager& getInstance();
 
-    bool loadTextures(const std::string& filePath);
-    bool loadTextures(const std::vector<std::string>& filePaths); 
-    std::string getTexture(const std::string& itemName) const;
+    bool        loadTextures(const std::string& filePath);
+    bool        loadTextures(const std::vector<std::string>& filePaths);
+    std::string getTexture(const std::string& itemName, short auxValue = 0) const;
 
 private:
     // 辅助函数：标准化物品名称，使其更接近 item_texture.json 中的键

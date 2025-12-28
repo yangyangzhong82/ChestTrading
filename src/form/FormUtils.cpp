@@ -74,7 +74,7 @@ std::string getItemTexturePath(const ItemStack& item) {
     if (itemName.rfind("minecraft:", 0) == 0) {
         itemName = itemName.substr(10);
     }
-    return CT::ItemTextureManager::getInstance().getTexture(itemName);
+    return CT::ItemTextureManager::getInstance().getTexture(itemName, item.getAuxValue());
 }
 
 std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemNbtStr) {

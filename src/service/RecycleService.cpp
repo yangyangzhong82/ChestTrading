@@ -33,7 +33,8 @@ SetCommissionResult RecycleService::setCommission(
     double             price,
     int                minDurability,
     const std::string& requiredEnchants,
-    int                maxRecycleCount
+    int                maxRecycleCount,
+    int                requiredAuxValue
 ) {
     auto& itemRepo = ItemRepository::getInstance();
     int   itemId   = itemRepo.getOrCreateItemId(itemNbt);
@@ -49,6 +50,7 @@ SetCommissionResult RecycleService::setCommission(
     data.minDurability    = minDurability;
     data.requiredEnchants = requiredEnchants;
     data.maxRecycleCount  = maxRecycleCount;
+    data.requiredAuxValue = requiredAuxValue;
 
     auto& shopRepo = ShopRepository::getInstance();
     if (shopRepo.upsertRecycleItem(data)) {
@@ -161,6 +163,7 @@ RecycleResult RecycleService::executeFullRecycle(
     int            minDurability        = commission->minDurability;
     int            maxRecycleCount      = commission->maxRecycleCount;
     int            currentRecycledCount = commission->currentRecycledCount;
+    int            requiredAuxValue     = commission->requiredAuxValue;
     nlohmann::json requiredEnchants;
     if (!commission->requiredEnchants.empty()) {
         try {
@@ -193,6 +196,10 @@ RecycleResult RecycleService::executeFullRecycle(
         auto cleanedNbt = NbtUtils::cleanNbtForComparison(*itemNbt);
 
         if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+            // 检查特殊值（如箭的类型）
+            if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
+                continue;
+            }
             // 检查耐久度
             if (itemInSlot.isDamageableItem()) {
                 int maxDamage     = itemInSlot.getItem()->getMaxDamage();
