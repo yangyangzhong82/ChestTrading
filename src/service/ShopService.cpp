@@ -148,7 +148,8 @@ PurchaseResult ShopService::purchaseItem(
 
     // 更新数据库库存（检查返回值）
     if (!ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity)) {
-        // 扣库存失败，回滚
+        // 扣库存失败，显式回滚事务
+        txn.rollback();
         Economy::addMoney(buyer, totalPrice);
         addItemsToChest(region, mainPos, itemNbt, quantity);
         return {false, txt.getMessage("shop.purchase_db_fail")};
@@ -163,7 +164,8 @@ PurchaseResult ShopService::purchaseItem(
     record.purchaseCount = quantity;
     record.totalPrice    = totalPrice;
     if (!ShopRepository::getInstance().addPurchaseRecord(record)) {
-        // 记录失败，回滚
+        // 记录失败，显式回滚事务
+        txn.rollback();
         Economy::addMoney(buyer, totalPrice);
         addItemsToChest(region, mainPos, itemNbt, quantity);
         return {false, txt.getMessage("shop.purchase_db_fail")};
