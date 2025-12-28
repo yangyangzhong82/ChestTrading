@@ -347,55 +347,9 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
     fm.setContent(content);
 
     fm.appendButton("§a传送到商店", [shop](Player& p) {
-        auto&       tpService  = TeleportService::getInstance();
-        auto&       txt        = TextService::getInstance();
-        auto&       config     = ConfigManager::getInstance().get();
-        std::string playerUuid = p.getUuid().asString();
-
-        // 检查冷却时间
-        if (!tpService.canTeleport(playerUuid)) {
-            int remainingSeconds = tpService.getRemainingCooldown(playerUuid);
-            p.sendMessage(txt.getMessage(
-                "teleport.cooldown",
-                {
-                    {"seconds", std::to_string(remainingSeconds)}
-            }
-            ));
-            return;
+        if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
+            p.sendMessage("§a请点击箱子进行购买。");
         }
-
-        // 检查金币
-        double tpCost = config.teleportSettings.teleportCost;
-        if (!Economy::hasMoney(p, tpCost)) {
-            p.sendMessage(txt.getMessage(
-                "teleport.insufficient_money",
-                {
-                    {"cost", MoneyFormat::format(tpCost)}
-            }
-            ));
-            return;
-        }
-
-        // 扣除金币
-        if (!Economy::reduceMoney(p, tpCost)) {
-            p.sendMessage(txt.getMessage("economy.deduct_fail"));
-            return;
-        }
-
-        // 执行传送
-        p.teleport({(float)shop.pos.x + 0.5f, (float)shop.pos.y + 1.0f, (float)shop.pos.z + 0.5f}, shop.dimId);
-
-        // 记录冷却
-        tpService.recordTeleport(playerUuid);
-
-        // 发送成功消息
-        p.sendMessage(txt.getMessage(
-            "teleport.success",
-            {
-                {"cost", MoneyFormat::format(tpCost)}
-        }
-        ));
-        p.sendMessage("§a请点击箱子进行购买。");
     });
 
     fm.appendButton("§7返回列表", [](Player& p) { showPublicShopListForm(p); });
@@ -437,55 +391,9 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
     fm.setContent(content);
 
     fm.appendButton("§a传送到商店", [shop](Player& p) {
-        auto&       tpService  = TeleportService::getInstance();
-        auto&       txt        = TextService::getInstance();
-        auto&       config     = ConfigManager::getInstance().get();
-        std::string playerUuid = p.getUuid().asString();
-
-        // 检查冷却时间
-        if (!tpService.canTeleport(playerUuid)) {
-            int remainingSeconds = tpService.getRemainingCooldown(playerUuid);
-            p.sendMessage(txt.getMessage(
-                "teleport.cooldown",
-                {
-                    {"seconds", std::to_string(remainingSeconds)}
-            }
-            ));
-            return;
+        if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
+            p.sendMessage("§a请点击箱子进行回收。");
         }
-
-        // 检查金币
-        double tpCost = config.teleportSettings.teleportCost;
-        if (!Economy::hasMoney(p, tpCost)) {
-            p.sendMessage(txt.getMessage(
-                "teleport.insufficient_money",
-                {
-                    {"cost", MoneyFormat::format(tpCost)}
-            }
-            ));
-            return;
-        }
-
-        // 扣除金币
-        if (!Economy::reduceMoney(p, tpCost)) {
-            p.sendMessage(txt.getMessage("economy.deduct_fail"));
-            return;
-        }
-
-        // 执行传送
-        p.teleport({(float)shop.pos.x + 0.5f, (float)shop.pos.y + 1.0f, (float)shop.pos.z + 0.5f}, shop.dimId);
-
-        // 记录冷却
-        tpService.recordTeleport(playerUuid);
-
-        // 发送成功消息
-        p.sendMessage(txt.getMessage(
-            "teleport.success",
-            {
-                {"cost", MoneyFormat::format(tpCost)}
-        }
-        ));
-        p.sendMessage("§a请点击箱子进行回收。");
     });
 
     fm.appendButton("§7返回列表", [](Player& p) { showPublicRecycleShopListForm(p); });

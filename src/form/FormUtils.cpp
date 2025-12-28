@@ -1,10 +1,17 @@
 #include "FormUtils.h"
+#include "Config/ConfigManager.h"
 #include "Utils/ItemTextureManager.h"
+#include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
+#include "Utils/economy.h"
+#include "ll/api/form/CustomForm.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
+#include "service/ChestService.h"
+#include "service/TeleportService.h"
+#include "service/TextService.h"
 
 
 namespace CT::FormUtils {
@@ -129,6 +136,87 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
         }
     }
     return totalCount;
+}
+
+void showSetNameForm(
+    Player&                                     player,
+    BlockPos                                    pos,
+    int                                         dimId,
+    const std::string&                          title,
+    std::function<void(Player&, BlockPos, int)> onComplete
+) {
+    ll::form::CustomForm fm;
+    fm.setTitle(title);
+    auto& txt = TextService::getInstance();
+
+    std::string currentName = ChestService::getInstance().getShopName(pos, dimId, player.getDimensionBlockSource());
+    fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
+    fm.appendInput("shop_name", "请输入商店名称", "", currentName);
+
+    fm.sendTo(
+        player,
+        [pos, dimId, onComplete](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+            auto& txt = TextService::getInstance();
+            if (!result.has_value()) {
+                p.sendMessage(txt.getMessage("action.cancelled"));
+                if (onComplete) onComplete(p, pos, dimId);
+                return;
+            }
+
+            std::string newName = std::get<std::string>(result.value().at("shop_name"));
+            auto&       region  = p.getDimensionBlockSource();
+            if (ChestService::getInstance().setShopName(pos, dimId, region, newName)) {
+                p.sendMessage(txt.getMessage("shop.name_set_success"));
+            } else {
+                p.sendMessage(txt.getMessage("shop.name_set_fail"));
+            }
+            if (onComplete) onComplete(p, pos, dimId);
+        }
+    );
+}
+
+bool teleportToShop(Player& player, BlockPos pos, int dimId) {
+    auto&       tpService  = TeleportService::getInstance();
+    auto&       txt        = TextService::getInstance();
+    auto&       config     = ConfigManager::getInstance().get();
+    std::string playerUuid = player.getUuid().asString();
+
+    if (!tpService.canTeleport(playerUuid)) {
+        int remainingSeconds = tpService.getRemainingCooldown(playerUuid);
+        player.sendMessage(txt.getMessage(
+            "teleport.cooldown",
+            {
+                {"seconds", std::to_string(remainingSeconds)}
+        }
+        ));
+        return false;
+    }
+
+    double tpCost = config.teleportSettings.teleportCost;
+    if (!Economy::hasMoney(player, tpCost)) {
+        player.sendMessage(txt.getMessage(
+            "teleport.insufficient_money",
+            {
+                {"cost", MoneyFormat::format(tpCost)}
+        }
+        ));
+        return false;
+    }
+
+    if (!Economy::reduceMoney(player, tpCost)) {
+        player.sendMessage(txt.getMessage("economy.deduct_fail"));
+        return false;
+    }
+
+    player.teleport({(float)pos.x + 0.5f, (float)pos.y + 1.0f, (float)pos.z + 0.5f}, dimId);
+    tpService.recordTeleport(playerUuid);
+    player.sendMessage(txt.getMessage(
+        "teleport.success",
+        {
+            {"cost", MoneyFormat::format(tpCost)}
+    }
+    ));
+    return true;
 }
 
 } // namespace CT::FormUtils

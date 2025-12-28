@@ -20,17 +20,16 @@
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/item/SaveContextFactory.h"
-#include "mc/world/item/enchanting/Enchant.h"            
-#include "mc/world/item/enchanting/EnchantmentInstance.h" 
-#include "mc/world/item/enchanting/ItemEnchants.h"    
+#include "mc/world/item/enchanting/Enchant.h"
+#include "mc/world/item/enchanting/EnchantmentInstance.h"
+#include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/BlockActor.h"
 #include "mc/world/level/storage/DBStorage.h"
 #include "mc/world/level/storage/DBStorageConfig.h"
-#include "mc/world/level/storage/db_helpers/Category.h" 
+#include "mc/world/level/storage/db_helpers/Category.h"
 #include "mc\world\item\SaveContextFactory.h"
 #include <string_view>
-
 
 
 namespace CT::NbtUtils {
@@ -434,137 +433,71 @@ bool setItemNbt(ItemStack& item, const CompoundTag& tag) {
     return true;
 }
 
-std::string getShulkerBoxItems(const CompoundTag& shulkerNbt) {
-    std::string result = "";
-    if (shulkerNbt.contains("tag") && shulkerNbt.at("tag").is_object()) {
-        const CompoundTag& tag = shulkerNbt.at("tag").get<CompoundTag>();
-        if (tag.contains("Items") && tag.at("Items").is_array()) {
-            const ListTag& itemsTag = tag.at("Items").get<ListTag>();
-            for (int i = 0; i < itemsTag.size(); ++i) {
-                // itemsTag.at(i) 返回 UniqueTagPtr，需要转换为 CompoundTagVariant
-                CompoundTagVariant itemTagVariant = itemsTag.at(i);
-                if (itemTagVariant.is_object()) {
-                    const CompoundTag& itemTag = itemTagVariant.get<CompoundTag>();
-                    if (itemTag.contains("Name") && itemTag.at("Name").is_string() && itemTag.contains("Count")
-                        && itemTag.at("Count").hold<ByteTag>()) { // 使用 hold<ByteTag> 检查
-                        std::string rawItemName = itemTag.at("Name").get<StringTag>();
-                        int         itemCount   = itemTag.at("Count").get<ByteTag>();
+// 内部辅助函数：从容器NBT提取物品列表字符串
+static std::string
+getContainerItemsInternal(const CompoundTag& containerNbt, const std::string& itemsKey, bool skipZeroCount) {
+    std::string result;
+    if (!containerNbt.contains("tag") || !containerNbt.at("tag").is_object()) return result;
 
-                        // 从NBT创建临时的ItemStack以获取翻译名、耐久和附魔
-                        auto tempItemNbt = itemTag.clone(); // 克隆整个物品NBT，包括可能的耐久和附魔信息
-                        tempItemNbt->at("Count") = ByteTag(1); // 数量设为1，只为获取名称、耐久和附魔
-                        auto        tempItemPtr  = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
-                        std::string itemDisplayInfo = rawItemName; // 默认使用原始名称
+    const CompoundTag& tag = containerNbt.at("tag").get<CompoundTag>();
+    if (!tag.contains(itemsKey) || !tag.at(itemsKey).is_array()) return result;
 
-                        if (tempItemPtr) {
-                            itemDisplayInfo = tempItemPtr->getName();
+    const ListTag& itemsTag = tag.at(itemsKey).get<ListTag>();
+    for (int i = 0; i < itemsTag.size(); ++i) {
+        CompoundTagVariant itemTagVariant = itemsTag.at(i);
+        if (!itemTagVariant.is_object()) continue;
 
-                            // 添加耐久度信息
-                            if (tempItemPtr->isDamageableItem()) {
-                                int maxDamage      = tempItemPtr->getItem()->getMaxDamage();
-                                int currentDamage  = tempItemPtr->getDamageValue();
-                                itemDisplayInfo   += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/"
-                                                 + std::to_string(maxDamage) + "]§r";
-                            }
+        const CompoundTag& itemTag = itemTagVariant.get<CompoundTag>();
+        if (!itemTag.contains("Name") || !itemTag.at("Name").is_string() || !itemTag.contains("Count")
+            || !itemTag.at("Count").hold<ByteTag>())
+            continue;
 
-                            // 添加附魔信息
-                            if (tempItemPtr->isEnchanted()) {
-                                ItemEnchants enchants    = tempItemPtr->constructItemEnchantsFromUserData();
-                                auto         enchantList = enchants.getAllEnchants();
-                                if (!enchantList.empty()) {
-                                    itemDisplayInfo += " §d[附魔: ";
-                                    for (const auto& enchant : enchantList) {
-                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " "
-                                                         + std::to_string(enchant.mLevel) + " ";
-                                    }
-                                    itemDisplayInfo += "]§r";
-                                }
-                            }
-                        } else {
-                            // 如果无法创建物品，尝试移除 "minecraft:" 前缀作为备用
-                            if (itemDisplayInfo.rfind("minecraft:", 0) == 0) {
-                                itemDisplayInfo = itemDisplayInfo.substr(10);
-                            }
-                        }
+        std::string rawItemName = itemTag.at("Name").get<StringTag>();
+        int         itemCount   = itemTag.at("Count").get<ByteTag>();
 
-                        if (!result.empty()) {
-                            result += ", ";
-                        }
-                        result += itemDisplayInfo + " x" + std::to_string(itemCount);
+        if (skipZeroCount && itemCount == 0) continue;
+
+        auto tempItemNbt            = itemTag.clone();
+        tempItemNbt->at("Count")    = ByteTag(1);
+        auto        tempItemPtr     = createItemFromNbt(*tempItemNbt);
+        std::string itemDisplayInfo = rawItemName;
+
+        if (tempItemPtr) {
+            itemDisplayInfo = tempItemPtr->getName();
+            if (tempItemPtr->isDamageableItem()) {
+                int maxDamage     = tempItemPtr->getItem()->getMaxDamage();
+                int currentDamage = tempItemPtr->getDamageValue();
+                itemDisplayInfo +=
+                    " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/" + std::to_string(maxDamage) + "]§r";
+            }
+            if (tempItemPtr->isEnchanted()) {
+                ItemEnchants enchants    = tempItemPtr->constructItemEnchantsFromUserData();
+                auto         enchantList = enchants.getAllEnchants();
+                if (!enchantList.empty()) {
+                    itemDisplayInfo += " §d[附魔: ";
+                    for (const auto& enchant : enchantList) {
+                        itemDisplayInfo +=
+                            enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
                     }
+                    itemDisplayInfo += "]§r";
                 }
             }
+        } else if (itemDisplayInfo.rfind("minecraft:", 0) == 0) {
+            itemDisplayInfo = itemDisplayInfo.substr(10);
         }
+
+        if (!result.empty()) result += ", ";
+        result += itemDisplayInfo + " x" + std::to_string(itemCount);
     }
     return result;
 }
 
+std::string getShulkerBoxItems(const CompoundTag& shulkerNbt) {
+    return getContainerItemsInternal(shulkerNbt, "Items", false);
+}
+
 std::string getBundleItems(const CompoundTag& bundleNbt) {
-    std::string result = "";
-    if (bundleNbt.contains("tag") && bundleNbt.at("tag").is_object()) {
-        const CompoundTag& tag = bundleNbt.at("tag").get<CompoundTag>();
-        if (tag.contains("storage_item_component_content") && tag.at("storage_item_component_content").is_array()) {
-            const ListTag& itemsTag = tag.at("storage_item_component_content").get<ListTag>();
-            for (int i = 0; i < itemsTag.size(); ++i) {
-                CompoundTagVariant itemTagVariant = itemsTag.at(i);
-                if (itemTagVariant.is_object()) {
-                    const CompoundTag& itemTag = itemTagVariant.get<CompoundTag>();
-                    if (itemTag.contains("Name") && itemTag.at("Name").is_string() && itemTag.contains("Count")
-                        && itemTag.at("Count").hold<ByteTag>()) {
-                        std::string rawItemName = itemTag.at("Name").get<StringTag>();
-                        int         itemCount   = itemTag.at("Count").get<ByteTag>();
-
-                        if (itemCount == 0) {
-                            continue;
-                        }
-
-                        // 从NBT创建临时的ItemStack以获取翻译名、耐久和附魔
-                        auto tempItemNbt = itemTag.clone(); // 克隆整个物品NBT，包括可能的耐久和附魔信息
-                        tempItemNbt->at("Count") = ByteTag(1); // 数量设为1，只为获取名称、耐久和附魔
-                        auto        tempItemPtr  = CT::NbtUtils::createItemFromNbt(*tempItemNbt);
-                        std::string itemDisplayInfo = rawItemName; // 默认使用原始名称
-
-                        if (tempItemPtr) {
-                            itemDisplayInfo = tempItemPtr->getName();
-
-                            // 添加耐久度信息
-                            if (tempItemPtr->isDamageableItem()) {
-                                int maxDamage      = tempItemPtr->getItem()->getMaxDamage();
-                                int currentDamage  = tempItemPtr->getDamageValue();
-                                itemDisplayInfo   += " §a[耐久: " + std::to_string(maxDamage - currentDamage) + "/"
-                                                 + std::to_string(maxDamage) + "]§r";
-                            }
-
-                            // 添加附魔信息
-                            if (tempItemPtr->isEnchanted()) {
-                                ItemEnchants enchants    = tempItemPtr->constructItemEnchantsFromUserData();
-                                auto         enchantList = enchants.getAllEnchants();
-                                if (!enchantList.empty()) {
-                                    itemDisplayInfo += " §d[附魔: ";
-                                    for (const auto& enchant : enchantList) {
-                                        itemDisplayInfo += enchantToString(enchant.mEnchantType) + " "
-                                                         + std::to_string(enchant.mLevel) + " ";
-                                    }
-                                    itemDisplayInfo += "]§r";
-                                }
-                            }
-                        } else {
-                            // 如果无法创建物品，尝试移除 "minecraft:" 前缀作为备用
-                            if (itemDisplayInfo.rfind("minecraft:", 0) == 0) {
-                                itemDisplayInfo = itemDisplayInfo.substr(10);
-                            }
-                        }
-
-                        if (!result.empty()) {
-                            result += ", ";
-                        }
-                        result += itemDisplayInfo + " x" + std::to_string(itemCount);
-                    }
-                }
-            }
-        }
-    }
-    return result;
+    return getContainerItemsInternal(bundleNbt, "storage_item_component_content", true);
 }
 
 

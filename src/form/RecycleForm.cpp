@@ -435,29 +435,8 @@ void showCommissionDetailsForm(
 
 
 void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    ll::form::CustomForm fm;
-    fm.setTitle("设置回收商店名称");
-    auto& txt = TextService::getInstance();
-
-    std::string currentName = ChestService::getInstance().getShopName(pos, dimId, region);
-    fm.appendLabel("当前商店名称: " + (currentName.empty() ? "§7(未设置)" : "§a" + currentName));
-    fm.appendInput("shop_name", "请输入商店名称", "", currentName);
-
-    fm.sendTo(player, [pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+    CT::FormUtils::showSetNameForm(player, pos, dimId, "设置回收商店名称", [](Player& p, BlockPos pos, int dimId) {
         auto& region = p.getDimensionBlockSource();
-        auto& txt    = TextService::getInstance();
-        if (!result.has_value()) {
-            p.sendMessage(txt.getMessage("action.cancelled"));
-            showRecycleShopManageForm(p, pos, dimId, region);
-            return;
-        }
-
-        std::string newName = std::get<std::string>(result.value().at("shop_name"));
-        if (ChestService::getInstance().setShopName(pos, dimId, region, newName)) {
-            p.sendMessage(txt.getMessage("shop.name_set_success"));
-        } else {
-            p.sendMessage(txt.getMessage("shop.name_set_fail"));
-        }
         showRecycleShopManageForm(p, pos, dimId, region);
     });
 }

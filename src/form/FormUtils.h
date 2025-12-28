@@ -1,19 +1,20 @@
 #pragma once
 
+#include "Utils/ItemTextureManager.h"
+#include "Utils/NbtUtils.h"
+#include "logger.h"
+#include "mc/nbt/CompoundTag.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
-#include "mc/nbt/CompoundTag.h"
-#include "Utils/ItemTextureManager.h"
-#include "Utils/NbtUtils.h"
-#include "logger.h"
-#include <string>
-#include <vector>
-#include <memory>
+#include <functional>
 #include <map>
+#include <memory>
+#include <string>
 #include <tuple>
+#include <vector>
 
 
 namespace CT::FormUtils {
@@ -50,5 +51,29 @@ std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemN
  * @return 箱子中匹配物品的总数量。
  */
 int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr);
+
+/**
+ * @brief 显示设置商店名称的通用表单
+ * @param player 玩家
+ * @param pos 箱子位置
+ * @param dimId 维度ID
+ * @param onComplete 完成后的回调函数
+ */
+void showSetNameForm(
+    Player&                                     player,
+    BlockPos                                    pos,
+    int                                         dimId,
+    const std::string&                          title,
+    std::function<void(Player&, BlockPos, int)> onComplete
+);
+
+/**
+ * @brief 执行传送到商店的通用逻辑（检查冷却、扣费、传送）
+ * @param player 玩家
+ * @param pos 目标位置
+ * @param dimId 目标维度
+ * @return 是否传送成功
+ */
+bool teleportToShop(Player& player, BlockPos pos, int dimId);
 
 } // namespace CT::FormUtils
