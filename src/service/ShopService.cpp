@@ -207,7 +207,7 @@ PurchaseResult ShopService::purchaseItem(
     // 更新悬浮字
     FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
 
-    std::string itemName = itemPtr ? std::string(itemPtr->getName()) : "未知物品";
+    std::string itemName = itemPtr ? std::string(itemPtr->getName()) : txt.getMessage("shop.unknown_item");
     return {
         true,
         txt.getMessage(

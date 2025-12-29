@@ -7,6 +7,7 @@
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/Event.h"
 #include "ll/api/mod/RegisterHelper.h"
+#include "service/I18nService.h"
 
 namespace CT {
 
@@ -35,6 +36,9 @@ bool Entry::enable() {
     getSelf().getLogger().debug("Enabling...");
 
     const auto& config = CT::ConfigManager::getInstance().get();
+
+    // 加载多语言
+    CT::I18nService::getInstance().load(config.resourcePaths.languageDir, config.resourcePaths.language);
 
     // 按优先级顺序加载物品贴图文件（先加载的优先）
     CT::ItemTextureManager::getInstance().loadTextures(config.resourcePaths.itemTextureFiles);

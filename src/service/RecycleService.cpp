@@ -37,9 +37,10 @@ SetCommissionResult RecycleService::setCommission(
     int                requiredAuxValue
 ) {
     auto& itemRepo = ItemRepository::getInstance();
+    auto& txt      = TextService::getInstance();
     int   itemId   = itemRepo.getOrCreateItemId(itemNbt);
     if (itemId < 0) {
-        return {false, "无法创建物品定义", -1};
+        return {false, txt.getMessage("shop.item_def_fail"), -1};
     }
 
     RecycleItemData data;
@@ -57,7 +58,7 @@ SetCommissionResult RecycleService::setCommission(
         FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop);
         return {true, "", itemId};
     }
-    return {false, "数据库操作失败", -1};
+    return {false, txt.getMessage("recycle.db_fail"), -1};
 }
 
 bool RecycleService::updateCommission(BlockPos pos, int dimId, int itemId, double price, int maxRecycleCount) {

@@ -49,6 +49,8 @@ struct ResourcePaths {
     std::string              databasePath = "plugins/ChestTrading/ChestTrading.db"; // 数据库文件路径
     std::vector<std::string> itemTextureFiles =
         {"texture_path.json", "terrain_texture.json", "item_texture.json"}; // 物品贴图文件，按优先级排序，先加载的优先
+    std::string languageDir = "plugins/ChestTrading/lang"; // 语言文件目录
+    std::string language    = "zh_CN";                     // 当前语言，支持 zh_CN, en_US
 };
 
 struct InteractionSettings {

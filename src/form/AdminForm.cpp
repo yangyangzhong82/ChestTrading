@@ -3,6 +3,7 @@
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
 #include "repository/ChestRepository.h"
+#include "service/I18nService.h"
 #include "service/TextService.h"
 #include <algorithm>
 #include <map>
@@ -14,30 +15,32 @@
 namespace CT {
 
 std::string chestTypeToString(ChestType type) {
+    auto& txt = TextService::getInstance();
     switch (type) {
     case ChestType::Locked:
-        return "上锁箱";
+        return txt.getChestTypeName(ChestType::Locked);
     case ChestType::RecycleShop:
-        return "回收商店";
+        return txt.getChestTypeName(ChestType::RecycleShop);
     case ChestType::Shop:
-        return "商店";
+        return txt.getChestTypeName(ChestType::Shop);
     case ChestType::Public:
-        return "公共箱子";
+        return txt.getChestTypeName(ChestType::Public);
     default:
-        return "未知";
+        return txt.getChestTypeName(ChestType::Locked);
     }
 }
 
 std::string dimIdToString(int dimId) {
+    auto& i18n = I18nService::getInstance();
     switch (dimId) {
     case 0:
-        return "主世界";
+        return i18n.get("dimension.overworld");
     case 1:
-        return "下界";
+        return i18n.get("dimension.nether");
     case 2:
-        return "末地";
+        return i18n.get("dimension.end");
     default:
-        return "未知维度";
+        return i18n.get("dimension.unknown");
     }
 }
 
@@ -64,31 +67,34 @@ std::optional<BlockPos> parseCoordinates(const std::string& coordStr) {
 
 
 void showAdminMainForm(Player& player) {
+    auto&                i18n = I18nService::getInstance();
+    auto&                txt  = TextService::getInstance();
     ll::form::CustomForm fm;
-    fm.setTitle("箱子管理筛选");
+    fm.setTitle(i18n.get("admin.filter_title"));
 
-    fm.appendHeader("§l按维度筛选（可多选）");
-    fm.appendToggle("dim_all", "所有维度", true);
-    fm.appendToggle("dim_0", "主世界", false);
-    fm.appendToggle("dim_1", "下界", false);
-    fm.appendToggle("dim_2", "末地", false);
+    fm.appendHeader(i18n.get("admin.filter_by_dimension"));
+    fm.appendToggle("dim_all", i18n.get("admin.all_dimensions"), true);
+    fm.appendToggle("dim_0", i18n.get("dimension.overworld"), false);
+    fm.appendToggle("dim_1", i18n.get("dimension.nether"), false);
+    fm.appendToggle("dim_2", i18n.get("dimension.end"), false);
     fm.appendDivider();
 
-    fm.appendHeader("§l按箱子类型筛选（可多选）");
-    fm.appendToggle("type_all", "所有类型", true);
-    fm.appendToggle("type_1", "上锁箱", false);
-    fm.appendToggle("type_2", "回收商店", false);
-    fm.appendToggle("type_3", "商店", false);
-    fm.appendToggle("type_4", "公共箱子", false);
+    fm.appendHeader(i18n.get("admin.filter_by_type"));
+    fm.appendToggle("type_all", i18n.get("admin.all_types"), true);
+    fm.appendToggle("type_1", txt.getChestTypeName(ChestType::Locked), false);
+    fm.appendToggle("type_2", txt.getChestTypeName(ChestType::RecycleShop), false);
+    fm.appendToggle("type_3", txt.getChestTypeName(ChestType::Shop), false);
+    fm.appendToggle("type_4", txt.getChestTypeName(ChestType::Public), false);
     fm.appendDivider();
 
-    fm.appendHeader("§l按坐标范围筛选（留空则不限制）");
-    fm.appendInput("pos1", "起始坐标 (x,y,z)", "例如: 100,60,100");
-    fm.appendInput("pos2", "结束坐标 (x,y,z)", "例如: 200,50,200");
+    fm.appendHeader(i18n.get("admin.filter_by_coords"));
+    fm.appendInput("pos1", i18n.get("admin.start_coords"), i18n.get("admin.coords_example"));
+    fm.appendInput("pos2", i18n.get("admin.end_coords"), i18n.get("admin.coords_example"));
 
     fm.sendTo(player, [](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
         if (!result.has_value() || result->empty()) {
-            p.sendMessage("§c你关闭了筛选表单。");
+            auto& i18n = I18nService::getInstance();
+            p.sendMessage(i18n.get("admin.form_closed"));
             return;
         }
 
@@ -139,8 +145,9 @@ void showAdminForm(
     const std::vector<ChestType>& chestTypeFilter,
     const CoordinateRange&        coordRange
 ) {
+    auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
-    fm.setTitle("服务器箱子管理");
+    fm.setTitle(i18n.get("admin.manage_title"));
 
     auto                   allChests = ChestRepository::getInstance().findAll();
     std::vector<ChestData> filteredChests;
@@ -171,23 +178,29 @@ void showAdminForm(
 
     fm.appendToggle(
         "confirm_teleport",
-        "直接传送（开启后选择箱子将直接传送）",
+        i18n.get("admin.direct_teleport"),
         false,
-        "§7开启后，点击箱子开关将立即传送，而不是翻页。"
+        i18n.get("admin.direct_teleport_hint")
     );
 
     if (filteredChests.empty()) {
-        fm.appendLabel("没有找到符合筛选条件的箱子。");
+        fm.appendLabel(i18n.get("admin.no_chests_found"));
     } else {
         if (totalPages > 1) {
             fm.appendSlider(
                 "page_slider",
-                "翻页",
+                i18n.get("admin.page_slider"),
                 1,
                 totalPages,
                 1,
                 currentPage,
-                "§7拖动滑块选择页面 (当前: " + std::to_string(currentPage) + "/" + std::to_string(totalPages) + ")"
+                i18n.get(
+                    "admin.page_slider_hint",
+                    {
+                        {"current", std::to_string(currentPage)},
+                        {"total",   std::to_string(totalPages) }
+            }
+                )
             );
         }
 
@@ -196,10 +209,14 @@ void showAdminForm(
             playerChests[chest.ownerUuid].push_back(chest);
         }
 
-        fm.appendHeader(
-            "§l§e箱子列表 §r§7(总计: " + std::to_string(filteredChests.size()) + " | 第 " + std::to_string(currentPage)
-            + " / " + std::to_string(totalPages) + " 页)"
-        );
+        fm.appendHeader(i18n.get(
+            "admin.chest_list_header",
+            {
+                {"total",       std::to_string(filteredChests.size())},
+                {"current",     std::to_string(currentPage)          },
+                {"total_pages", std::to_string(totalPages)           }
+        }
+        ));
         fm.appendDivider();
 
         int startIndex = (currentPage - 1) * itemsPerPage;
@@ -224,7 +241,7 @@ void showAdminForm(
                                    + std::to_string(chest.pos.x) + "|" + std::to_string(chest.pos.y) + "|"
                                    + std::to_string(chest.pos.z);
 
-            fm.appendToggle(toggleName, label, false, "§7选择此箱子进行操作");
+            fm.appendToggle(toggleName, label, false, i18n.get("admin.select_chest_hint"));
         }
         fm.appendDivider();
     }
@@ -234,8 +251,9 @@ void showAdminForm(
         [dimIdFilter,
          chestTypeFilter,
          coordRange](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+            auto& i18n = I18nService::getInstance();
             if (!result.has_value() || result->empty()) {
-                p.sendMessage("§c你关闭了管理表单。");
+                p.sendMessage(i18n.get("admin.manage_closed"));
                 return;
             }
 
@@ -286,7 +304,7 @@ void showAdminForm(
                         ));
                         return;
                     } catch (const std::exception& e) {
-                        p.sendMessage("§c传送失败，坐标解析错误。");
+                        p.sendMessage(i18n.get("admin.teleport_failed"));
                         return;
                     }
                 }

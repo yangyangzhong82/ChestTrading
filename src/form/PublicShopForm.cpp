@@ -19,6 +19,7 @@
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
+#include "service/I18nService.h"
 #include "service/TeleportService.h"
 #include "service/TextService.h"
 #include <algorithm>
@@ -30,15 +31,16 @@ namespace CT {
 static const int SHOPS_PER_PAGE = 10;
 
 static std::string dimIdToString(int dimId) {
+    auto& i18n = I18nService::getInstance();
     switch (dimId) {
     case 0:
-        return "主世界";
+        return i18n.get("dimension.overworld");
     case 1:
-        return "下界";
+        return i18n.get("dimension.nether");
     case 2:
-        return "末地";
+        return i18n.get("dimension.end");
     default:
-        return "未知维度";
+        return i18n.get("dimension.unknown");
     }
 }
 
@@ -102,10 +104,16 @@ static bool shopContainsItem(const ChestData& shop, const std::string& keyword) 
 }
 
 static void showSearchForm(Player& player, bool isRecycle) {
+    auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
-    fm.setTitle(isRecycle ? "搜索回收商店" : "搜索商店");
-    fm.appendDropdown("type", "搜索类型", {"店主名称", "物品名称/类型"}, 0);
-    fm.appendInput("keyword", "关键词", "输入搜索关键词");
+    fm.setTitle(isRecycle ? i18n.get("public_shop.search_recycle_title") : i18n.get("public_shop.search_title"));
+    fm.appendDropdown(
+        "type",
+        i18n.get("public_shop.search_type"),
+        {i18n.get("public_shop.search_by_owner"), i18n.get("public_shop.search_by_item")},
+        0
+    );
+    fm.appendInput("keyword", i18n.get("public_shop.search_keyword"), i18n.get("public_shop.search_keyword_hint"));
     fm.sendTo(player, [isRecycle](Player& p, ll::form::CustomFormResult const& result, ll::form::FormCancelReason) {
         if (!result.has_value() || result->empty()) return;
 
@@ -120,7 +128,8 @@ static void showSearchForm(Player& player, bool isRecycle) {
                 typeIdx = static_cast<uint64>(*dptr);
             } else if (auto* sptr = std::get_if<std::string>(&typeIt->second)) {
                 // dropdown 返回字符串时，检查是否是"物品名称/类型"
-                if (*sptr == "物品名称/类型") {
+                auto& i18n = I18nService::getInstance();
+                if (*sptr == i18n.get("public_shop.search_by_item")) {
                     typeIdx = 1;
                 }
                 logger.debug("showSearchForm: type 是 string, 值={}", *sptr);
@@ -154,10 +163,11 @@ void showPublicShopListForm(
     const std::string& searchKeyword,
     const std::string& searchType
 ) {
+    auto& i18n = I18nService::getInstance();
     logger.debug("showPublicShopListForm: 开始搜索, 关键词={}, 类型={}", searchKeyword, searchType);
 
     ll::form::SimpleForm fm;
-    fm.setTitle("公开商店列表");
+    fm.setTitle(i18n.get("public_shop.list_title"));
 
     auto allChests = ChestService::getInstance().getAllPublicChests();
     logger.debug("showPublicShopListForm: 获取到 {} 个箱子", allChests.size());
@@ -188,13 +198,26 @@ void showPublicShopListForm(
     currentPage = std::max(0, std::min(currentPage, totalPages - 1));
 
     if (shops.empty()) {
-        fm.setContent(searchKeyword.empty() ? "§7当前没有公开的商店。" : "§7没有找到匹配的商店。");
+        fm.setContent(searchKeyword.empty() ? i18n.get("public_shop.no_shops") : i18n.get("public_shop.no_match"));
     } else {
-        std::string contentText = "§e共 " + std::to_string(totalShops) + " 个商店 §7(第 "
-                                + std::to_string(currentPage + 1) + "/" + std::to_string(totalPages) + " 页)";
+        std::string contentText = i18n.get(
+            "public_shop.total_shops",
+            {
+                {"count", std::to_string(totalShops)     },
+                {"page",  std::to_string(currentPage + 1)},
+                {"total", std::to_string(totalPages)     }
+        }
+        );
         if (!searchKeyword.empty()) {
-            std::string typeStr  = (searchType == "owner") ? "店主" : "物品";
-            contentText         += "\n§6搜索" + typeStr + ": " + searchKeyword;
+            std::string typeStr  = (searchType == "owner") ? i18n.get("public_shop.search_type_owner")
+                                                           : i18n.get("public_shop.search_type_item");
+            contentText         += i18n.get(
+                "public_shop.search_result",
+                {
+                    {"type",    typeStr      },
+                    {"keyword", searchKeyword}
+            }
+            );
         }
         fm.setContent(contentText);
 
@@ -204,10 +227,16 @@ void showPublicShopListForm(
         for (int i = startIdx; i < endIdx; ++i) {
             const auto& shop = shops[i];
             auto ownerInfo   = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-            std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
+            std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
 
-            std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的商店") : shop.shopName;
-            std::string buttonText = ownerName + "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
+            std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
+                                                                      "public_shop.owner_shop",
+                                                                      {
+                                                                          {"owner", ownerName}
+            }
+                                                                  )
+                                                                : shop.shopName;
+            std::string buttonText      = "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
                                    + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
                                    + std::to_string(shop.pos.z) + "]";
 
@@ -215,22 +244,28 @@ void showPublicShopListForm(
         }
     }
 
-    fm.appendButton("§e🔍 搜索", [](Player& p) { showSearchForm(p, false); });
+    fm.appendButton(i18n.get("public_shop.button_search"), [](Player& p) { showSearchForm(p, false); });
 
     if (totalPages > 1) {
         if (currentPage > 0) {
-            fm.appendButton("§a<< 上一页", [currentPage, searchKeyword, searchType](Player& p) {
-                showPublicShopListForm(p, currentPage - 1, searchKeyword, searchType);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                [currentPage, searchKeyword, searchType](Player& p) {
+                    showPublicShopListForm(p, currentPage - 1, searchKeyword, searchType);
+                }
+            );
         }
         if (currentPage < totalPages - 1) {
-            fm.appendButton("§a下一页 >>", [currentPage, searchKeyword, searchType](Player& p) {
-                showPublicShopListForm(p, currentPage + 1, searchKeyword, searchType);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                [currentPage, searchKeyword, searchType](Player& p) {
+                    showPublicShopListForm(p, currentPage + 1, searchKeyword, searchType);
+                }
+            );
         }
     }
 
-    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
     fm.sendTo(player);
 }
 
@@ -240,8 +275,9 @@ void showPublicRecycleShopListForm(
     const std::string& searchKeyword,
     const std::string& searchType
 ) {
+    auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
-    fm.setTitle("公开回收商店列表");
+    fm.setTitle(i18n.get("public_shop.recycle_list_title"));
 
     auto                   allChests = ChestService::getInstance().getAllPublicChests();
     std::vector<ChestData> recycleShops;
@@ -268,13 +304,28 @@ void showPublicRecycleShopListForm(
     currentPage = std::max(0, std::min(currentPage, totalPages - 1));
 
     if (recycleShops.empty()) {
-        fm.setContent(searchKeyword.empty() ? "§7当前没有公开的回收商店。" : "§7没有找到匹配的回收商店。");
+        fm.setContent(
+            searchKeyword.empty() ? i18n.get("public_shop.no_recycle_shops") : i18n.get("public_shop.no_match_recycle")
+        );
     } else {
-        std::string contentText = "§e共 " + std::to_string(totalShops) + " 个回收商店 §7(第 "
-                                + std::to_string(currentPage + 1) + "/" + std::to_string(totalPages) + " 页)";
+        std::string contentText = i18n.get(
+            "public_shop.total_recycle_shops",
+            {
+                {"count", std::to_string(totalShops)     },
+                {"page",  std::to_string(currentPage + 1)},
+                {"total", std::to_string(totalPages)     }
+        }
+        );
         if (!searchKeyword.empty()) {
-            std::string typeStr  = (searchType == "owner") ? "店主" : "物品";
-            contentText         += "\n§6搜索" + typeStr + ": " + searchKeyword;
+            std::string typeStr  = (searchType == "owner") ? i18n.get("public_shop.search_type_owner")
+                                                           : i18n.get("public_shop.search_type_item");
+            contentText         += i18n.get(
+                "public_shop.search_result",
+                {
+                    {"type",    typeStr      },
+                    {"keyword", searchKeyword}
+            }
+            );
         }
         fm.setContent(contentText);
 
@@ -284,9 +335,15 @@ void showPublicRecycleShopListForm(
         for (int i = startIdx; i < endIdx; ++i) {
             const auto& shop = recycleShops[i];
             auto ownerInfo   = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-            std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
+            std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
 
-            std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的回收商店") : shop.shopName;
+            std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
+                                                                      "public_shop.owner_recycle_shop",
+                                                                      {
+                                                                          {"owner", ownerName}
+            }
+                                                                  )
+                                                                : shop.shopName;
             std::string buttonText      = "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
                                    + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
                                    + std::to_string(shop.pos.z) + "]";
@@ -295,110 +352,177 @@ void showPublicRecycleShopListForm(
         }
     }
 
-    fm.appendButton("§e🔍 搜索", [](Player& p) { showSearchForm(p, true); });
+    fm.appendButton(i18n.get("public_shop.button_search"), [](Player& p) { showSearchForm(p, true); });
 
     if (totalPages > 1) {
         if (currentPage > 0) {
-            fm.appendButton("§a<< 上一页", [currentPage, searchKeyword, searchType](Player& p) {
-                showPublicRecycleShopListForm(p, currentPage - 1, searchKeyword, searchType);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                [currentPage, searchKeyword, searchType](Player& p) {
+                    showPublicRecycleShopListForm(p, currentPage - 1, searchKeyword, searchType);
+                }
+            );
         }
         if (currentPage < totalPages - 1) {
-            fm.appendButton("§a下一页 >>", [currentPage, searchKeyword, searchType](Player& p) {
-                showPublicRecycleShopListForm(p, currentPage + 1, searchKeyword, searchType);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                [currentPage, searchKeyword, searchType](Player& p) {
+                    showPublicRecycleShopListForm(p, currentPage + 1, searchKeyword, searchType);
+                }
+            );
         }
     }
 
-    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
     fm.sendTo(player);
 }
 
 // 商店预览表单（只能预览物品，不能购买，可传送到箱子位置）
 void showShopPreviewForm(Player& player, const ChestData& shop) {
+    auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
 
     auto        ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-    std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
-    std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的商店") : shop.shopName;
+    std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+    std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
+                                                              "public_shop.owner_shop",
+                                                              {
+                                                                  {"owner", ownerName}
+    }
+                                                          )
+                                                        : shop.shopName;
 
-    fm.setTitle("商店预览 - " + shopDisplayName);
+    fm.setTitle(i18n.get(
+        "public_shop.preview_title",
+        {
+            {"name", shopDisplayName}
+    }
+    ));
 
     auto items = ShopRepository::getInstance().findAllItems(shop.pos, shop.dimId);
 
-    std::string content  = "§e店主: " + ownerName + "\n";
-    content             += "§7位置: " + dimIdToString(shop.dimId) + " [" + std::to_string(shop.pos.x) + ", "
-             + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]\n\n";
+    std::string content = i18n.get(
+        "public_shop.preview_owner",
+        {
+            {"owner", ownerName}
+    }
+    );
+    content += i18n.get(
+        "public_shop.preview_location",
+        {
+            {"dim", dimIdToString(shop.dimId) },
+            {"x",   std::to_string(shop.pos.x)},
+            {"y",   std::to_string(shop.pos.y)},
+            {"z",   std::to_string(shop.pos.z)}
+    }
+    );
 
     if (items.empty()) {
-        content += "§7该商店暂无商品。\n";
+        content += i18n.get("public_shop.preview_no_items");
     } else {
-        content += "§a商品列表:\n";
+        content += i18n.get("public_shop.preview_items_title");
         for (const auto& item : items) {
             std::string itemNbtStr = ItemRepository::getInstance().getItemNbt(item.itemId);
             auto        itemPtr    = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             if (itemPtr) {
-                content += "§f- " + std::string(itemPtr->getName()) + " §7x" + std::to_string(item.dbCount) + " §6["
-                         + CT::MoneyFormat::format(item.price) + "]\n";
+                content += i18n.get(
+                    "public_shop.preview_item_entry",
+                    {
+                        {"name",  std::string(itemPtr->getName())    },
+                        {"count", std::to_string(item.dbCount)       },
+                        {"price", CT::MoneyFormat::format(item.price)}
+                }
+                );
             }
         }
     }
-    content += "\n§c注意: 需要前往商店位置点击箱子才能购买！";
+    content += i18n.get("public_shop.preview_notice");
     fm.setContent(content);
 
-    fm.appendButton("§a传送到商店", [shop](Player& p) {
+    fm.appendButton(i18n.get("public_shop.button_teleport"), [shop](Player& p) {
+        auto& i18n = I18nService::getInstance();
         if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
-            p.sendMessage("§a请点击箱子进行购买。");
+            p.sendMessage(i18n.get("public_shop.teleport_hint"));
         }
     });
 
-    fm.appendButton("§7返回列表", [](Player& p) { showPublicShopListForm(p); });
+    fm.appendButton(i18n.get("public_shop.button_back_list"), [](Player& p) { showPublicShopListForm(p); });
 
-    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
     fm.sendTo(player);
 }
 
 // 回收商店预览表单（只能预览物品，不能回收，可传送到箱子位置）
 void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
+    auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
 
     auto        ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-    std::string ownerName = ownerInfo ? ownerInfo->name : "未知";
-    std::string shopDisplayName = shop.shopName.empty() ? (ownerName + " 的回收商店") : shop.shopName;
+    std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+    std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
+                                                              "public_shop.owner_recycle_shop",
+                                                              {
+                                                                  {"owner", ownerName}
+    }
+                                                          )
+                                                        : shop.shopName;
 
-    fm.setTitle("回收商店预览 - " + shopDisplayName);
+    fm.setTitle(i18n.get(
+        "public_shop.recycle_preview_title",
+        {
+            {"name", shopDisplayName}
+    }
+    ));
 
     auto items = ShopRepository::getInstance().findAllRecycleItems(shop.pos, shop.dimId);
 
-    std::string content  = "§e店主: " + ownerName + "\n";
-    content             += "§7位置: " + dimIdToString(shop.dimId) + " [" + std::to_string(shop.pos.x) + ", "
-             + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]\n\n";
+    std::string content = i18n.get(
+        "public_shop.preview_owner",
+        {
+            {"owner", ownerName}
+    }
+    );
+    content += i18n.get(
+        "public_shop.preview_location",
+        {
+            {"dim", dimIdToString(shop.dimId) },
+            {"x",   std::to_string(shop.pos.x)},
+            {"y",   std::to_string(shop.pos.y)},
+            {"z",   std::to_string(shop.pos.z)}
+    }
+    );
 
     if (items.empty()) {
-        content += "§7该回收商店暂无回收委托。\n";
+        content += i18n.get("public_shop.preview_no_recycle");
     } else {
-        content += "§a回收物品列表:\n";
+        content += i18n.get("public_shop.preview_recycle_title");
         for (const auto& item : items) {
             std::string itemNbtStr = ItemRepository::getInstance().getItemNbt(item.itemId);
             auto        itemPtr    = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             if (itemPtr) {
-                content += "§f- " + std::string(itemPtr->getName())
-                         + " §6[回收价: " + CT::MoneyFormat::format(item.price) + "]\n";
+                content += i18n.get(
+                    "public_shop.preview_recycle_entry",
+                    {
+                        {"name",  std::string(itemPtr->getName())    },
+                        {"price", CT::MoneyFormat::format(item.price)}
+                }
+                );
             }
         }
     }
-    content += "\n§c注意: 需要前往商店位置点击箱子才能回收！";
+    content += i18n.get("public_shop.preview_recycle_notice");
     fm.setContent(content);
 
-    fm.appendButton("§a传送到商店", [shop](Player& p) {
+    fm.appendButton(i18n.get("public_shop.button_teleport"), [shop](Player& p) {
+        auto& i18n = I18nService::getInstance();
         if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
-            p.sendMessage("§a请点击箱子进行回收。");
+            p.sendMessage(i18n.get("public_shop.teleport_recycle_hint"));
         }
     });
 
-    fm.appendButton("§7返回列表", [](Player& p) { showPublicRecycleShopListForm(p); });
+    fm.appendButton(i18n.get("public_shop.button_back_list"), [](Player& p) { showPublicRecycleShopListForm(p); });
 
-    fm.appendButton("§c关闭", [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
     fm.sendTo(player);
 }
 

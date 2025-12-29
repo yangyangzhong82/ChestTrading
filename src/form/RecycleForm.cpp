@@ -37,8 +37,8 @@ void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& regio
 
 void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("回收商店 - 物品列表");
-    auto& txt = TextService::getInstance();
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_shop_title"));
 
     auto commissions = RecycleService::getInstance().getCommissions(pos, dimId);
 
@@ -49,7 +49,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
         for (const auto& commission : commissions) {
             auto itemNbt = CT::NbtUtils::parseSNBT(commission.itemNbt);
             if (!itemNbt) {
-                fm.appendButton("§c[数据损坏] 无法加载委托物品 (NBT解析失败)", [](Player& p) {
+                fm.appendButton(txt.getMessage("form.data_corrupt_button"), [](Player& p) {
                     p.sendMessage(TextService::getInstance().getMessage("recycle.data_corrupt"));
                 });
                 continue;
@@ -57,7 +57,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             itemNbt->at("Count") = ByteTag(1);
             auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
             if (!itemPtr) {
-                fm.appendButton("§c[数据损坏] 无法加载委托物品 (创建失败)", [](Player& p) {
+                fm.appendButton(txt.getMessage("form.data_corrupt_button2"), [](Player& p) {
                     p.sendMessage(TextService::getInstance().getMessage("recycle.data_corrupt"));
                 });
                 continue;
@@ -121,7 +121,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
         }
     }
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
         CT::showChestLockForm(
@@ -163,8 +163,8 @@ void showRecycleConfirmForm(
     const std::string& commissionNbtStr
 ) {
     ll::form::CustomForm fm;
-    fm.setTitle("确认回收物品");
-    auto& txt = TextService::getInstance();
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_confirm_title"));
 
     int totalPlayerCount = 0;
     int itemId           = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
@@ -242,9 +242,24 @@ void showRecycleConfirmForm(
         }
     }
 
-    fm.appendLabel("你正在回收物品: " + std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r");
-    fm.appendLabel("背包中可回收数量: " + std::to_string(totalPlayerCount));
-    fm.appendLabel("回收单价: §6" + CT::MoneyFormat::format(unitPrice) + "§r");
+    fm.appendLabel(txt.getMessage(
+        "form.label_setting_commission",
+        {
+            {"item", std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"}
+    }
+    ));
+    fm.appendLabel(txt.getMessage(
+        "form.label_available_count",
+        {
+            {"count", std::to_string(totalPlayerCount)}
+    }
+    ));
+    fm.appendLabel(txt.getMessage(
+        "form.label_unit_price",
+        {
+            {"price", CT::MoneyFormat::format(unitPrice)}
+    }
+    ));
 
 
     // 显示耐久度
@@ -274,7 +289,7 @@ void showRecycleConfirmForm(
         }
     }
 
-    fm.appendInput("recycle_count", "请输入回收数量", "1", std::to_string(totalPlayerCount));
+    fm.appendInput("recycle_count", txt.getMessage("form.input_recycle_count"), "1", std::to_string(totalPlayerCount));
 
     fm.sendTo(
         player,
@@ -370,19 +385,28 @@ void showRecycleFinalConfirmForm(
     }
 
     ll::form::SimpleForm fm;
-    fm.setTitle("确认回收");
+    fm.setTitle(txt.getMessage("form.recycle_final_title"));
 
-    std::string content =
-        "你确定要回收 " + std::string(item.getName()) + " x" + std::to_string(recycleCount) + " 吗？\n";
-    if (maxRecycleCount > 0) {
-        content += "§e最高回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
+    std::string maxInfo = maxRecycleCount > 0 ? txt.getMessage(
+                                                    "form.max_recycle_info",
+                                                    {
+                                                        {"max", std::to_string(maxRecycleCount)}
     }
-    content += "你将获得 §6" + CT::MoneyFormat::format(recyclePrice) + "§r 金币。\n";
-    content += "回收后，你的背包将会刷新。";
-    fm.setContent(content);
+                                                )
+                                              : "";
+
+    fm.setContent(txt.getMessage(
+        "form.recycle_final_content",
+        {
+            {"item",     std::string(item.getName())          },
+            {"count",    std::to_string(recycleCount)         },
+            {"max_info", maxInfo                              },
+            {"price",    CT::MoneyFormat::format(recyclePrice)}
+    }
+    ));
 
     fm.appendButton(
-        "§a确认回收",
+        txt.getMessage("form.button_confirm_recycle"),
         [item, pos, dimId, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
@@ -415,7 +439,7 @@ void showRecycleFinalConfirmForm(
         }
     );
 
-    fm.appendButton("§c取消", [item, pos, dimId, unitPrice, commissionNbtStr](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_cancel"), [item, pos, dimId, unitPrice, commissionNbtStr](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showRecycleConfirmForm(p, item, pos, dimId, region, -1, unitPrice, commissionNbtStr);
     });
@@ -443,20 +467,21 @@ void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSo
 
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("回收商店管理");
-    fm.setContent("选择一个操作：");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_manage_title"));
+    fm.setContent(txt.getMessage("form.recycle_manage_content"));
 
-    fm.appendButton("添加回收委托", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_add_commission"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddItemToRecycleShopForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("查看回收委托", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_view_commission"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showViewRecycleCommissionsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         // 返回到箱子已锁定界面
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
@@ -481,9 +506,8 @@ void showEditCommissionForm(
     BlockSource&       region,
     const std::string& commissionNbtStr
 ) {
-    auto& txt = TextService::getInstance();
-
-    auto itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
+    auto  itemNbt = CT::NbtUtils::parseSNBT(commissionNbtStr);
+    auto& txt     = TextService::getInstance();
     if (!itemNbt) {
         player.sendMessage(txt.getMessage("recycle.load_fail"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
@@ -516,17 +540,22 @@ void showEditCommissionForm(
     int    currentMaxRecycleCount = commission->maxRecycleCount;
 
     ll::form::CustomForm fm;
-    fm.setTitle("编辑回收委托");
-    fm.appendLabel("物品: " + std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r");
+    fm.setTitle(txt.getMessage("form.recycle_edit_title"));
+    fm.appendLabel(txt.getMessage(
+        "form.label_item",
+        {
+            {"item", std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"}
+    }
+    ));
     fm.appendInput(
         "price_input",
-        "回收单价",
+        txt.getMessage("form.input_price_label"),
         std::to_string(currentPrice),
         std::to_string(currentPrice)
-    ); // 使用 std::to_string 显示 double
+    );
     fm.appendInput(
         "max_recycle_count",
-        "最大回收数量 (0为不限制)",
+        txt.getMessage("form.input_max_recycle_label"),
         std::to_string(currentMaxRecycleCount),
         std::to_string(currentMaxRecycleCount)
     );
@@ -664,7 +693,8 @@ void showCommissionDetailsForm(
             }
 
             ll::form::SimpleForm fm;
-            fm.setTitle("回收记录详情");
+            auto&                txt = TextService::getInstance();
+            fm.setTitle(txt.getMessage("form.recycle_details_title"));
 
             std::string content = "物品: " + itemName + "\n\n";
 
@@ -706,12 +736,12 @@ void showCommissionDetailsForm(
             }
             fm.setContent(content);
 
-            fm.appendButton("§e编辑委托", [pos, dimId, commissionNbtStr](Player& p) {
+            fm.appendButton(txt.getMessage("form.button_edit_commission"), [pos, dimId, commissionNbtStr](Player& p) {
                 auto& region = p.getDimensionBlockSource();
                 showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
             });
 
-            fm.appendButton("返回", [pos, dimId](Player& p) {
+            fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
                 auto& region = p.getDimensionBlockSource();
                 showViewRecycleCommissionsForm(p, pos, dimId, region);
             });
@@ -754,12 +784,13 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
         }
 
         ll::form::SimpleForm fm;
-        fm.setTitle("查看回收委托");
+        auto&                txt = TextService::getInstance();
+        fm.setTitle(txt.getMessage("form.recycle_view_title"));
 
         if (commissions.empty()) {
-            fm.setContent("该商店没有设置任何回收委托。");
+            fm.setContent(txt.getMessage("form.recycle_view_empty"));
         } else {
-            fm.setContent("点击查看每个委托的详细回收记录：");
+            fm.setContent(txt.getMessage("form.recycle_view_content"));
             for (const auto& row : commissions) {
                 std::string itemNbtStr           = row[0];
                 double      price                = std::stod(row[1]);
@@ -788,7 +819,7 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
             }
         }
 
-        fm.appendButton("返回", [pos, dimId](Player& p) {
+        fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
             auto& region = p.getDimensionBlockSource();
             showRecycleShopManageForm(p, pos, dimId, region);
         });
@@ -802,11 +833,12 @@ void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& r
 
 void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("添加回收委托 - 选择物品");
-    fm.setContent("请选择你想要添加回收委托的物品：");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_add_title"));
+    fm.setContent(txt.getMessage("form.recycle_add_content"));
 
     // 首先添加"通过物品ID添加"按钮
-    fm.appendButton("§e通过物品ID添加", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_add_by_id"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddItemByIdForm(p, pos, dimId, region);
     });
@@ -838,7 +870,7 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
         }
     }
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showRecycleShopManageForm(p, pos, dimId, region);
     });
@@ -848,23 +880,34 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
 
 void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
-    fm.setTitle("设置回收委托");
-    fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置回收委托。");
-    fm.appendInput("price_input", "请输入回收价格", "0.0"); // 更改默认值为 "0.0"
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_set_price_title"));
+    fm.appendLabel(txt.getMessage(
+        "form.label_setting_commission",
+        {
+            {"item", std::string(item.getName())}
+    }
+    ));
+    fm.appendInput("price_input", txt.getMessage("form.input_price"), "0.0");
 
     // 显示当前物品的特殊值
     short currentAuxValue = item.getAuxValue();
-    fm.appendLabel("§e当前物品特殊值: " + std::to_string(currentAuxValue) + "§r");
-    fm.appendInput("required_aux_value", "要求特殊值 (留空或-1为不筛选)", "-1", std::to_string(currentAuxValue));
+    fm.appendLabel(txt.getMessage(
+        "form.label_current_aux",
+        {
+            {"value", std::to_string(currentAuxValue)}
+    }
+    ));
+    fm.appendInput("required_aux_value", txt.getMessage("form.input_aux_value"), "-1", std::to_string(currentAuxValue));
 
     if (item.isDamageableItem()) {
-        fm.appendInput("min_durability", "最低耐久度 (0为不限制)", "0");
+        fm.appendInput("min_durability", txt.getMessage("form.input_min_durability"), "0");
     }
 
-    fm.appendInput("required_enchants", "要求附魔 (格式: ID1:等级1,ID2:等级2...)", "");
-    fm.appendLabel("例如: 锋利V,耐久III 则输入 9:5,34:3");
-    fm.appendLabel("留空则不要求附魔。");
-    fm.appendInput("max_recycle_count", "最大回收数量 (0为不限制)", "0"); // 新增最大回收数量输入框
+    fm.appendInput("required_enchants", txt.getMessage("form.input_enchants"), "");
+    fm.appendLabel(txt.getMessage("form.input_enchants_example"));
+    fm.appendLabel(txt.getMessage("form.input_enchants_tip"));
+    fm.appendInput("max_recycle_count", txt.getMessage("form.input_max_recycle"), "0");
 
 
     fm.sendTo(
@@ -987,11 +1030,12 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
 void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
-    fm.setTitle("通过物品ID添加委托");
-    fm.appendLabel("请输入物品的ID（如: diamond_sword）");
-    fm.appendInput("item_id", "物品ID", "", "");
-    fm.appendLabel("§e提示: 物品ID通常为物品名称，如 diamond_sword, iron_pickaxe 等");
-    fm.appendLabel("§e如果不带minecraft:前缀，会自动添加");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_add_by_id_title"));
+    fm.appendLabel(txt.getMessage("form.label_item_id_hint"));
+    fm.appendInput("item_id", txt.getMessage("form.input_item_id"), "", "");
+    fm.appendLabel(txt.getMessage("form.label_item_id_tip1"));
+    fm.appendLabel(txt.getMessage("form.label_item_id_tip2"));
 
     fm.sendTo(
         player,

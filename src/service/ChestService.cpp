@@ -106,9 +106,10 @@ ChestService::createChest(const std::string& playerUuid, BlockPos pos, int dimId
     auto& db   = Sqlite3Wrapper::getInstance();
 
     // 使用事务保护
+    auto&       txt = TextService::getInstance();
     Transaction txn(db);
     if (!txn.isActive()) {
-        return {false, "§c箱子设置失败：无法开始事务！", std::nullopt};
+        return {false, txt.getMessage("chest.set_fail_transaction"), std::nullopt};
     }
 
     // 删除旧记录
@@ -125,11 +126,11 @@ ChestService::createChest(const std::string& playerUuid, BlockPos pos, int dimId
     data.type      = type;
 
     if (!repo.insert(data)) {
-        return {false, "§c箱子设置失败！", std::nullopt};
+        return {false, txt.getMessage("chest.set_fail"), std::nullopt};
     }
 
     if (!txn.commit()) {
-        return {false, "§c箱子设置失败：事务提交失败！", std::nullopt};
+        return {false, txt.getMessage("chest.set_fail_commit"), std::nullopt};
     }
 
     // 使缓存失效
@@ -163,14 +164,15 @@ ChestService::createChest(const std::string& playerUuid, BlockPos pos, int dimId
             }
 
             if (type == ChestType::Locked || type == ChestType::Public) {
-                std::string chestTypeName = (type == ChestType::Locked) ? "的上锁箱子" : "的公共箱子";
+                std::string chestTypeName = (type == ChestType::Locked) ? txt.getMessage("chest.name_locked")
+                                                                        : txt.getMessage("chest.name_public");
                 (*nbt)["CustomName"]      = StringTag(ownerName + chestTypeName);
                 NbtUtils::setBlockEntityNbt(mainBlockActor, *nbt);
             }
         }
     }
 
-    return {true, "§a箱子设置成功！", data};
+    return {true, txt.getMessage("chest.set_success"), data};
 }
 
 ChestOperationResult ChestService::removeChest(BlockPos pos, int dimId, BlockSource& region) {
@@ -178,7 +180,7 @@ ChestOperationResult ChestService::removeChest(BlockPos pos, int dimId, BlockSou
     auto&    repo    = ChestRepository::getInstance();
 
     if (!repo.remove(mainPos, dimId)) {
-        return {false, "§c箱子设置移除失败！", std::nullopt};
+        return {false, TextService::getInstance().getMessage("chest.remove_fail_db"), std::nullopt};
     }
 
     // 使缓存失效
@@ -209,7 +211,7 @@ ChestOperationResult ChestService::removeChest(BlockPos pos, int dimId, BlockSou
         }
     }
 
-    return {true, "§a箱子设置已成功移除！", std::nullopt};
+    return {true, TextService::getInstance().getMessage("chest.remove_success"), std::nullopt};
 }
 
 std::optional<ChestData> ChestService::getChestInfo(BlockPos pos, int dimId, BlockSource& region) {
@@ -320,17 +322,18 @@ bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType
         requiredPermission = "chest.create.shop";
         break;
     default:
-        errorMessage = "§c未知的箱子类型！";
+        errorMessage = TextService::getInstance().getMessage("chest.unknown_type");
         return false;
     }
 
     if (!BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, requiredPermission)) {
-        errorMessage = "§c你没有创建该类型箱子的权限！";
+        errorMessage = TextService::getInstance().getMessage("chest.no_permission");
         return false;
     }
 
     // 检查数量限制
     const Config& config       = ConfigManager::getInstance().get();
+    auto&         txt          = TextService::getInstance();
     int           currentCount = getPlayerChestCount(playerUuid, type);
     int           maxCount     = 0;
     std::string   chestTypeName;
@@ -338,26 +341,32 @@ bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType
     switch (type) {
     case ChestType::Locked:
         maxCount      = config.chestLimits.maxLockedChests;
-        chestTypeName = "上锁箱子";
+        chestTypeName = txt.getChestTypeName(ChestType::Locked);
         break;
     case ChestType::Public:
         maxCount      = config.chestLimits.maxPublicChests;
-        chestTypeName = "公共箱子";
+        chestTypeName = txt.getChestTypeName(ChestType::Public);
         break;
     case ChestType::RecycleShop:
         maxCount      = config.chestLimits.maxRecycleShops;
-        chestTypeName = "回收商店";
+        chestTypeName = txt.getChestTypeName(ChestType::RecycleShop);
         break;
     case ChestType::Shop:
         maxCount      = config.chestLimits.maxShops;
-        chestTypeName = "商店";
+        chestTypeName = txt.getChestTypeName(ChestType::Shop);
         break;
     default:
         break;
     }
 
     if (currentCount >= maxCount) {
-        errorMessage = "§c你已达到" + chestTypeName + "的数量上限（" + std::to_string(maxCount) + "个）！";
+        errorMessage = txt.getMessage(
+            "chest.limit_reached",
+            {
+                {"type", chestTypeName           },
+                {"max",  std::to_string(maxCount)}
+        }
+        );
         return false;
     }
 

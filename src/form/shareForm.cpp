@@ -58,15 +58,22 @@ void showShareForm(
     int                currentPage
 ) {
     ll::form::SimpleForm fm;
-    fm.setTitle("箱子分享管理");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.share_title"));
 
     auto&                    chestService  = ChestService::getInstance();
     std::vector<std::string> sharedPlayers = chestService.getSharedPlayers(pos, dimId, region);
     std::string              ownerName     = getPlayerNameFromUuid(ownerUuid);
 
-    std::string content = "§e箱子主人: " + ownerName + "§r\n\n当前已分享的玩家：\n";
+    std::string content = txt.getMessage(
+                              "form.share_owner",
+                              {
+                                  {"owner", ownerName}
+    }
+                          )
+                        + "\n\n" + txt.getMessage("form.share_list") + "\n";
     if (sharedPlayers.empty()) {
-        content += "无\n";
+        content += txt.getMessage("form.share_none") + "\n";
     } else {
         for (const std::string& sharedPlayerUuid : sharedPlayers) {
             content += "- " + getPlayerNameFromUuid(sharedPlayerUuid) + "\n";
@@ -74,12 +81,12 @@ void showShareForm(
     }
     fm.setContent(content);
 
-    fm.appendButton("添加在线玩家", [pos, dimId, ownerUuid, currentPage](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_add_online"), [pos, dimId, ownerUuid, currentPage](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddShareForm(p, pos, dimId, ownerUuid, region, currentPage);
     });
 
-    fm.appendButton("添加离线玩家", [pos, dimId, ownerUuid](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_add_offline"), [pos, dimId, ownerUuid](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddOfflineShareForm(p, pos, dimId, ownerUuid, region);
     });
@@ -91,7 +98,9 @@ void showShareForm(
         });
     }
 
-    fm.appendButton("取消", [](Player& p) { logger.info("玩家 {} 取消了箱子分享管理。", p.getUuid().asString()); });
+    fm.appendButton(txt.getMessage("form.button_cancel"), [](Player& p) {
+        logger.info("玩家 {} 取消了箱子分享管理。", p.getUuid().asString());
+    });
 
     fm.sendTo(player);
 }
@@ -104,8 +113,9 @@ void showAddOfflineShareForm(
     BlockSource&       region
 ) {
     ll::form::CustomForm fm;
-    fm.setTitle("添加离线玩家");
-    fm.appendInput(OFFLINE_PLAYER_INPUT_KEY, "输入离线玩家名称", "");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.share_add_offline_title"));
+    fm.appendInput(OFFLINE_PLAYER_INPUT_KEY, txt.getMessage("form.input_offline_player"), "");
 
     fm.sendTo(
         player,
@@ -168,7 +178,13 @@ void showAddShareForm(
     int                currentPage
 ) {
     ll::form::CustomForm fm;
-    fm.setTitle("添加在线玩家 (第 " + std::to_string(currentPage + 1) + " 页)");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage(
+        "form.share_add_online_title",
+        {
+            {"page", std::to_string(currentPage + 1)}
+    }
+    ));
 
     // 获取所有在线玩家
     std::vector<std::pair<std::string, std::string>> onlinePlayers; // pair: uuid, name

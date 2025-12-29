@@ -8,7 +8,7 @@ namespace CT {
 
 /**
  * @brief 文本生成服务
- * 统一管理所有UI文本和消息
+ * 统一管理所有UI文本和消息，使用 I18nService 获取翻译
  */
 class TextService {
 public:
@@ -30,12 +30,7 @@ public:
     std::string getChestTypeName(ChestType type);
 
 private:
-    TextService();
-
-    std::map<std::string, std::string> mMessages;
-
-    void        initMessages();
-    std::string replacePlaceholders(const std::string& text, const std::map<std::string, std::string>& params);
+    TextService() = default;
 };
 
 } // namespace CT

@@ -20,8 +20,8 @@ namespace CT {
 
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("商店物品");
-    auto& txt = TextService::getInstance();
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_items_title"));
 
     logger.debug(
         "showShopChestItemsForm: Player {} is opening shop at pos ({},{},{}) dim {}.",
@@ -45,7 +45,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
             if (!itemPtr) {
-                fm.appendButton("§c[数据损坏] 无法加载物品", [&txt](Player& p) {
+                fm.appendButton(txt.getMessage("form.data_corrupt_button"), [&txt](Player& p) {
                     p.sendMessage(txt.getMessage("shop.data_corrupt"));
                 });
                 continue;
@@ -77,7 +77,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         }
     }
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
         showChestLockForm(
@@ -95,9 +95,15 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 
 void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
-    fm.setTitle("设置商品价格");
-    fm.appendLabel("你正在为物品: " + std::string(item.getName()) + " 设置价格。");
-    fm.appendInput("price_input", "请输入价格", "0.0");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_set_price_title"));
+    fm.appendLabel(txt.getMessage(
+        "form.label_setting_price",
+        {
+            {"item", std::string(item.getName())}
+    }
+    ));
+    fm.appendInput("price_input", txt.getMessage("form.input_price"), "0.0");
 
     fm.sendTo(
         player,
@@ -145,8 +151,8 @@ void showShopItemManageForm(
     BlockSource&       region
 ) {
     ll::form::SimpleForm fm;
-    fm.setTitle("管理商品");
-    auto& txt = TextService::getInstance();
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_manage_item_title"));
 
     auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
     if (!itemPtr) {
@@ -166,24 +172,48 @@ void showShopItemManageForm(
 
     auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
 
-    std::string content = "你正在管理物品: " + std::string(item.getName()) + "\n";
-    int         dbCount = 0;
-    if (itemOpt) {
-        content += "当前价格: §a" + CT::MoneyFormat::format(itemOpt->price) + "§r\n";
-        dbCount  = itemOpt->dbCount;
-    } else {
-        content += "当前状态: §7未定价§r\n";
+    std::string content = txt.getMessage(
+                              "form.label_managing_item",
+                              {
+                                  {"item", std::string(item.getName())}
     }
-    content += "数据库库存: §b" + std::to_string(dbCount) + "§r\n";
-    content += "箱子实际库存: §e" + std::to_string(totalCount) + "§r\n";
+                          )
+                        + "\n";
+    int dbCount = 0;
+    if (itemOpt) {
+        content += txt.getMessage(
+                       "form.label_current_price",
+                       {
+                           {"price", CT::MoneyFormat::format(itemOpt->price)}
+        }
+                   )
+                 + "\n";
+        dbCount = itemOpt->dbCount;
+    } else {
+        content += txt.getMessage("form.label_not_priced") + "\n";
+    }
+    content += txt.getMessage(
+                   "form.label_db_stock",
+                   {
+                       {"count", std::to_string(dbCount)}
+    }
+               )
+             + "\n";
+    content += txt.getMessage(
+                   "form.label_chest_stock",
+                   {
+                       {"count", std::to_string(totalCount)}
+    }
+               )
+             + "\n";
     fm.setContent(content);
 
-    fm.appendButton("设置价格", [item, pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_set_price"), [item, pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showShopItemPriceForm(p, item, pos, dimId, region);
     });
 
-    fm.appendButton("移除商品", [pos, dimId, itemId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_remove_item"), [pos, dimId, itemId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto& txt    = TextService::getInstance();
         if (ShopService::getInstance().removeItem(pos, dimId, itemId, region)) {
@@ -194,7 +224,7 @@ void showShopItemManageForm(
         showShopChestManageForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showShopChestManageForm(p, pos, dimId, region);
     });
@@ -209,7 +239,8 @@ void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& r
 
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("管理商店箱子");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_manage_title"));
 
     logger.debug(
         "showShopChestManageForm: Player {} is managing shop at pos ({},{},{}) dim {}.",
@@ -220,7 +251,6 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         dimId
     );
 
-    auto& txt        = TextService::getInstance();
     auto* blockActor = region.getBlockEntity(pos);
     if (!blockActor || blockActor->mType != BlockActorType::Chest) {
         player.sendMessage(txt.getMessage("chest.entity_fail"));
@@ -319,12 +349,12 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         logger.debug("showShopChestManageForm: Chest at pos ({},{},{}) dim {} is empty.", pos.x, pos.y, pos.z, dimId);
     }
 
-    fm.appendButton("查看购买记录", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_view_records"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showPurchaseRecordsForm(p, pos, dimId, region);
     });
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
         showChestLockForm(
@@ -351,7 +381,8 @@ void showShopItemBuyForm(
     const std::string& itemNbtStr // 添加 itemNbtStr 参数
 ) {
     ll::form::CustomForm fm;
-    fm.setTitle("购买商品");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_buy_title"));
 
     logger.debug(
         "showShopItemBuyForm: Player {} is viewing item {} at pos ({},{},{}) dim {} with unitPrice {} and itemNbtStr "
@@ -366,9 +397,12 @@ void showShopItemBuyForm(
         itemNbtStr
     );
 
-    fm.appendLabel(
-        "你正在购买物品: " + CT::FormUtils::getItemDisplayString(item, 0, true)
-    ); // 使用 FormUtils 显示物品信息
+    fm.appendLabel(txt.getMessage(
+        "form.label_buying_item",
+        {
+            {"item", CT::FormUtils::getItemDisplayString(item, 0, true)}
+    }
+    ));
 
     int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
     if (itemId > 0) {
@@ -378,9 +412,19 @@ void showShopItemBuyForm(
         }
     }
 
-    fm.appendLabel("单价: §6" + CT::MoneyFormat::format(unitPrice) + "§r");
-    fm.appendInput("buy_count", "请输入购买数量", "1");
-    fm.appendLabel("你的余额: §e" + CT::MoneyFormat::format(Economy::getMoney(player)) + "§r");
+    fm.appendLabel(txt.getMessage(
+        "form.label_unit_price",
+        {
+            {"price", CT::MoneyFormat::format(unitPrice)}
+    }
+    ));
+    fm.appendInput("buy_count", txt.getMessage("form.input_buy_count"), "1");
+    fm.appendLabel(txt.getMessage(
+        "form.label_your_balance",
+        {
+            {"balance", CT::MoneyFormat::format(Economy::getMoney(player))}
+    }
+    ));
 
     fm.sendTo(
         player,
@@ -434,19 +478,27 @@ void showShopItemBuyForm(
 }
 
 void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    CT::FormUtils::showSetNameForm(player, pos, dimId, "设置商店名称", [](Player& p, BlockPos pos, int dimId) {
-        auto& region = p.getDimensionBlockSource();
-        showShopChestManageForm(p, pos, dimId, region);
-    });
+    auto& txt = TextService::getInstance();
+    CT::FormUtils::showSetNameForm(
+        player,
+        pos,
+        dimId,
+        txt.getMessage("form.shop_set_name_title"),
+        [](Player& p, BlockPos pos, int dimId) {
+            auto& region = p.getDimensionBlockSource();
+            showShopChestManageForm(p, pos, dimId, region);
+        }
+    );
 }
 
 void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
-    fm.setTitle("购买记录");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.shop_records_title"));
 
     auto records = ShopRepository::getInstance().getPurchaseRecords(pos, dimId);
 
-    auto& txt = TextService::getInstance();
+
     if (records.empty()) {
         fm.setContent(txt.getMessage("shop.no_records"));
     } else {
@@ -468,7 +520,7 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
         fm.setContent(content);
     }
 
-    fm.appendButton("返回", [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showShopChestManageForm(p, pos, dimId, region);
     });

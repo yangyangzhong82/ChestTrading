@@ -36,59 +36,64 @@ void showChestLockForm(
         if (ownerUuid == player_uuid) {
             // 当前玩家是主人
             std::string typeStr = textService.getChestTypeName(chestType);
-            fm.setTitle("箱子管理");
-            fm.setContent("这个箱子已被你设置为: " + typeStr + "\n你想做什么？");
+            fm.setTitle(textService.getMessage("form.chest_manage_title"));
+            fm.setContent(textService.getMessage(
+                "form.chest_manage_content",
+                {
+                    {"type", typeStr}
+            }
+            ));
 
-            fm.appendButton("移除设置", [pos, dimId](Player& p) {
+            fm.appendButton(textService.getMessage("form.button_remove_settings"), [pos, dimId](Player& p) {
                 auto& region = p.getDimensionBlockSource();
                 auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
                 p.sendMessage(result.message);
             });
 
             if (chestType == ChestType::Locked) {
-                fm.appendButton("分享箱子", [pos, dimId, ownerUuid](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_share_chest"), [pos, dimId, ownerUuid](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShareForm(p, pos, dimId, ownerUuid, region);
                 });
             }
 
             if (chestType == ChestType::Shop) {
-                fm.appendButton("管理商店物品", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_manage_shop"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShopChestManageForm(p, pos, dimId, region);
                 });
-                fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_set_shop_name"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showSetShopNameForm(p, pos, dimId, region);
                 });
             } else if (chestType == ChestType::RecycleShop) {
-                fm.appendButton("管理回收商店", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_manage_recycle"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showRecycleShopManageForm(p, pos, dimId, region);
                 });
-                fm.appendButton("设置商店名称", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_set_shop_name"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showSetRecycleShopNameForm(p, pos, dimId, region);
                 });
             }
 
-            fm.appendButton("箱子设置", [pos, dimId, chestType](Player& p) {
+            fm.appendButton(textService.getMessage("form.button_chest_settings"), [pos, dimId, chestType](Player& p) {
                 auto& region = p.getDimensionBlockSource();
                 showChestSettingsForm(p, pos, dimId, region, chestType);
             });
 
         } else {
             // 当前玩家不是主人
-            fm.setTitle("箱子已锁定");
-            fm.setContent("这个箱子已经被其他玩家锁定了，你无法操作。");
+            fm.setTitle(textService.getMessage("form.chest_locked_title"));
+            fm.setContent(textService.getMessage("form.chest_locked_content"));
 
             if (chestType == ChestType::Shop) {
-                fm.appendButton("浏览商店物品", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_browse_shop"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShopChestItemsForm(p, pos, dimId, region);
                 });
             } else if (chestType == ChestType::RecycleShop) {
-                fm.appendButton("浏览回收商店", [pos, dimId](Player& p) {
+                fm.appendButton(textService.getMessage("form.button_browse_recycle"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showRecycleForm(p, pos, dimId, region);
                 });
@@ -96,8 +101,8 @@ void showChestLockForm(
         }
     } else {
         // 箱子未设置，提供设置选项
-        fm.setTitle("设置箱子");
-        fm.setContent("你希望将这个箱子设置为什么类型？");
+        fm.setTitle(textService.getMessage("form.chest_setup_title"));
+        fm.setContent(textService.getMessage("form.chest_setup_content"));
 
         auto createChestHandler =
             [](Player& p, BlockPos pos, int dimId, const std::string& playerUuid, ChestType type, double cost) {
@@ -143,69 +148,84 @@ void showChestLockForm(
                 }
             };
 
-        fm.appendButton("普通上锁", [pos, dimId, player_uuid, createChestHandler](Player& p) {
-            createChestHandler(
-                p,
-                pos,
-                dimId,
-                player_uuid,
-                ChestType::Locked,
-                ConfigManager::getInstance().get().chestCosts.lockedChestCost
-            );
-        });
+        fm.appendButton(
+            textService.getMessage("form.button_lock_normal"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(
+                    p,
+                    pos,
+                    dimId,
+                    player_uuid,
+                    ChestType::Locked,
+                    ConfigManager::getInstance().get().chestCosts.lockedChestCost
+                );
+            }
+        );
 
-        fm.appendButton("设为回收商店", [pos, dimId, player_uuid, createChestHandler](Player& p) {
-            createChestHandler(
-                p,
-                pos,
-                dimId,
-                player_uuid,
-                ChestType::RecycleShop,
-                ConfigManager::getInstance().get().chestCosts.recycleShopCost
-            );
-        });
+        fm.appendButton(
+            textService.getMessage("form.button_set_recycle"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(
+                    p,
+                    pos,
+                    dimId,
+                    player_uuid,
+                    ChestType::RecycleShop,
+                    ConfigManager::getInstance().get().chestCosts.recycleShopCost
+                );
+            }
+        );
 
-        fm.appendButton("设为商店", [pos, dimId, player_uuid, createChestHandler](Player& p) {
-            createChestHandler(
-                p,
-                pos,
-                dimId,
-                player_uuid,
-                ChestType::Shop,
-                ConfigManager::getInstance().get().chestCosts.shopCost
-            );
-        });
+        fm.appendButton(
+            textService.getMessage("form.button_set_shop"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(
+                    p,
+                    pos,
+                    dimId,
+                    player_uuid,
+                    ChestType::Shop,
+                    ConfigManager::getInstance().get().chestCosts.shopCost
+                );
+            }
+        );
 
-        fm.appendButton("设为公共箱子", [pos, dimId, player_uuid, createChestHandler](Player& p) {
-            createChestHandler(
-                p,
-                pos,
-                dimId,
-                player_uuid,
-                ChestType::Public,
-                ConfigManager::getInstance().get().chestCosts.publicChestCost
-            );
-        });
+        fm.appendButton(
+            textService.getMessage("form.button_set_public"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(
+                    p,
+                    pos,
+                    dimId,
+                    player_uuid,
+                    ChestType::Public,
+                    ConfigManager::getInstance().get().chestCosts.publicChestCost
+                );
+            }
+        );
     }
 
-    fm.appendButton("取消", [player_uuid](Player& p) { logger.debug("玩家 {} 取消了操作。", player_uuid); });
+    fm.appendButton(textService.getMessage("form.button_cancel"), [player_uuid](Player& p) {
+        logger.debug("玩家 {} 取消了操作。", player_uuid);
+    });
 
     fm.sendTo(player);
 }
 
 void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType) {
     ll::form::CustomForm fm;
-    fm.setTitle("箱子设置");
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.chest_settings_title"));
 
     auto& chestService = ChestService::getInstance();
     auto  config       = chestService.getChestConfig(pos, dimId, region);
 
-    fm.appendToggle("enable_floating_text", "显示悬浮字", config.enableFloatingText);
+    fm.appendToggle("enable_floating_text", txt.getMessage("form.toggle_floating_text"), config.enableFloatingText);
 
     bool isShopType = (chestType == ChestType::Shop || chestType == ChestType::RecycleShop);
     if (isShopType) {
-        fm.appendToggle("enable_fake_item", "显示假物品", config.enableFakeItem);
-        fm.appendToggle("is_public", "公开到商店列表", config.isPublic);
+        fm.appendToggle("enable_fake_item", txt.getMessage("form.toggle_fake_item"), config.enableFakeItem);
+        fm.appendToggle("is_public", txt.getMessage("form.toggle_public"), config.isPublic);
     }
 
     fm.sendTo(
