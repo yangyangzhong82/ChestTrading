@@ -1,7 +1,7 @@
 #include "ChestRepository.h"
+#include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
 #include "logger.h"
-#include <stdexcept>
 
 namespace CT {
 
@@ -68,26 +68,18 @@ std::optional<ChestData> ChestRepository::findByPosition(BlockPos pos, int dimId
         pos.z
     );
 
-    if (results.empty() || results[0].size() < 6) {
-        return std::nullopt;
-    }
-
-    try {
-        const auto& row = results[0];
-        ChestData   data;
-        data.dimId              = dimId;
-        data.pos                = pos;
-        data.ownerUuid          = row[0];
-        data.type               = static_cast<ChestType>(std::stoi(row[1]));
-        data.shopName           = row[2];
-        data.enableFloatingText = (std::stoi(row[3]) != 0);
-        data.enableFakeItem     = (std::stoi(row[4]) != 0);
-        data.isPublic           = (std::stoi(row[5]) != 0);
-        return data;
-    } catch (const std::exception& e) {
-        logger.error("Failed to parse chest data: {}", e.what());
-        return std::nullopt;
-    }
+    return parseSingleRow<ChestData>(results, 6, [&](DbRowParser r) {
+        return ChestData{
+            dimId,
+            pos,
+            r.getString(0),
+            static_cast<ChestType>(r.getInt(1)),
+            r.getString(2),
+            r.getBool(3),
+            r.getBool(4),
+            r.getBool(5)
+        };
+    });
 }
 
 std::vector<ChestData> ChestRepository::findByOwner(const std::string& ownerUuid) {
@@ -98,26 +90,18 @@ std::vector<ChestData> ChestRepository::findByOwner(const std::string& ownerUuid
         ownerUuid
     );
 
-    std::vector<ChestData> chests;
-    for (const auto& row : results) {
-        if (row.size() >= 9) {
-            try {
-                ChestData data;
-                data.ownerUuid          = ownerUuid;
-                data.dimId              = std::stoi(row[0]);
-                data.pos                = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
-                data.type               = static_cast<ChestType>(std::stoi(row[4]));
-                data.shopName           = row[5];
-                data.enableFloatingText = (std::stoi(row[6]) != 0);
-                data.enableFakeItem     = (std::stoi(row[7]) != 0);
-                data.isPublic           = (std::stoi(row[8]) != 0);
-                chests.push_back(data);
-            } catch (const std::exception& e) {
-                logger.error("Failed to parse chest data for owner {}: {}", ownerUuid, e.what());
-            }
-        }
-    }
-    return chests;
+    return parseRows<ChestData>(results, 9, [&](DbRowParser r) {
+        return ChestData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            ownerUuid,
+            static_cast<ChestType>(r.getInt(4)),
+            r.getString(5),
+            r.getBool(6),
+            r.getBool(7),
+            r.getBool(8)
+        };
+    });
 }
 
 std::vector<ChestData> ChestRepository::findAll() {
@@ -125,26 +109,18 @@ std::vector<ChestData> ChestRepository::findAll() {
     auto  results = db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, "
                              "enable_fake_item, is_public FROM chests ORDER BY player_uuid, dim_id;");
 
-    std::vector<ChestData> chests;
-    for (const auto& row : results) {
-        if (row.size() >= 10) {
-            try {
-                ChestData data;
-                data.dimId              = std::stoi(row[0]);
-                data.pos                = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
-                data.ownerUuid          = row[4];
-                data.type               = static_cast<ChestType>(std::stoi(row[5]));
-                data.shopName           = row[6];
-                data.enableFloatingText = (std::stoi(row[7]) != 0);
-                data.enableFakeItem     = (std::stoi(row[8]) != 0);
-                data.isPublic           = (std::stoi(row[9]) != 0);
-                chests.push_back(data);
-            } catch (const std::exception& e) {
-                logger.error("Failed to parse chest data: {}", e.what());
-            }
-        }
-    }
-    return chests;
+    return parseRows<ChestData>(results, 10, [](DbRowParser r) {
+        return ChestData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            r.getString(4),
+            static_cast<ChestType>(r.getInt(5)),
+            r.getString(6),
+            r.getBool(7),
+            r.getBool(8),
+            r.getBool(9)
+        };
+    });
 }
 
 int ChestRepository::countByOwnerAndType(const std::string& ownerUuid, ChestType type) {

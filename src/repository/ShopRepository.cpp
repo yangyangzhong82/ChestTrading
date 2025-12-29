@@ -1,6 +1,6 @@
 #include "ShopRepository.h"
+#include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
-#include "logger.h"
 
 namespace CT {
 
@@ -63,20 +63,9 @@ std::optional<ShopItemData> ShopRepository::findItem(BlockPos pos, int dimId, in
         itemId
     );
 
-    if (results.empty() || results[0].size() < 4) {
-        return std::nullopt;
-    }
-
-    const auto&  row = results[0];
-    ShopItemData data;
-    data.dimId   = dimId;
-    data.pos     = pos;
-    data.itemId  = itemId;
-    data.slot    = std::stoi(row[0]);
-    data.price   = std::stod(row[1]);
-    data.dbCount = std::stoi(row[2]);
-    data.itemNbt = row[3];
-    return data;
+    return parseSingleRow<ShopItemData>(results, 4, [&](DbRowParser r) {
+        return ShopItemData{dimId, pos, itemId, r.getString(3), r.getDouble(1), r.getInt(2), r.getInt(0)};
+    });
 }
 
 std::vector<ShopItemData> ShopRepository::findAllItems(BlockPos pos, int dimId) {
@@ -91,21 +80,9 @@ std::vector<ShopItemData> ShopRepository::findAllItems(BlockPos pos, int dimId) 
         pos.z
     );
 
-    std::vector<ShopItemData> items;
-    for (const auto& row : results) {
-        if (row.size() >= 5) {
-            ShopItemData data;
-            data.dimId   = dimId;
-            data.pos     = pos;
-            data.itemId  = std::stoi(row[0]);
-            data.slot    = std::stoi(row[1]);
-            data.price   = std::stod(row[2]);
-            data.dbCount = std::stoi(row[3]);
-            data.itemNbt = row[4];
-            items.push_back(data);
-        }
-    }
-    return items;
+    return parseRows<ShopItemData>(results, 5, [&](DbRowParser r) {
+        return ShopItemData{dimId, pos, r.getInt(0), r.getString(4), r.getDouble(2), r.getInt(3), r.getInt(1)};
+    });
 }
 
 bool ShopRepository::updateDbCount(BlockPos pos, int dimId, int itemId, int newCount) {
@@ -169,23 +146,19 @@ std::vector<PurchaseRecordData> ShopRepository::getPurchaseRecords(BlockPos pos,
         limit
     );
 
-    std::vector<PurchaseRecordData> records;
-    for (const auto& row : results) {
-        if (row.size() >= 7) {
-            PurchaseRecordData data;
-            data.id            = std::stoi(row[0]);
-            data.dimId         = dimId;
-            data.pos           = pos;
-            data.itemId        = std::stoi(row[1]);
-            data.buyerUuid     = row[2];
-            data.purchaseCount = std::stoi(row[3]);
-            data.totalPrice    = std::stod(row[4]);
-            data.timestamp     = row[5];
-            data.itemNbt       = row[6];
-            records.push_back(data);
-        }
-    }
-    return records;
+    return parseRows<PurchaseRecordData>(results, 7, [&](DbRowParser r) {
+        return PurchaseRecordData{
+            r.getInt(0),
+            dimId,
+            pos,
+            r.getInt(1),
+            r.getString(2),
+            r.getInt(3),
+            r.getDouble(4),
+            r.getString(5),
+            r.getString(6)
+        };
+    });
 }
 
 std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, int dimId) {
@@ -201,24 +174,20 @@ std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, i
         pos.z
     );
 
-    std::vector<RecycleItemData> items;
-    for (const auto& row : results) {
-        if (row.size() >= 7) {
-            RecycleItemData data;
-            data.dimId                = dimId;
-            data.pos                  = pos;
-            data.itemId               = std::stoi(row[0]);
-            data.price                = std::stod(row[1]);
-            data.minDurability        = std::stoi(row[2]);
-            data.requiredEnchants     = row[3];
-            data.maxRecycleCount      = std::stoi(row[4]);
-            data.currentRecycledCount = std::stoi(row[5]);
-            data.itemNbt              = row[6];
-            data.requiredAuxValue     = row.size() >= 8 ? std::stoi(row[7]) : -1;
-            items.push_back(data);
-        }
-    }
-    return items;
+    return parseRows<RecycleItemData>(results, 7, [&](DbRowParser r) {
+        return RecycleItemData{
+            dimId,
+            pos,
+            r.getInt(0),
+            r.getString(6),
+            r.getDouble(1),
+            r.getInt(2),
+            r.getString(3),
+            r.getInt(4),
+            r.getInt(5),
+            r.getIntOr(7, -1)
+        };
+    });
 }
 
 std::optional<RecycleItemData> ShopRepository::findRecycleItem(BlockPos pos, int dimId, int itemId) {
@@ -235,23 +204,20 @@ std::optional<RecycleItemData> ShopRepository::findRecycleItem(BlockPos pos, int
         itemId
     );
 
-    if (results.empty() || results[0].size() < 6) {
-        return std::nullopt;
-    }
-
-    const auto&     row = results[0];
-    RecycleItemData data;
-    data.dimId                = dimId;
-    data.pos                  = pos;
-    data.itemId               = itemId;
-    data.price                = std::stod(row[0]);
-    data.minDurability        = std::stoi(row[1]);
-    data.requiredEnchants     = row[2];
-    data.maxRecycleCount      = std::stoi(row[3]);
-    data.currentRecycledCount = std::stoi(row[4]);
-    data.itemNbt              = row[5];
-    data.requiredAuxValue     = row.size() >= 7 ? std::stoi(row[6]) : -1;
-    return data;
+    return parseSingleRow<RecycleItemData>(results, 6, [&](DbRowParser r) {
+        return RecycleItemData{
+            dimId,
+            pos,
+            itemId,
+            r.getString(5),
+            r.getDouble(0),
+            r.getInt(1),
+            r.getString(2),
+            r.getInt(3),
+            r.getInt(4),
+            r.getIntOr(6, -1)
+        };
+    });
 }
 
 bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
@@ -336,22 +302,18 @@ std::vector<RecycleRecordData> ShopRepository::getRecycleRecords(BlockPos pos, i
         limit
     );
 
-    std::vector<RecycleRecordData> records;
-    for (const auto& row : results) {
-        if (row.size() >= 5) {
-            RecycleRecordData data;
-            data.id           = std::stoi(row[0]);
-            data.dimId        = dimId;
-            data.pos          = pos;
-            data.itemId       = itemId;
-            data.recyclerUuid = row[1];
-            data.recycleCount = std::stoi(row[2]);
-            data.totalPrice   = std::stod(row[3]);
-            data.timestamp    = row[4];
-            records.push_back(data);
-        }
-    }
-    return records;
+    return parseRows<RecycleRecordData>(results, 5, [&](DbRowParser r) {
+        return RecycleRecordData{
+            r.getInt(0),
+            dimId,
+            pos,
+            itemId,
+            r.getString(1),
+            r.getInt(2),
+            r.getDouble(3),
+            r.getString(4)
+        };
+    });
 }
 
 } // namespace CT
