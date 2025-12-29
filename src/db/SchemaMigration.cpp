@@ -11,6 +11,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV1,
         migrateToV2,
         migrateToV3,
+        migrateToV4,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -137,4 +138,24 @@ bool SchemaMigration::migrateToV3(Sqlite3Wrapper& db) {
     // 添加 required_aux_value 字段到 recycle_shop_items 表，-1 表示不筛选特殊值
     const char* sql = "ALTER TABLE recycle_shop_items ADD COLUMN required_aux_value INTEGER NOT NULL DEFAULT -1;";
     return db.execute_unsafe(sql);
+}
+
+bool SchemaMigration::migrateToV4(Sqlite3Wrapper& db) {
+    // 优化查询性能的复合索引
+    const char* sqls[] = {
+        // shared_chests: 优化 isPlayerShared/removeSharedPlayer 查询 (player_uuid, dim_id, pos_x, pos_y, pos_z)
+        "CREATE INDEX IF NOT EXISTS idx_shared_chests_player_pos ON shared_chests(player_uuid, dim_id, pos_x, pos_y, "
+        "pos_z);",
+        // purchase_records: 优化带时间排序的位置查询
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_time ON purchase_records(dim_id, pos_x, pos_y, pos_z, "
+        "timestamp DESC);",
+        // recycle_records: 优化带时间排序的物品查询
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item_time ON recycle_records(dim_id, pos_x, pos_y, pos_z, "
+        "item_id, timestamp DESC);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute_unsafe(sql)) return false;
+    }
+    return true;
 }
