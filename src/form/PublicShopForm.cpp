@@ -16,7 +16,6 @@
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
-#include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
 #include "service/I18nService.h"
@@ -24,6 +23,7 @@
 #include "service/TextService.h"
 #include <algorithm>
 #include <cctype>
+#include <map>
 
 
 namespace CT {
@@ -56,7 +56,7 @@ static bool fuzzyMatch(const std::string& text, const std::string& keyword) {
     return toLower(text).find(toLower(keyword)) != std::string::npos;
 }
 
-// 检查商店是否包含匹配的物品（从Repository查询）
+// 检查商店是否包含匹配的物品（从Repository查询，已优化避免N+1）
 static bool shopContainsItem(const ChestData& shop, const std::string& keyword) {
     logger.debug(
         "shopContainsItem: 搜索商店 ({},{},{}) dim={} 关键词: {}",
@@ -67,35 +67,42 @@ static bool shopContainsItem(const ChestData& shop, const std::string& keyword) 
         keyword
     );
 
-    std::vector<int> itemIds;
+    // findAllItems/findAllRecycleItems 已经 JOIN 了 item_definitions，直接使用 itemNbt 字段
     if (shop.type == ChestType::Shop) {
         auto items = ShopRepository::getInstance().findAllItems(shop.pos, shop.dimId);
+        logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
         for (const auto& item : items) {
-            itemIds.push_back(item.itemId);
+            if (item.itemNbt.empty()) continue;
+            auto nbt = CT::NbtUtils::parseSNBT(item.itemNbt);
+            if (nbt) {
+                (*nbt)["Count"] = ByteTag(1);
+                auto itemPtr    = CT::NbtUtils::createItemFromNbt(*nbt);
+                if (itemPtr && !itemPtr->isNull()) {
+                    std::string itemName = itemPtr->getName();
+                    std::string typeName = itemPtr->getTypeName();
+                    if (itemName.empty()) itemName = typeName;
+                    if (fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword)) {
+                        return true;
+                    }
+                }
+            }
         }
     } else if (shop.type == ChestType::RecycleShop) {
         auto items = ShopRepository::getInstance().findAllRecycleItems(shop.pos, shop.dimId);
+        logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
         for (const auto& item : items) {
-            itemIds.push_back(item.itemId);
-        }
-    }
-
-    logger.debug("shopContainsItem: 查询到 {} 个物品", itemIds.size());
-
-    for (int itemId : itemIds) {
-        std::string itemNbt = ItemRepository::getInstance().getItemNbt(itemId);
-        if (itemNbt.empty()) continue;
-
-        auto nbt = CT::NbtUtils::parseSNBT(itemNbt);
-        if (nbt) {
-            (*nbt)["Count"] = ByteTag(1);
-            auto itemPtr    = CT::NbtUtils::createItemFromNbt(*nbt);
-            if (itemPtr && !itemPtr->isNull()) {
-                std::string itemName = itemPtr->getName();
-                std::string typeName = itemPtr->getTypeName();
-                if (itemName.empty()) itemName = typeName;
-                if (fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword)) {
-                    return true;
+            if (item.itemNbt.empty()) continue;
+            auto nbt = CT::NbtUtils::parseSNBT(item.itemNbt);
+            if (nbt) {
+                (*nbt)["Count"] = ByteTag(1);
+                auto itemPtr    = CT::NbtUtils::createItemFromNbt(*nbt);
+                if (itemPtr && !itemPtr->isNull()) {
+                    std::string itemName = itemPtr->getName();
+                    std::string typeName = itemPtr->getTypeName();
+                    if (itemName.empty()) itemName = typeName;
+                    if (fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword)) {
+                        return true;
+                    }
                 }
             }
         }
@@ -224,10 +231,19 @@ void showPublicShopListForm(
         int startIdx = currentPage * SHOPS_PER_PAGE;
         int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
 
+        // 预先批量查询当前页所有玩家名称，避免 N+1 查询
+        std::map<std::string, std::string> ownerNameCache;
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto& shop = shops[i];
-            auto ownerInfo   = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-            std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+            const auto& uuid = shops[i].ownerUuid;
+            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
+                auto ownerInfo       = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
+                ownerNameCache[uuid] = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+            }
+        }
+
+        for (int i = startIdx; i < endIdx; ++i) {
+            const auto&        shop      = shops[i];
+            const std::string& ownerName = ownerNameCache[shop.ownerUuid];
 
             std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
                                                                       "public_shop.owner_shop",
@@ -332,10 +348,19 @@ void showPublicRecycleShopListForm(
         int startIdx = currentPage * SHOPS_PER_PAGE;
         int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
 
+        // 预先批量查询当前页所有玩家名称，避免 N+1 查询
+        std::map<std::string, std::string> ownerNameCache;
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto& shop = recycleShops[i];
-            auto ownerInfo   = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(shop.ownerUuid));
-            std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+            const auto& uuid = recycleShops[i].ownerUuid;
+            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
+                auto ownerInfo       = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
+                ownerNameCache[uuid] = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+            }
+        }
+
+        for (int i = startIdx; i < endIdx; ++i) {
+            const auto&        shop      = recycleShops[i];
+            const std::string& ownerName = ownerNameCache[shop.ownerUuid];
 
             std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
                                                                       "public_shop.owner_recycle_shop",
@@ -422,8 +447,8 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
     } else {
         content += i18n.get("public_shop.preview_items_title");
         for (const auto& item : items) {
-            std::string itemNbtStr = ItemRepository::getInstance().getItemNbt(item.itemId);
-            auto        itemPtr    = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+            // 直接使用 findAllItems 返回的 itemNbt 字段，避免 N+1 查询
+            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (itemPtr) {
                 content += i18n.get(
                     "public_shop.preview_item_entry",
@@ -497,8 +522,8 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
     } else {
         content += i18n.get("public_shop.preview_recycle_title");
         for (const auto& item : items) {
-            std::string itemNbtStr = ItemRepository::getInstance().getItemNbt(item.itemId);
-            auto        itemPtr    = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+            // 直接使用 findAllRecycleItems 返回的 itemNbt 字段，避免 N+1 查询
+            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (itemPtr) {
                 content += i18n.get(
                     "public_shop.preview_recycle_entry",

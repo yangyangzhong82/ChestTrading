@@ -227,11 +227,19 @@ void showAdminForm(
             pagedChests.insert(pagedChests.end(), pair.second.begin(), pair.second.end());
         }
 
+        // 预先批量查询当前页所有玩家名称，避免 N+1 查询
+        std::map<std::string, std::string> ownerNameCache;
         for (int i = startIndex; i < endIndex; ++i) {
-            const auto& chest = pagedChests[i];
+            const auto& uuid = pagedChests[i].ownerUuid;
+            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
+                auto playerInfo      = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
+                ownerNameCache[uuid] = playerInfo ? playerInfo->name : uuid;
+            }
+        }
 
-            auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(chest.ownerUuid));
-            std::string ownerName = playerInfo ? playerInfo->name : chest.ownerUuid;
+        for (int i = startIndex; i < endIndex; ++i) {
+            const auto&        chest     = pagedChests[i];
+            const std::string& ownerName = ownerNameCache[chest.ownerUuid];
 
             std::string label = "§b" + ownerName + " §f- " + dimIdToString(chest.dimId) + " §7- "
                               + chestTypeToString(chest.type) + " §r§e[" + std::to_string(chest.pos.x) + ", "
