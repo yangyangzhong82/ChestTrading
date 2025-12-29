@@ -1,5 +1,6 @@
 #pragma once
 
+#include "logger.h"
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -52,7 +53,11 @@ std::vector<T> parseRows(const std::vector<std::vector<std::string>>& results, s
         if (row.size() >= minCols) {
             try {
                 items.push_back(parser(DbRowParser(row)));
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                logger.error("DbRowParser: Failed to parse row: {}", e.what());
+            } catch (...) {
+                logger.error("DbRowParser: Failed to parse row: unknown exception");
+            }
         }
     }
     return items;
