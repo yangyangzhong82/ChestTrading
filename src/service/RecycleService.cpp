@@ -260,7 +260,22 @@ RecycleResult RecycleService::executeFullRecycle(
         return {false, txt.getMessage("recycle.chest_full"), 0, 0.0};
     }
 
-    // 8. 执行物品转移（记录实际转移的槽位用于回滚）
+    // 8. 记录箱子初始状态（每个槽位的物品数量）
+    std::map<int, int> chestInitialCounts;
+    for (int i = 0; i < chest->getContainerSize(); ++i) {
+        const auto& chestItem = chest->getItem(i);
+        if (!chestItem.isNull()) {
+            auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
+            if (chestItemNbt) {
+                auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+                    chestInitialCounts[i] = chestItem.mCount;
+                }
+            }
+        }
+    }
+
+    // 9. 执行物品转移
     std::vector<TransferRecord> actualTransfers;
     for (const auto& tr : transferRecords) {
         const auto& originalItem  = playerInventory.getItem(tr.slot);
@@ -268,24 +283,24 @@ RecycleResult RecycleService::executeFullRecycle(
         itemToRecycle.setStackSize(tr.count);
 
         if (!chest->addItem(itemToRecycle)) {
-            // 转移失败，回滚已转移的物品
-            for (const auto& at : actualTransfers) {
-                // 从箱子中找回并还给玩家
-                for (int i = 0; i < chest->getContainerSize(); ++i) {
-                    const auto& chestItem = chest->getItem(i);
-                    if (!chestItem.isNull()) {
-                        auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
-                        if (chestItemNbt) {
-                            auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                            if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                                int       removeCount = std::min(at.count, (int)chestItem.mCount);
-                                ItemStack returnItem  = chestItem;
-                                returnItem.setStackSize(removeCount);
-                                chest->removeItem(i, removeCount);
+            // 转移失败，精确回滚：只移除本次新增的部分
+            for (int i = 0; i < chest->getContainerSize(); ++i) {
+                const auto& chestItem = chest->getItem(i);
+                if (!chestItem.isNull()) {
+                    auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
+                    if (chestItemNbt) {
+                        auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                        if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+                            int initialCount = chestInitialCounts.count(i) ? chestInitialCounts[i] : 0;
+                            int currentCount = chestItem.mCount;
+                            int addedCount   = currentCount - initialCount;
+                            if (addedCount > 0) {
+                                ItemStack returnItem = chestItem;
+                                returnItem.setStackSize(addedCount);
+                                chest->removeItem(i, addedCount);
                                 if (!recycler.add(returnItem)) {
                                     recycler.drop(returnItem, true);
                                 }
-                                break;
                             }
                         }
                     }
@@ -298,25 +313,27 @@ RecycleResult RecycleService::executeFullRecycle(
         actualTransfers.push_back(tr);
     }
 
-    // 9. 扣店主钱
+    // 10. 扣店主钱
     if (!Economy::reduceMoneyByUuid(ownerUuid, totalPrice)) {
-        // 扣款失败，精确回滚：按记录的槽位和数量从箱子取回
-        int remaining = quantity;
-        for (int i = 0; i < chest->getContainerSize() && remaining > 0; ++i) {
+        // 扣款失败，精确回滚：只移除本次新增的部分
+        for (int i = 0; i < chest->getContainerSize(); ++i) {
             const auto& chestItem = chest->getItem(i);
             if (!chestItem.isNull()) {
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (chestItemNbt) {
                     auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
                     if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                        int       removeCount = std::min(remaining, (int)chestItem.mCount);
-                        ItemStack returnItem  = chestItem;
-                        returnItem.setStackSize(removeCount);
-                        chest->removeItem(i, removeCount);
-                        if (!recycler.add(returnItem)) {
-                            recycler.drop(returnItem, true);
+                        int initialCount = chestInitialCounts.count(i) ? chestInitialCounts[i] : 0;
+                        int currentCount = chestItem.mCount;
+                        int addedCount   = currentCount - initialCount;
+                        if (addedCount > 0) {
+                            ItemStack returnItem = chestItem;
+                            returnItem.setStackSize(addedCount);
+                            chest->removeItem(i, addedCount);
+                            if (!recycler.add(returnItem)) {
+                                recycler.drop(returnItem, true);
+                            }
                         }
-                        remaining -= removeCount;
                     }
                 }
             }
@@ -325,12 +342,12 @@ RecycleResult RecycleService::executeFullRecycle(
         return {false, txt.getMessage("recycle.money_refund"), 0, 0.0};
     }
 
-    // 10. 给回收者加钱（扣除税率）
+    // 11. 给回收者加钱（扣除税率）
     double taxRate      = ConfigManager::getInstance().get().taxSettings.recycleTaxRate;
     double recyclerGain = totalPrice * (1.0 - taxRate);
     Economy::addMoney(recycler, recyclerGain);
 
-    // 11. 更新数据库（事务）
+    // 12. 更新数据库（事务）
     if (!executeDbUpdate(recycler, pos, dimId, itemId, quantity, totalPrice)) {
         // 数据库更新失败，但金钱和物品已转移，记录错误但不回滚（避免复杂性）
         logger.error(
