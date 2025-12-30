@@ -251,4 +251,18 @@ bool teleportToShop(Player& player, BlockPos pos, int dimId) {
     return true;
 }
 
+std::string dimIdToString(int dimId) {
+    auto& i18n = I18nService::getInstance();
+    switch (dimId) {
+    case 0:
+        return i18n.get("dimension.overworld");
+    case 1:
+        return i18n.get("dimension.nether");
+    case 2:
+        return i18n.get("dimension.end");
+    default:
+        return i18n.get("dimension.unknown");
+    }
+}
+
 } // namespace CT::FormUtils

@@ -30,20 +30,6 @@ namespace CT {
 
 static const int SHOPS_PER_PAGE = 10;
 
-static std::string dimIdToString(int dimId) {
-    auto& i18n = I18nService::getInstance();
-    switch (dimId) {
-    case 0:
-        return i18n.get("dimension.overworld");
-    case 1:
-        return i18n.get("dimension.nether");
-    case 2:
-        return i18n.get("dimension.end");
-    default:
-        return i18n.get("dimension.unknown");
-    }
-}
-
 // 转换为小写用于模糊搜索
 static std::string toLower(const std::string& str) {
     std::string result = str;
@@ -252,8 +238,8 @@ void showPublicShopListForm(
             }
                                                                   )
                                                                 : shop.shopName;
-            std::string buttonText      = "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
-                                   + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
+            std::string buttonText = "§b" + shopDisplayName + "§r\n§7" + CT::FormUtils::dimIdToString(shop.dimId)
+                                   + " §e[" + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
                                    + std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop](Player& p) { showShopPreviewForm(p, shop); });
@@ -369,8 +355,8 @@ void showPublicRecycleShopListForm(
             }
                                                                   )
                                                                 : shop.shopName;
-            std::string buttonText      = "§b" + shopDisplayName + "§r\n§7" + dimIdToString(shop.dimId) + " §e["
-                                   + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
+            std::string buttonText = "§b" + shopDisplayName + "§r\n§7" + CT::FormUtils::dimIdToString(shop.dimId)
+                                   + " §e[" + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
                                    + std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop](Player& p) { showRecycleShopPreviewForm(p, shop); });
@@ -435,10 +421,10 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
     content += i18n.get(
         "public_shop.preview_location",
         {
-            {"dim", dimIdToString(shop.dimId) },
-            {"x",   std::to_string(shop.pos.x)},
-            {"y",   std::to_string(shop.pos.y)},
-            {"z",   std::to_string(shop.pos.z)}
+            {"dim", CT::FormUtils::dimIdToString(shop.dimId)},
+            {"x",   std::to_string(shop.pos.x)              },
+            {"y",   std::to_string(shop.pos.y)              },
+            {"z",   std::to_string(shop.pos.z)              }
     }
     );
 
@@ -510,10 +496,10 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
     content += i18n.get(
         "public_shop.preview_location",
         {
-            {"dim", dimIdToString(shop.dimId) },
-            {"x",   std::to_string(shop.pos.x)},
-            {"y",   std::to_string(shop.pos.y)},
-            {"z",   std::to_string(shop.pos.z)}
+            {"dim", CT::FormUtils::dimIdToString(shop.dimId)},
+            {"x",   std::to_string(shop.pos.x)              },
+            {"y",   std::to_string(shop.pos.y)              },
+            {"z",   std::to_string(shop.pos.z)              }
     }
     );
 

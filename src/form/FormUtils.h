@@ -76,4 +76,11 @@ void showSetNameForm(
  */
 bool teleportToShop(Player& player, BlockPos pos, int dimId);
 
+/**
+ * @brief 将维度ID转换为本地化的维度名称
+ * @param dimId 维度ID (0=主世界, 1=下界, 2=末地)
+ * @return 本地化的维度名称字符串
+ */
+std::string dimIdToString(int dimId);
+
 } // namespace CT::FormUtils

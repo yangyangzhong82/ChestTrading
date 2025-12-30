@@ -1,4 +1,5 @@
 #include "AdminForm.h"
+#include "FormUtils.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
@@ -13,36 +14,6 @@
 
 
 namespace CT {
-
-std::string chestTypeToString(ChestType type) {
-    auto& txt = TextService::getInstance();
-    switch (type) {
-    case ChestType::Locked:
-        return txt.getChestTypeName(ChestType::Locked);
-    case ChestType::RecycleShop:
-        return txt.getChestTypeName(ChestType::RecycleShop);
-    case ChestType::Shop:
-        return txt.getChestTypeName(ChestType::Shop);
-    case ChestType::Public:
-        return txt.getChestTypeName(ChestType::Public);
-    default:
-        return txt.getChestTypeName(ChestType::Locked);
-    }
-}
-
-std::string dimIdToString(int dimId) {
-    auto& i18n = I18nService::getInstance();
-    switch (dimId) {
-    case 0:
-        return i18n.get("dimension.overworld");
-    case 1:
-        return i18n.get("dimension.nether");
-    case 2:
-        return i18n.get("dimension.end");
-    default:
-        return i18n.get("dimension.unknown");
-    }
-}
 
 // 解析 "x,y,z" 格式的字符串
 std::optional<BlockPos> parseCoordinates(const std::string& coordStr) {
@@ -237,12 +208,13 @@ void showAdminForm(
             }
         }
 
+        auto& txt = TextService::getInstance();
         for (int i = startIndex; i < endIndex; ++i) {
             const auto&        chest     = pagedChests[i];
             const std::string& ownerName = ownerNameCache[chest.ownerUuid];
 
-            std::string label = "§b" + ownerName + " §f- " + dimIdToString(chest.dimId) + " §7- "
-                              + chestTypeToString(chest.type) + " §r§e[" + std::to_string(chest.pos.x) + ", "
+            std::string label = "§b" + ownerName + " §f- " + CT::FormUtils::dimIdToString(chest.dimId) + " §7- "
+                              + txt.getChestTypeName(chest.type) + " §r§e[" + std::to_string(chest.pos.x) + ", "
                               + std::to_string(chest.pos.y) + ", " + std::to_string(chest.pos.z) + "]";
 
             std::string toggleName = chest.ownerUuid + "|" + std::to_string(chest.dimId) + "|"
