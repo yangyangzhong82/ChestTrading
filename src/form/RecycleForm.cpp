@@ -66,20 +66,35 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             item.mCount    = 1;
 
             std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"
-                                   + " §6[回收单价: " + CT::MoneyFormat::format(commission.price) + "]§r";
+                                   + txt.getMessage(
+                                       "form.recycle_price_label",
+                                       {
+                                           {"price", CT::MoneyFormat::format(commission.price)}
+            }
+                                   );
 
             std::string itemInfo;
             if (commission.requiredAuxValue >= 0) {
-                itemInfo += "\n§e要求特殊值: " + std::to_string(commission.requiredAuxValue) + "§r";
+                itemInfo += txt.getMessage(
+                    "form.recycle_require_aux",
+                    {
+                        {"value", std::to_string(commission.requiredAuxValue)}
+                }
+                );
             }
             if (commission.minDurability > 0) {
-                itemInfo += "\n§a最低耐久: " + std::to_string(commission.minDurability) + "§r";
+                itemInfo += txt.getMessage(
+                    "form.recycle_require_durability",
+                    {
+                        {"value", std::to_string(commission.minDurability)}
+                }
+                );
             }
             if (!commission.requiredEnchants.empty()) {
                 try {
                     nlohmann::json enchants = nlohmann::json::parse(commission.requiredEnchants);
                     if (enchants.is_array() && !enchants.empty()) {
-                        itemInfo += "\n§d要求附魔: ";
+                        itemInfo += txt.getMessage("form.recycle_require_enchant");
                         for (const auto& enchant : enchants) {
                             int id    = enchant["id"];
                             int level = enchant["level"];
@@ -264,15 +279,25 @@ void showRecycleConfirmForm(
 
     // 显示耐久度
     if (item.isDamageableItem()) {
-        int maxDamage     = item.getItem()->getMaxDamage();
-        int currentDamage = item.getDamageValue();
-        fm.appendLabel("§a耐久: " + std::to_string(maxDamage - currentDamage) + " / " + std::to_string(maxDamage));
+        int maxDamage = item.getItem()->getMaxDamage();
+        fm.appendLabel(txt.getMessage(
+            "form.durability_label",
+            {
+                {"current", std::to_string(maxDamage - item.getDamageValue())},
+                {"max",     std::to_string(maxDamage)                        }
+        }
+        ));
     }
 
     // 显示特殊值
     short auxValue = item.getAuxValue();
     if (auxValue != 0) {
-        fm.appendLabel("§e特殊值: " + std::to_string(auxValue));
+        fm.appendLabel(txt.getMessage(
+            "form.aux_value_label",
+            {
+                {"value", std::to_string(auxValue)}
+        }
+        ));
     }
 
     // 获取并显示附魔信息
@@ -280,7 +305,7 @@ void showRecycleConfirmForm(
         ItemEnchants enchants    = item.constructItemEnchantsFromUserData();
         auto         enchantList = enchants.getAllEnchants();
         if (!enchantList.empty()) {
-            std::string enchantText = "§d附魔: ";
+            std::string enchantText = txt.getMessage("form.enchant_label");
             for (const auto& enchant : enchantList) {
                 enchantText +=
                     NbtUtils::enchantToString(enchant.mEnchantType) + " " + std::to_string(enchant.mLevel) + " ";
@@ -459,10 +484,17 @@ void showCommissionDetailsForm(
 
 
 void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    CT::FormUtils::showSetNameForm(player, pos, dimId, "设置回收商店名称", [](Player& p, BlockPos pos, int dimId) {
-        auto& region = p.getDimensionBlockSource();
-        showRecycleShopManageForm(p, pos, dimId, region);
-    });
+    auto& txt = TextService::getInstance();
+    CT::FormUtils::showSetNameForm(
+        player,
+        pos,
+        dimId,
+        txt.getMessage("form.set_recycle_name_title"),
+        [](Player& p, BlockPos pos, int dimId) {
+            auto& region = p.getDimensionBlockSource();
+            showRecycleShopManageForm(p, pos, dimId, region);
+        }
+    );
 }
 
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
@@ -696,7 +728,7 @@ void showCommissionDetailsForm(
             auto&                txt = TextService::getInstance();
             fm.setTitle(txt.getMessage("form.recycle_details_title"));
 
-            std::string content = "物品: " + itemName + "\n\n";
+            std::string content = txt.getMessage("form.label_item_prefix") + itemName + "\n\n";
 
             // 显示委托信息
             if (!commissionInfo.empty()) {
@@ -704,19 +736,34 @@ void showCommissionDetailsForm(
                 int    maxRecycleCount      = std::stoi(commissionInfo[0][1]);
                 int    currentRecycledCount = std::stoi(commissionInfo[0][2]);
 
-                content += "§6当前回收单价: " + CT::MoneyFormat::format(price) + "§r\n";
+                content += txt.getMessage(
+                    "form.current_recycle_price",
+                    {
+                        {"price", CT::MoneyFormat::format(price)}
+                }
+                );
                 if (maxRecycleCount > 0) {
-                    content += "§e最大回收数量: " + std::to_string(maxRecycleCount) + "§r\n";
-                    content += "§a已回收数量: " + std::to_string(currentRecycledCount) + "§r\n\n";
+                    content += txt.getMessage(
+                        "form.max_recycle_count_label",
+                        {
+                            {"count", std::to_string(maxRecycleCount)}
+                    }
+                    );
+                    content += txt.getMessage(
+                        "form.current_recycled_count_label",
+                        {
+                            {"count", std::to_string(currentRecycledCount)}
+                    }
+                    );
                 } else {
-                    content += "§e最大回收数量: 无限制§r\n\n";
+                    content += txt.getMessage("form.max_recycle_unlimited");
                 }
             }
 
             if (records.empty()) {
-                content += "§7该委托暂无回收记录。";
+                content += txt.getMessage("form.no_recycle_records");
             } else {
-                content += "§a最近的回收记录:\n";
+                content += txt.getMessage("form.recent_recycle_records");
 
                 // 预先批量查询记录中所有玩家名称，避免 N+1 查询
                 std::vector<std::string> uuids;
@@ -733,8 +780,15 @@ void showCommissionDetailsForm(
 
                     std::string recyclerName = ownerNameCache[recyclerUuid];
 
-                    content += "§f" + timestamp + " - " + recyclerName + " 回收了 " + recycleCount + " 个，花费 "
-                             + totalPrice + " 金币\n";
+                    content += txt.getMessage(
+                        "form.recycle_record_format",
+                        {
+                            {"timestamp", timestamp   },
+                            {"player",    recyclerName},
+                            {"count",     recycleCount},
+                            {"price",     totalPrice  }
+                    }
+                    );
                 }
             }
             fm.setContent(content);
@@ -807,14 +861,19 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                 if (!itemPtr) continue;
                 ItemStack item = *itemPtr;
 
-                std::string progress = "§7(无限)";
+                std::string progress = txt.getMessage("form.unlimited_label");
                 if (maxRecycleCount > 0) {
                     progress =
                         "§a[" + std::to_string(currentRecycledCount) + " / " + std::to_string(maxRecycleCount) + "]§r";
                 }
 
                 std::string buttonText = std::string(item.getName()) + " §e" + progress
-                                       + " §6[单价: " + CT::MoneyFormat::format(price) + "]§r";
+                                       + txt.getMessage(
+                                           "form.price_tag",
+                                           {
+                                               {"price", CT::MoneyFormat::format(price)}
+                }
+                                       );
                 fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);

@@ -408,7 +408,12 @@ void showShopItemBuyForm(
     if (itemId > 0) {
         auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
         if (itemOpt) {
-            fm.appendLabel("剩余库存: §b" + std::to_string(itemOpt->dbCount) + "§r");
+            fm.appendLabel(txt.getMessage(
+                "form.remaining_stock",
+                {
+                    {"stock", std::to_string(itemOpt->dbCount)}
+            }
+            ));
         }
     }
 
@@ -513,9 +518,16 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 buyerName = playerInfo->name;
             }
 
-            content += "§f" + record.timestamp + " - " + buyerName + " 购买了 " + itemName + " x"
-                     + std::to_string(record.purchaseCount) + "，花费 " + CT::MoneyFormat::format(record.totalPrice)
-                     + " 金币\n";
+            content += txt.getMessage(
+                "form.purchase_record_format",
+                {
+                    {"timestamp", record.timestamp                          },
+                    {"player",    buyerName                                 },
+                    {"item",      itemName                                  },
+                    {"count",     std::to_string(record.purchaseCount)      },
+                    {"price",     CT::MoneyFormat::format(record.totalPrice)}
+            }
+            );
         }
         fm.setContent(content);
     }

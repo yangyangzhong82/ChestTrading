@@ -245,7 +245,7 @@ RecycleResult RecycleService::executeFullRecycle(
     for (int i = 0; i < chest->getContainerSize(); ++i) {
         const auto& chestItem = chest->getItem(i);
         if (chestItem.isNull()) {
-            chestAvailableSpace += 64; // 假设最大堆叠
+            chestAvailableSpace += chestItem.getMaxStackSize(); 
         } else {
             auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
             if (chestItemNbt) {

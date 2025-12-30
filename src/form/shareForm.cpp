@@ -92,7 +92,7 @@ void showShareForm(
     });
 
     if (!sharedPlayers.empty()) {
-        fm.appendButton("移除分享玩家", [pos, dimId, ownerUuid, currentPage](Player& p) {
+        fm.appendButton(txt.getMessage("form.button_remove_share"), [pos, dimId, ownerUuid, currentPage](Player& p) {
             auto& region = p.getDimensionBlockSource();
             showRemoveShareForm(p, pos, dimId, ownerUuid, region, currentPage);
         });
@@ -206,19 +206,19 @@ void showAddShareForm(
     std::vector<std::string> currentPageUuids;
 
     if (totalPages > 1) {
-        fm.appendLabel("--- 分页选择 ---");
-        fm.appendSlider("page_slider", "选择页码", 1, totalPages, 1, currentPage + 1);
-        fm.appendLabel("--- 玩家选择 (请在选择页码后提交表单) ---");
+        fm.appendLabel(txt.getMessage("form.page_selection"));
+        fm.appendSlider("page_slider", txt.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
+        fm.appendLabel(txt.getMessage("form.player_selection_tip"));
     }
 
     if (totalPlayers > 0) {
-        fm.appendLabel("选择要分享的在线玩家：");
+        fm.appendLabel(txt.getMessage("form.select_online_player"));
         for (int i = startIndex; i < endIndex; ++i) {
             fm.appendToggle(onlinePlayers[i].first, onlinePlayers[i].second, false);
             currentPageUuids.push_back(onlinePlayers[i].first);
         }
     } else {
-        fm.appendLabel("当前没有其他在线玩家可供分享。");
+        fm.appendLabel(txt.getMessage("form.no_online_players"));
     }
 
     fm.sendTo(
@@ -289,7 +289,13 @@ void showRemoveShareForm(
     int                currentPage
 ) {
     ll::form::CustomForm removeForm; // 改为 CustomForm
-    removeForm.setTitle("移除分享玩家 (第 " + std::to_string(currentPage + 1) + " 页)");
+    auto&                txt = TextService::getInstance();
+    removeForm.setTitle(txt.getMessage(
+        "form.remove_share_title",
+        {
+            {"page", std::to_string(currentPage + 1)}
+    }
+    ));
 
     std::vector<std::string> sharedPlayers = ChestService::getInstance().getSharedPlayers(pos, dimId, region);
 
@@ -303,15 +309,15 @@ void showRemoveShareForm(
     std::vector<std::string> currentPageSharedUuids;
 
     if (totalPages > 1) {
-        removeForm.appendLabel("--- 分页选择 ---");
-        removeForm.appendSlider("page_slider", "选择页码", 1, totalPages, 1, currentPage + 1);
-        removeForm.appendLabel("--- 玩家选择 (请在选择页码后提交表单) ---");
+        removeForm.appendLabel(txt.getMessage("form.page_selection"));
+        removeForm.appendSlider("page_slider", txt.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
+        removeForm.appendLabel(txt.getMessage("form.player_selection_tip"));
     }
 
     if (sharedPlayers.empty()) {
-        removeForm.appendLabel("当前没有已分享的玩家可供移除。");
+        removeForm.appendLabel(txt.getMessage("form.no_shared_players"));
     } else {
-        removeForm.appendLabel("选择要移除的分享玩家：");
+        removeForm.appendLabel(txt.getMessage("form.select_remove_player"));
         for (int i = startIndex; i < endIndex; ++i) {
             std::string sharedPlayerUuid = sharedPlayers[i];
             std::string sharedPlayerName = getPlayerNameFromUuid(sharedPlayerUuid);
