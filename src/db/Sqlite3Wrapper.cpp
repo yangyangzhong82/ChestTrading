@@ -127,39 +127,6 @@ void Sqlite3Wrapper::clearStmtCache() {
     mStmtCache.clear();
 }
 
-bool Sqlite3Wrapper::execute_unsafe(const std::string& sql) {
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    char*                                 err_msg = nullptr;
-    if (sqlite3_exec(db, sql.c_str(), 0, 0, &err_msg) != SQLITE_OK) {
-        CT::logger.error("SQL 错误: {}", err_msg);
-        sqlite3_free(err_msg);
-        return false;
-    }
-    clearCache(); // 清除缓存，因为数据已更改
-    return true;
-}
-
-static int callback(void* data, int argc, char** argv, char** azColName) {
-    auto*                    results = static_cast<std::vector<std::vector<std::string>>*>(data);
-    std::vector<std::string> row;
-    for (int i = 0; i < argc; i++) {
-        row.push_back(argv[i] ? argv[i] : "NULL");
-    }
-    results->push_back(row);
-    return 0;
-}
-
-std::vector<std::vector<std::string>> Sqlite3Wrapper::query_unsafe(const std::string& sql) {
-    std::vector<std::vector<std::string>> results;
-    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
-    char*                                 err_msg = nullptr;
-    if (sqlite3_exec(db, sql.c_str(), callback, &results, &err_msg) != SQLITE_OK) {
-        CT::logger.error("SQL 错误: {}", err_msg);
-        sqlite3_free(err_msg);
-    }
-    return results;
-}
-
 // === Transaction RAII 类实现 ===
 
 Transaction::Transaction(Sqlite3Wrapper& db) : mDb(db), mLock(db.mDbMutex) {
@@ -271,7 +238,7 @@ bool Sqlite3Wrapper::isColumnExists(const std::string& tableName, const std::str
     if (!db) return false;
 
     std::string                           sql    = "PRAGMA table_info(" + tableName + ");";
-    std::vector<std::vector<std::string>> result = query_unsafe(sql);
+    std::vector<std::vector<std::string>> result = query(sql);
 
     for (const auto& row : result) {
         if (row.size() > 1 && row[1] == columnName) {

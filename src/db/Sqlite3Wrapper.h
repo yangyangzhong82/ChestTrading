@@ -60,10 +60,6 @@ public:
     bool open(const std::string& db_path);
     void close();
 
-    // 不安全的旧方法,建议不再使用
-    bool                                  execute_unsafe(const std::string& sql);
-    std::vector<std::vector<std::string>> query_unsafe(const std::string& sql);
-
     // 支持参数绑定的安全 execute 方法
     template <typename... Args>
     bool execute(const std::string& sql, Args&&... args);

@@ -40,7 +40,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
 }
 
 int SchemaMigration::getSchemaVersion(Sqlite3Wrapper& db) {
-    auto result = db.query_unsafe("PRAGMA user_version;");
+    auto result = db.query("PRAGMA user_version;");
     if (!result.empty() && !result[0].empty()) {
         return std::stoi(result[0][0]);
     }
@@ -48,7 +48,7 @@ int SchemaMigration::getSchemaVersion(Sqlite3Wrapper& db) {
 }
 
 void SchemaMigration::setSchemaVersion(Sqlite3Wrapper& db, int version) {
-    db.execute_unsafe("PRAGMA user_version = " + std::to_string(version) + ";");
+    db.execute("PRAGMA user_version = " + std::to_string(version) + ";");
 }
 
 bool SchemaMigration::migrateToV1(Sqlite3Wrapper& db) {
@@ -105,7 +105,7 @@ bool SchemaMigration::migrateToV1(Sqlite3Wrapper& db) {
     };
 
     for (const char* sql : sqls) {
-        if (!db.execute_unsafe(sql)) return false;
+        if (!db.execute(sql)) return false;
     }
     return true;
 }
@@ -123,13 +123,13 @@ bool SchemaMigration::migrateToV2(Sqlite3Wrapper& db) {
         "pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_shop_items_item_id ON recycle_shop_items(item_id);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_position ON recycle_records(dim_id, pos_x, pos_y, pos_z);",
-        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, Duo_x, pos_y, pos_z, item_id);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_timestamp ON recycle_records(timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_recycler ON recycle_records(recycler_uuid);"
     };
 
     for (const char* sql : sqls) {
-        if (!db.execute_unsafe(sql)) return false;
+        if (!db.execute(sql)) return false;
     }
     return true;
 }
@@ -137,7 +137,7 @@ bool SchemaMigration::migrateToV2(Sqlite3Wrapper& db) {
 bool SchemaMigration::migrateToV3(Sqlite3Wrapper& db) {
     // 添加 required_aux_value 字段到 recycle_shop_items 表，-1 表示不筛选特殊值
     const char* sql = "ALTER TABLE recycle_shop_items ADD COLUMN required_aux_value INTEGER NOT NULL DEFAULT -1;";
-    return db.execute_unsafe(sql);
+    return db.execute(sql);
 }
 
 bool SchemaMigration::migrateToV4(Sqlite3Wrapper& db) {
@@ -155,7 +155,7 @@ bool SchemaMigration::migrateToV4(Sqlite3Wrapper& db) {
     };
 
     for (const char* sql : sqls) {
-        if (!db.execute_unsafe(sql)) return false;
+        if (!db.execute(sql)) return false;
     }
     return true;
 }
