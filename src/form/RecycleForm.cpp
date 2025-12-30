@@ -717,18 +717,21 @@ void showCommissionDetailsForm(
                 content += "§7该委托暂无回收记录。";
             } else {
                 content += "§a最近的回收记录:\n";
+
+                // 预先批量查询记录中所有玩家名称，避免 N+1 查询
+                std::vector<std::string> uuids;
+                for (const auto& row : records) {
+                    uuids.push_back(row[0]);
+                }
+                auto ownerNameCache = CT::FormUtils::getPlayerNameCache(uuids);
+
                 for (const auto& row : records) {
                     std::string recyclerUuid = row[0];
                     std::string recycleCount = row[1];
                     std::string totalPrice   = row[2];
                     std::string timestamp    = row[3];
 
-                    std::string recyclerName = recyclerUuid;
-                    auto        playerInfo =
-                        ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(recyclerUuid));
-                    if (playerInfo) {
-                        recyclerName = playerInfo->name;
-                    }
+                    std::string recyclerName = ownerNameCache[recyclerUuid];
 
                     content += "§f" + timestamp + " - " + recyclerName + " 回收了 " + recycleCount + " 个，花费 "
                              + totalPrice + " 金币\n";

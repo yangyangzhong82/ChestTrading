@@ -5,6 +5,8 @@
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
 #include "ll/api/form/CustomForm.h"
+#include "ll/api/service/PlayerInfo.h"
+#include "mc/platform/UUID.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
@@ -13,6 +15,7 @@
 #include "service/I18nService.h"
 #include "service/TeleportService.h"
 #include "service/TextService.h"
+#include <set>
 
 
 namespace CT::FormUtils {
@@ -263,6 +266,21 @@ std::string dimIdToString(int dimId) {
     default:
         return i18n.get("dimension.unknown");
     }
+}
+
+std::map<std::string, std::string> getPlayerNameCache(const std::vector<std::string>& uuids) {
+    std::map<std::string, std::string> cache;
+    auto&                              i18n = I18nService::getInstance();
+    auto&                              info = ll::service::PlayerInfo::getInstance();
+
+    std::set<std::string> uniqueUuids(uuids.begin(), uuids.end());
+
+    for (const auto& uuid : uniqueUuids) {
+        if (uuid.empty()) continue;
+        auto playerInfo = info.fromUuid(mce::UUID::fromString(uuid));
+        cache[uuid]     = playerInfo ? playerInfo->name : i18n.get("public_shop.unknown_owner");
+    }
+    return cache;
 }
 
 } // namespace CT::FormUtils

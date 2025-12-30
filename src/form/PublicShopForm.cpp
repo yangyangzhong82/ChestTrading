@@ -165,15 +165,22 @@ void showPublicShopListForm(
     auto allChests = ChestService::getInstance().getAllPublicChests();
     logger.debug("showPublicShopListForm: 获取到 {} 个箱子", allChests.size());
 
+    // 预先批量查询所有潜在店主的名称，避免过滤时的 N+1 查询
+    std::vector<std::string> filterUuids;
+    for (const auto& chest : allChests) {
+        if (chest.type == ChestType::Shop && chest.isPublic) {
+            filterUuids.push_back(chest.ownerUuid);
+        }
+    }
+    auto filterNameCache = CT::FormUtils::getPlayerNameCache(filterUuids);
+
     std::vector<ChestData> shops;
     for (const auto& chest : allChests) {
         // 只显示公开的商店
         if (chest.type == ChestType::Shop && chest.isPublic) {
             if (!searchKeyword.empty()) {
                 if (searchType == "owner") {
-                    auto ownerInfo =
-                        ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(chest.ownerUuid));
-                    std::string ownerName = ownerInfo ? ownerInfo->name : "";
+                    const std::string& ownerName = filterNameCache[chest.ownerUuid];
                     logger.debug("showPublicShopListForm: 检查店主 '{}' 是否匹配 '{}'", ownerName, searchKeyword);
                     if (!fuzzyMatch(ownerName, searchKeyword)) continue;
                 } else if (searchType == "item") {
@@ -218,14 +225,11 @@ void showPublicShopListForm(
         int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
 
         // 预先批量查询当前页所有玩家名称，避免 N+1 查询
-        std::map<std::string, std::string> ownerNameCache;
+        std::vector<std::string> uuids;
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto& uuid = shops[i].ownerUuid;
-            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
-                auto ownerInfo       = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
-                ownerNameCache[uuid] = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
-            }
+            uuids.push_back(shops[i].ownerUuid);
         }
+        auto ownerNameCache = CT::FormUtils::getPlayerNameCache(uuids);
 
         for (int i = startIdx; i < endIdx; ++i) {
             const auto&        shop      = shops[i];
@@ -281,16 +285,24 @@ void showPublicRecycleShopListForm(
     ll::form::SimpleForm fm;
     fm.setTitle(i18n.get("public_shop.recycle_list_title"));
 
-    auto                   allChests = ChestService::getInstance().getAllPublicChests();
+    auto allChests = ChestService::getInstance().getAllPublicChests();
+
+    // 预先批量查询所有潜在店主的名称，避免过滤时的 N+1 查询
+    std::vector<std::string> filterUuids;
+    for (const auto& chest : allChests) {
+        if (chest.type == ChestType::RecycleShop && chest.isPublic) {
+            filterUuids.push_back(chest.ownerUuid);
+        }
+    }
+    auto filterNameCache = CT::FormUtils::getPlayerNameCache(filterUuids);
+
     std::vector<ChestData> recycleShops;
     for (const auto& chest : allChests) {
         // 只显示公开的回收商店
         if (chest.type == ChestType::RecycleShop && chest.isPublic) {
             if (!searchKeyword.empty()) {
                 if (searchType == "owner") {
-                    auto ownerInfo =
-                        ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(chest.ownerUuid));
-                    std::string ownerName = ownerInfo ? ownerInfo->name : "";
+                    const std::string& ownerName = filterNameCache[chest.ownerUuid];
                     if (!fuzzyMatch(ownerName, searchKeyword)) continue;
                 } else if (searchType == "item") {
                     if (!shopContainsItem(chest, searchKeyword)) continue;
@@ -335,14 +347,11 @@ void showPublicRecycleShopListForm(
         int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
 
         // 预先批量查询当前页所有玩家名称，避免 N+1 查询
-        std::map<std::string, std::string> ownerNameCache;
+        std::vector<std::string> uuids;
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto& uuid = recycleShops[i].ownerUuid;
-            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
-                auto ownerInfo       = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
-                ownerNameCache[uuid] = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
-            }
+            uuids.push_back(recycleShops[i].ownerUuid);
         }
+        auto ownerNameCache = CT::FormUtils::getPlayerNameCache(uuids);
 
         for (int i = startIdx; i < endIdx; ++i) {
             const auto&        shop      = recycleShops[i];

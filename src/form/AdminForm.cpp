@@ -199,14 +199,11 @@ void showAdminForm(
         }
 
         // 预先批量查询当前页所有玩家名称，避免 N+1 查询
-        std::map<std::string, std::string> ownerNameCache;
+        std::vector<std::string> uuids;
         for (int i = startIndex; i < endIndex; ++i) {
-            const auto& uuid = pagedChests[i].ownerUuid;
-            if (ownerNameCache.find(uuid) == ownerNameCache.end()) {
-                auto playerInfo      = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(uuid));
-                ownerNameCache[uuid] = playerInfo ? playerInfo->name : uuid;
-            }
+            uuids.push_back(pagedChests[i].ownerUuid);
         }
+        auto ownerNameCache = CT::FormUtils::getPlayerNameCache(uuids);
 
         auto& txt = TextService::getInstance();
         for (int i = startIndex; i < endIndex; ++i) {

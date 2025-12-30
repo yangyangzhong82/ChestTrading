@@ -83,4 +83,11 @@ bool teleportToShop(Player& player, BlockPos pos, int dimId);
  */
 std::string dimIdToString(int dimId);
 
+/**
+ * @brief 批量获取玩家名称并缓存，避免 N+1 查询
+ * @param uuids 玩家 UUID 列表
+ * @return UUID 到玩家名称的映射
+ */
+std::map<std::string, std::string> getPlayerNameCache(const std::vector<std::string>& uuids);
+
 } // namespace CT::FormUtils
