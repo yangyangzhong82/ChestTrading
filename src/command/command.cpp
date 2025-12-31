@@ -67,7 +67,7 @@ void registerCommand() {
                 return;
             }
             if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "czessentials.command.ctadmin")) {
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }

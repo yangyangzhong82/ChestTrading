@@ -14,17 +14,32 @@
 #include "service/ChestService.h"
 #include "service/TextService.h"
 
+#include <array>
 #include <chrono>
-#include <map>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 namespace CT {
 namespace {
 
-// 每个玩家的上次交互时间（用于箱子交互防抖）
-std::map<std::string, std::chrono::steady_clock::time_point> gLastInteractionTime;
-std::mutex                                                   gLastInteractionTimeMutex;
+// 分段锁优化：减少锁竞争，提升并发性能
+constexpr size_t NUM_INTERACTION_SHARDS = 16; // 分段数量（2的幂次）
+
+struct InteractionShard {
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> records;
+    mutable std::mutex                                                      mutex;
+    std::chrono::steady_clock::time_point                                   lastCleanupTime;
+
+    InteractionShard() : lastCleanupTime(std::chrono::steady_clock::now()) {}
+};
+
+std::array<InteractionShard, NUM_INTERACTION_SHARDS> gInteractionShards;
+
+// 根据 UUID 计算分段索引（使用哈希）
+inline size_t getShardIndex(const std::string& playerUuid) {
+    return std::hash<std::string>{}(playerUuid) & (NUM_INTERACTION_SHARDS - 1);
+}
 
 bool shouldDebounce(const std::string& playerUuid) {
     auto now = std::chrono::steady_clock::now();
@@ -33,24 +48,29 @@ bool shouldDebounce(const std::string& playerUuid) {
     auto  debounceInterval = std::chrono::milliseconds(config.interactionSettings.debounceIntervalMs);
     auto  cleanupThreshold = std::chrono::seconds(config.interactionSettings.cleanupThresholdSec);
 
-    std::lock_guard<std::mutex> lock(gLastInteractionTimeMutex);
+    auto& shard = gInteractionShards[getShardIndex(playerUuid)];
+    std::lock_guard<std::mutex> lock(shard.mutex); // 只锁定一个分段
 
-    for (auto it = gLastInteractionTime.begin(); it != gLastInteractionTime.end();) {
-        if (now - it->second > cleanupThreshold) {
-            it = gLastInteractionTime.erase(it);
-        } else {
-            ++it;
+    // 延迟清理：仅当距离上次清理超过阈值时才执行
+    if (now - shard.lastCleanupTime > cleanupThreshold) {
+        for (auto it = shard.records.begin(); it != shard.records.end();) {
+            if (now - it->second > cleanupThreshold) {
+                it = shard.records.erase(it);
+            } else {
+                ++it;
+            }
         }
+        shard.lastCleanupTime = now;
     }
 
-    auto found = gLastInteractionTime.find(playerUuid);
-    if (found != gLastInteractionTime.end()) {
+    auto found = shard.records.find(playerUuid);
+    if (found != shard.records.end()) {
         if (std::chrono::duration_cast<std::chrono::milliseconds>(now - found->second) < debounceInterval) {
-            return true;
+            return true; // 触发防抖
         }
     }
 
-    gLastInteractionTime[playerUuid] = now;
+    shard.records[playerUuid] = now;
     return false;
 }
 
