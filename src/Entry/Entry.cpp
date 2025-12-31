@@ -78,6 +78,13 @@ bool Entry::disable() {
     return true;
 }
 
+bool Entry::unload() {
+    getSelf().getLogger().debug("Unloading...");
+    // Unload 阶段主要用于资源清理
+    // 大部分清理工作已在 disable() 中完成
+    return true;
+}
+
 } // namespace CT
 
 

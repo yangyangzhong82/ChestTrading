@@ -13,7 +13,9 @@
 #include "mc/world/level/dimension/Dimension.h"
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -52,6 +54,7 @@ class FloatingTextManager {
 public:
     // 使用 map 存储悬浮字，键为 (dimId, BlockPos)
     std::map<std::pair<int, BlockPos>, ChestFloatingText> mFloatingTexts;
+    mutable std::shared_mutex                             mFloatingTextsMutex; // 保护 mFloatingTexts 的读写锁
     std::optional<ll::coro::CoroTask<>>                   mUpdateTask; // 用于更新悬浮字的协程任务
     bool              mIsLoaded = false;        // 标志，指示是否已从数据库加载悬浮字
     std::atomic<bool> mShouldStopUpdate{false}; // 控制协程停止
