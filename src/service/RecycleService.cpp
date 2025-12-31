@@ -149,11 +149,10 @@ RecycleResult RecycleService::executeFullRecycle(
     }
 
     // 3. 获取箱子实体
-    auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
+    auto* chest = getChestActor(region, pos);
+    if (!chest) {
         return {false, txt.getMessage("recycle.chest_entity_fail"), 0, 0.0};
     }
-    auto* chest = reinterpret_cast<ChestBlockActor*>(blockActor);
 
     // 4. 获取委托信息
     auto commission = shopRepo.findRecycleItem(pos, dimId, itemId);
@@ -245,7 +244,7 @@ RecycleResult RecycleService::executeFullRecycle(
     for (int i = 0; i < chest->getContainerSize(); ++i) {
         const auto& chestItem = chest->getItem(i);
         if (chestItem.isNull()) {
-            chestAvailableSpace += chestItem.getMaxStackSize(); 
+            chestAvailableSpace += chestItem.getMaxStackSize();
         } else {
             auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
             if (chestItemNbt) {

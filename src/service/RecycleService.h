@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BaseTransactionService.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
@@ -33,7 +34,7 @@ struct SetCommissionResult {
 /**
  * @brief 回收商店业务服务
  */
-class RecycleService {
+class RecycleService : public BaseTransactionService {
 public:
     static RecycleService& getInstance();
 

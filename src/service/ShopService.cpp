@@ -4,7 +4,6 @@
 #include "FloatingText/FloatingText.h"
 #include "TextService.h"
 #include "Utils/MoneyFormat.h"
-#include "Utils/NbtUtils.h"
 #include "Utils/ScopeGuard.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
@@ -12,7 +11,6 @@
 #include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
-#include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 
@@ -197,8 +195,14 @@ PurchaseResult ShopService::purchaseItem(
         };
     }
 
+    // 获取箱子实体
+    auto* chest = getChestActor(region, mainPos);
+    if (!chest) {
+        return {false, txt.getMessage("shop.purchase_chest_fail")};
+    }
+
     // 检查箱子库存
-    int actualAvailable = countItemsInChest(region, mainPos, dimId, itemNbt);
+    int actualAvailable = countMatchingItems(chest, itemNbt);
     if (actualAvailable < quantity) {
         return {
             false,
@@ -211,18 +215,16 @@ PurchaseResult ShopService::purchaseItem(
     ScopeGuard rollbackGuard;
 
     // 从箱子移除物品
-    int actualRemoved = removeItemsFromChest(region, mainPos, itemNbt, quantity);
+    int actualRemoved = removeItemsFromChest(chest, itemNbt, quantity);
     if (actualRemoved < quantity) {
         // 放回已移除的物品
         if (actualRemoved > 0) {
-            addItemsToChest(region, mainPos, itemNbt, actualRemoved);
+            addItemsToChest(chest, itemNbt, actualRemoved);
         }
         return {false, txt.getMessage("shop.purchase_chest_fail")};
     }
     // 添加回滚操作：放回物品
-    rollbackGuard.addRollback([this, &region, mainPos, itemNbt, quantity]() {
-        addItemsToChest(region, mainPos, itemNbt, quantity);
-    });
+    rollbackGuard.addRollback([chest, itemNbt, quantity]() { addItemsToChest(chest, itemNbt, quantity); });
 
     // 扣钱
     if (!Economy::reduceMoney(buyer, totalPrice)) {
@@ -311,54 +313,8 @@ PurchaseResult ShopService::purchaseItem(
 }
 
 int ShopService::countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& itemNbt) {
-    return FormUtils::countItemsInChest(region, pos, dimId, itemNbt);
-}
-
-int ShopService::removeItemsFromChest(BlockSource& region, BlockPos pos, const std::string& itemNbt, int count) {
-    auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-        return 0;
-    }
-
-    auto* chest         = static_cast<ChestBlockActor*>(blockActor);
-    int   actualRemoved = 0;
-
-    for (int i = 0; i < chest->getContainerSize() && actualRemoved < count; ++i) {
-        const auto& chestItem = chest->getItem(i);
-        if (chestItem.isNull()) continue;
-
-        auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
-        if (!chestItemNbt) continue;
-
-        auto        cleanedNbt    = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-        std::string currentNbtStr = NbtUtils::toSNBT(*cleanedNbt);
-
-        if (currentNbtStr == itemNbt) {
-            int removeCount = std::min(count - actualRemoved, (int)chestItem.mCount);
-            chest->removeItem(i, removeCount);
-            actualRemoved += removeCount;
-        }
-    }
-
-    return actualRemoved;
-}
-
-bool ShopService::addItemsToChest(BlockSource& region, BlockPos pos, const std::string& itemNbt, int count) {
-    auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-        return false;
-    }
-
-    auto* chest   = static_cast<ChestBlockActor*>(blockActor);
-    auto  itemPtr = FormUtils::createItemStackFromNbtString(itemNbt);
-    if (!itemPtr) {
-        return false;
-    }
-
-    ItemStack item = *itemPtr;
-    item.mCount    = count;
-    chest->addItem(item);
-    return true;
+    auto* chest = getChestActor(region, pos);
+    return countMatchingItems(chest, itemNbt);
 }
 
 } // namespace CT

@@ -1,7 +1,7 @@
 #pragma once
 
+#include "BaseTransactionService.h"
 #include "mc/world/actor/player/Player.h"
-#include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
 #include "repository/ShopRepository.h"
@@ -29,7 +29,7 @@ struct SetPriceResult {
  * @brief 商店业务服务
  * 处理商品管理和交易逻辑
  */
-class ShopService {
+class ShopService : public BaseTransactionService {
 public:
     static ShopService& getInstance();
 
@@ -66,12 +66,6 @@ public:
 
 private:
     ShopService() = default;
-
-    // 从箱子中移除物品
-    int removeItemsFromChest(BlockSource& region, BlockPos pos, const std::string& itemNbt, int count);
-
-    // 给箱子添加物品
-    bool addItemsToChest(BlockSource& region, BlockPos pos, const std::string& itemNbt, int count);
 };
 
 } // namespace CT
