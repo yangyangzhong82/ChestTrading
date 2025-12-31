@@ -58,9 +58,13 @@ void FloatingTextManager::addOrUpdateFloatingText(
         }
         ft.type = type; // 更新类型
     } else {
-        // 创建新的悬浮字
+        // 创建新的悬浮字（使用常量定义的偏移量）
         auto newText = debug_shape::IDebugText::create(
-            Vec3(static_cast<float>(pos.x) + 0.5f, static_cast<float>(pos.y) + 1.5f, static_cast<float>(pos.z) + 0.5f),
+            Vec3(
+                static_cast<float>(pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET,
+                static_cast<float>(pos.y) + FloatingTextConstants::TEXT_HEIGHT_OFFSET,
+                static_cast<float>(pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
+            ),
             text
         );
         mFloatingTexts.emplace(key, ChestFloatingText(pos, dimId, ownerUuid, text, type));
@@ -190,10 +194,34 @@ void FloatingTextManager::loadAllChests() {
         "SELECT player_uuid, dim_id, pos_x, pos_y, pos_z, type, enable_floating_text, enable_fake_item FROM chests;"
     );
 
+    // 优化：批量加载所有商店和回收商店的物品，避免 N+1 查询问题
+    // 使用 UNION ALL 一次性获取所有物品数据，然后在内存中按位置分组
+    std::vector<std::vector<std::string>> allItemsResults = db.query(
+        "SELECT si.dim_id, si.pos_x, si.pos_y, si.pos_z, id.item_nbt, 'shop' as source "
+        "FROM shop_items si "
+        "JOIN item_definitions id ON si.item_id = id.item_id "
+        "UNION ALL "
+        "SELECT rsi.dim_id, rsi.pos_x, rsi.pos_y, rsi.pos_z, id.item_nbt, 'recycle' as source "
+        "FROM recycle_shop_items rsi "
+        "JOIN item_definitions id ON rsi.item_id = id.item_id "
+        "ORDER BY dim_id, pos_x, pos_y, pos_z;"
+    );
+
+    // 按位置分组物品数据，key = "dimId:x:y:z", value = vector<item_nbt>
+    std::unordered_map<std::string, std::vector<std::string>> itemsByPosition;
+    for (const auto& itemRow : allItemsResults) {
+        if (itemRow.size() >= FloatingTextConstants::MIN_ITEM_FIELDS) {
+            std::string posKey =
+                itemRow[0] + ":" + itemRow[1] + ":" + itemRow[2] + ":" + itemRow[3]; // dimId:x:y:z
+            itemsByPosition[posKey].push_back(itemRow[4]);                           // item_nbt
+        }
+    }
+    logger.debug("批量加载完成，共 {} 个位置有物品数据。", itemsByPosition.size());
+
     std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁保护整个加载过程
 
     for (const auto& row : results) {
-        if (row.size() >= 6) {
+        if (row.size() >= FloatingTextConstants::MIN_CHEST_FIELDS) {
             std::string ownerUuid          = row[0];
             int         dimId              = std::stoi(row[1]);
             int         posX               = std::stoi(row[2]);
@@ -247,9 +275,13 @@ void FloatingTextManager::loadAllChests() {
                 }
                 ft.type = chestType;
             } else {
-                // 创建新的悬浮字
+                // 创建新的悬浮字（使用常量定义的偏移量）
                 auto newText = debug_shape::IDebugText::create(
-                    Vec3(static_cast<float>(pos.x) + 0.5f, static_cast<float>(pos.y) + 1.5f, static_cast<float>(pos.z) + 0.5f),
+                    Vec3(
+                        static_cast<float>(pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET,
+                        static_cast<float>(pos.y) + FloatingTextConstants::TEXT_HEIGHT_OFFSET,
+                        static_cast<float>(pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
+                    ),
                     text
                 );
                 mFloatingTexts.emplace(key, ChestFloatingText(pos, dimId, ownerUuid, text, chestType));
@@ -258,37 +290,24 @@ void FloatingTextManager::loadAllChests() {
                 logger.debug("已为箱子 ({}, {}, {}) in dim {} 创建悬浮字: {}", pos.x, pos.y, pos.z, dimId, text);
             }
 
-            // 如果是商店或回收商店，加载物品信息
+            // 如果是商店或回收商店，从预加载的数据中获取物品信息
             if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
-                auto  key         = std::make_pair(dimId, pos);
+                // 复用上面的 key 变量，避免重复声明
                 auto& ft          = mFloatingTexts.at(key);
                 ft.isDynamic      = true;
                 ft.enableFakeItem = enableFakeItem; // 设置单箱子假物品配置
-                std::vector<std::vector<std::string>> itemResults;
-                if (chestType == ChestType::Shop) {
-                    itemResults = db.query(
-                        "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id "
-                        "WHERE si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
-                        dimId,
-                        posX,
-                        posY,
-                        posZ
-                    );
-                } else { // RecycleShop
-                    itemResults = db.query(
-                        "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = "
-                        "id.item_id WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
-                        dimId,
-                        posX,
-                        posY,
-                        posZ
-                    );
-                }
 
-                for (const auto& itemRow : itemResults) {
-                    if (!itemRow.empty()) {
+                // 构建位置键
+                std::string posKey =
+                    std::to_string(dimId) + ":" + std::to_string(posX) + ":" + std::to_string(posY) + ":"
+                    + std::to_string(posZ);
+
+                // 从预加载的数据中获取物品
+                auto itemsIt = itemsByPosition.find(posKey);
+                if (itemsIt != itemsByPosition.end()) {
+                    for (const auto& itemNbt : itemsIt->second) {
                         // 从 NBT 字符串解析物品名称
-                        auto nbt = CompoundTag::fromSnbt(itemRow[0]);
+                        auto nbt = CompoundTag::fromSnbt(itemNbt);
                         if (nbt) {
                             nbt->at("Count") = ByteTag(1); // 修复：为创建ItemStack添加Count标签
                             auto itemPtr     = NbtUtils::createItemFromNbt(*nbt);
@@ -317,13 +336,14 @@ void FloatingTextManager::loadAllChests() {
                                     itemName
                                 );
                             } else {
-                                logger.warn("无法从 NBT 创建有效物品: {}", itemRow[0]);
+                                logger.warn("无法从 NBT 创建有效物品: {}", itemNbt);
                             }
                         } else {
-                            logger.warn("无法从 NBT 字符串解析物品: {}", itemRow[0]);
+                            logger.warn("无法从 NBT 字符串解析物品: {}", itemNbt);
                         }
                     }
                 }
+
                 if (!ft.itemNames.empty()) {
                     ft.text = TextService::getInstance().generateDynamicShopText(chestType, ft.itemNames[0]);
                     if (ft.debugText) {
@@ -340,7 +360,7 @@ void FloatingTextManager::loadAllChests() {
                     );
                 } else {
                     ft.text = TextService::getInstance().generateEmptyShopText(chestType);
-                    logger.warn(
+                    logger.debug(
                         "箱子 ({}, {}, {}) in dim {} 是商店/回收商店，但未加载任何物品名称。",
                         pos.x,
                         pos.y,
@@ -613,11 +633,11 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
     // 先移除旧的假物品
     removeFakeItemFromPlayer(player, ft);
 
-    // 发送新的假物品
+    // 发送新的假物品（使用常量定义的位置偏移）
     Vec3 itemPos(
-        static_cast<float>(ft.pos.x) + 0.5f,
-        static_cast<float>(ft.pos.y) + 1.0f,
-        static_cast<float>(ft.pos.z) + 0.5f
+        static_cast<float>(ft.pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET,
+        static_cast<float>(ft.pos.y) + FloatingTextConstants::ITEM_HEIGHT_OFFSET,
+        static_cast<float>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
     );
 
     auto& currentItem                = ft.items[ft.currentFakeItemIndex];

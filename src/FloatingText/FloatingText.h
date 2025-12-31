@@ -21,6 +21,23 @@
 
 
 namespace CT {
+
+// 悬浮字和假物品相关常量
+namespace FloatingTextConstants {
+    // 悬浮字位置偏移
+    constexpr float HORIZONTAL_OFFSET    = 0.5f; // 箱子中心的水平偏移
+    constexpr float TEXT_HEIGHT_OFFSET   = 1.5f; // 悬浮字高度偏移（箱子顶部）
+    constexpr float ITEM_HEIGHT_OFFSET   = 1.0f; // 假物品高度偏移（箱子上方）
+
+    // 缓存和性能相关
+    constexpr int   DEFAULT_CACHE_TIMEOUT_SEC = 60;  // 默认缓存超时时间（秒）
+    constexpr int   CHEST_CACHE_TIMEOUT_SEC   = 300; // 箱子缓存超时时间（秒）
+
+    // 数据库字段数量（用于验证）
+    constexpr size_t MIN_CHEST_FIELDS = 6; // 箱子表最少字段数
+    constexpr size_t MIN_ITEM_FIELDS  = 5; // 物品表最少字段数
+} // namespace FloatingTextConstants
+
 // 存储每个箱子的悬浮字信息
 struct ChestFloatingText {
     BlockPos                                 pos;
