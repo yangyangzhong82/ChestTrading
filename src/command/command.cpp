@@ -11,6 +11,7 @@
 #include "mc/server/commands/PlayerCommandOrigin.h"
 #include "mc/world/actor/player/Player.h"
 #include "service/I18nService.h"
+#include "test/TestHelper.h"
 #include <mutex>
 #include <set>
 
@@ -140,6 +141,102 @@ void registerCommand() {
                 setPackChestMode(uuid, true);
                 output.success(i18n.get("command.packchest_enter"));
             }
+        }
+    );
+
+    // 注册 /cttest 命令 - 自动化测试（开发者工具）
+    auto& testCmd =
+        registrar.getOrCreateCommand("cttest", i18n.get("command.test_description"), CommandPermissionLevel::Any);
+
+    struct TestSubcommand {
+        std::string testType; // all, shop, recycle
+    };
+
+    testCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            // 权限检查：只允许管理员使用测试命令
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            // 显示测试菜单
+            player->sendMessage("§e=== ChestTrading 测试工具 ===");
+            player->sendMessage("§a/cttest shop        §7- 测试商店购买功能");
+            player->sendMessage("§a/cttest recycle    §7- 测试回收功能");
+            player->sendMessage("§a/cttest all        §7- 运行所有测试");
+            player->sendMessage("§7提示: 测试会自动创建和清理箱子");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("shop").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            std::string result = testHelper.testShopPurchase(*player, true);
+            result += "\n" + testHelper.testShopInventorySync(*player);
+            result += "\n" + testHelper.testShopPriceUpdate(*player);
+
+            player->sendMessage(result);
+            output.success("商店测试完成，详情请查看聊天窗口");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("recycle").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            std::string result = testHelper.testRecycle(*player, true);
+
+            player->sendMessage(result);
+            output.success("回收测试完成，详情请查看聊天窗口");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("all").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            std::string result = testHelper.runAllTests(*player);
+
+            player->sendMessage(result);
+            output.success("所有测试完成，详情请查看聊天窗口");
         }
     );
 }
