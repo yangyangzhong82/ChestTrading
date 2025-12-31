@@ -339,5 +339,20 @@
     "form_closed": "§c你关闭了筛选表单。",
     "manage_closed": "§c你关闭了管理表单。",
     "teleport_failed": "§c传送失败，坐标解析错误。"
+  },
+  "command": {
+    "player_only": "该命令只能由玩家执行。",
+    "no_permission": "你没有权限执行此命令。",
+    "ct_description": "ChestTrading 主命令",
+    "ct_welcome": "欢迎使用 ChestTrading 插件！",
+    "admin_description": "ChestTrading 管理员命令",
+    "reload_description": "重新加载配置文件",
+    "reload_success": "§a配置文件重新加载成功。",
+    "reload_fail": "§c配置文件重新加载失败，请检查配置文件格式。",
+    "shop_description": "查看公开商店列表",
+    "recycle_description": "查看公开回收商店列表",
+    "packchest_description": "打包箱子为物品",
+    "packchest_exit": "§a已退出打包箱子模式。",
+    "packchest_enter": "§a已进入打包箱子模式，点击箱子即可打包。再次输入命令退出。"
   }
 }

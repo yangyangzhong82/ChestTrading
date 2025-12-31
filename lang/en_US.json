@@ -339,5 +339,20 @@
     "form_closed": "§cYou closed the filter form.",
     "manage_closed": "§cYou closed the management form.",
     "teleport_failed": "§cTeleport failed, coordinate parsing error."
+  },
+  "command": {
+    "player_only": "This command can only be executed by players.",
+    "no_permission": "You do not have permission to execute this command.",
+    "ct_description": "ChestTrading main command",
+    "ct_welcome": "Welcome to use ChestTrading plugin!",
+    "admin_description": "ChestTrading admin command",
+    "reload_description": "Reload configuration file",
+    "reload_success": "§aConfiguration file reloaded successfully.",
+    "reload_fail": "§cFailed to reload configuration file, please check the format.",
+    "shop_description": "View public shop list",
+    "recycle_description": "View public recycle shop list",
+    "packchest_description": "Pack chest as item",
+    "packchest_exit": "§aExited pack chest mode.",
+    "packchest_enter": "§aEntered pack chest mode, click a chest to pack it. Enter command again to exit."
   }
 }

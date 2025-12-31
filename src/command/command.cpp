@@ -10,6 +10,7 @@
 #include "mc/server/commands/CommandPermissionLevel.h"
 #include "mc/server/commands/PlayerCommandOrigin.h"
 #include "mc/world/actor/player/Player.h"
+#include "service/I18nService.h"
 #include <mutex>
 #include <set>
 
@@ -39,33 +40,35 @@ using ll::command::CommandRegistrar;
 
 void registerCommand() {
     auto& registrar = CommandRegistrar::getInstance();
+    auto& i18n      = I18nService::getInstance();
 
 
-    auto& ctCmd = registrar.getOrCreateCommand("ct", "ChestTrading 主命令", CommandPermissionLevel::Any);
+    auto& ctCmd = registrar.getOrCreateCommand("ct", i18n.get("command.ct_description"), CommandPermissionLevel::Any);
 
     ctCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("该命令只能由玩家执行。");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
-            output.success("欢迎使用 ChestTrading 插件！");
+            output.success(i18n.get("command.ct_welcome"));
         }
     );
 
-    auto& adminCmd = registrar.getOrCreateCommand("ctadmin", "ChestTrading 管理员命令", CommandPermissionLevel::Any);
+    auto& adminCmd =
+        registrar.getOrCreateCommand("ctadmin", i18n.get("command.admin_description"), CommandPermissionLevel::Any);
 
     adminCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("该命令只能由玩家执行。");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
             if (!BA::permission::PermissionManager::getInstance()
                      .hasPermission(player->getUuid().asString(), "czessentials.command.ctadmin")) {
-                output.error("你没有权限执行此命令。");
+                output.error(i18n.get("command.no_permission"));
                 return;
             }
             showAdminMainForm(*player);
@@ -73,25 +76,29 @@ void registerCommand() {
     );
 
     // 注册 /ctreload 命令 - 重新加载配置
-    auto& reloadCmd =
-        registrar.getOrCreateCommand("ctreload", "重新加载配置文件", CommandPermissionLevel::GameDirectors);
+    auto& reloadCmd = registrar.getOrCreateCommand(
+        "ctreload",
+        i18n.get("command.reload_description"),
+        CommandPermissionLevel::GameDirectors
+    );
     reloadCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const&, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const&, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             if (ConfigManager::getInstance().reload()) {
-                output.success("§a配置文件重新加载成功。");
+                output.success(i18n.get("command.reload_success"));
             } else {
-                output.error("§c配置文件重新加载失败，请检查配置文件格式。");
+                output.error(i18n.get("command.reload_fail"));
             }
         }
     );
 
     // 注册 /shop 命令 - 打开公开商店列表
-    auto& shopCmd = registrar.getOrCreateCommand("shop", "查看公开商店列表", CommandPermissionLevel::Any);
+    auto& shopCmd =
+        registrar.getOrCreateCommand("shop", i18n.get("command.shop_description"), CommandPermissionLevel::Any);
     shopCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("该命令只能由玩家执行。");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
             showPublicShopListForm(*player);
@@ -99,12 +106,13 @@ void registerCommand() {
     );
 
     // 注册 /recycle 命令 - 打开公开回收商店列表
-    auto& recycleCmd = registrar.getOrCreateCommand("recycle", "查看公开回收商店列表", CommandPermissionLevel::Any);
+    auto& recycleCmd =
+        registrar.getOrCreateCommand("recycle", i18n.get("command.recycle_description"), CommandPermissionLevel::Any);
     recycleCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("该命令只能由玩家执行。");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
             showPublicRecycleShopListForm(*player);
@@ -112,21 +120,25 @@ void registerCommand() {
     );
 
     // 注册 /packchest 命令 - 打包箱子模式
-    auto& packCmd = registrar.getOrCreateCommand("packchest", "打包箱子为物品", CommandPermissionLevel::Any);
+    auto& packCmd = registrar.getOrCreateCommand(
+        "packchest",
+        i18n.get("command.packchest_description"),
+        CommandPermissionLevel::Any
+    );
     packCmd.overload<ll::command::EmptyParam>().execute(
-        [](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("该命令只能由玩家执行。");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
             std::string uuid = player->getUuid().asString();
             if (isInPackChestMode(uuid)) {
                 setPackChestMode(uuid, false);
-                output.success("§a已退出打包箱子模式。");
+                output.success(i18n.get("command.packchest_exit"));
             } else {
                 setPackChestMode(uuid, true);
-                output.success("§a已进入打包箱子模式，点击箱子即可打包。再次输入命令退出。");
+                output.success(i18n.get("command.packchest_enter"));
             }
         }
     );
