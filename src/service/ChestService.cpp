@@ -475,12 +475,33 @@ bool ChestService::addSharedPlayer(
     data.ownerUuid  = ownerUuid;
     data.dimId      = dimId;
     data.pos        = mainPos;
-    return ChestRepository::getInstance().addSharedPlayer(data);
+
+    bool success = ChestRepository::getInstance().addSharedPlayer(data);
+
+    // 缓存一致性：虽然分享关系不影响基本缓存信息，但为了一致性仍然使缓存失效
+    if (success) {
+        ChestCacheManager::getInstance().invalidateCache(mainPos, dimId);
+        if (pos != mainPos) {
+            ChestCacheManager::getInstance().invalidateCache(pos, dimId);
+        }
+    }
+
+    return success;
 }
 
 bool ChestService::removeSharedPlayer(const std::string& targetUuid, BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = getMainChestPos(pos, region);
-    return ChestRepository::getInstance().removeSharedPlayer(targetUuid, mainPos, dimId);
+    bool success = ChestRepository::getInstance().removeSharedPlayer(targetUuid, mainPos, dimId);
+
+    // 缓存一致性：使缓存失效
+    if (success) {
+        ChestCacheManager::getInstance().invalidateCache(mainPos, dimId);
+        if (pos != mainPos) {
+            ChestCacheManager::getInstance().invalidateCache(pos, dimId);
+        }
+    }
+
+    return success;
 }
 
 std::vector<std::string> ChestService::getSharedPlayers(BlockPos pos, int dimId, BlockSource& region) {

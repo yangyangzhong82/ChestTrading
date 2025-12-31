@@ -8,6 +8,7 @@
 #include "debug_shape/api/shape/IDebugText.h"
 #include "ll/api/base/Meta.h"
 #include "ll/api/event/EventBus.h"
+#include "ll/api/event/player/PlayerDisconnectEvent.h"
 #include "ll/api/event/player/PlayerJoinEvent.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/service/Bedrock.h"
@@ -27,7 +28,6 @@
 #include "service/TextService.h"
 
 
-
 namespace CT {
 
 // 获取单例实例
@@ -45,7 +45,7 @@ void FloatingTextManager::addOrUpdateFloatingText(
     ChestType          type
 ) {
     std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
-    auto key = std::make_pair(dimId, pos);
+    auto                                key = std::make_pair(dimId, pos);
     if (mFloatingTexts.count(key)) {
         // 更新现有悬浮字
         auto& ft = mFloatingTexts.at(key);
@@ -77,7 +77,7 @@ void FloatingTextManager::addOrUpdateFloatingText(
 // 移除一个箱子的悬浮字
 void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
     std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
-    auto key = std::make_pair(dimId, pos);
+    auto                                key = std::make_pair(dimId, pos);
     if (mFloatingTexts.count(key)) {
         auto& ft = mFloatingTexts.at(key);
         if (ft.debugText) {
@@ -232,24 +232,22 @@ void FloatingTextManager::loadAllChests() {
     // === 批量查询优化：使用 UNION ALL 一次性获取所有物品数据 ===
     // 传统方案：对每个商店执行单独查询 → N+1 查询问题
     // 优化方案：单次 UNION ALL 查询 → 在内存中按位置分组
-    std::vector<std::vector<std::string>> allItemsResults = db.query(
-        "SELECT si.dim_id, si.pos_x, si.pos_y, si.pos_z, id.item_nbt, 'shop' as source "
-        "FROM shop_items si "
-        "JOIN item_definitions id ON si.item_id = id.item_id "
-        "UNION ALL "
-        "SELECT rsi.dim_id, rsi.pos_x, rsi.pos_y, rsi.pos_z, id.item_nbt, 'recycle' as source "
-        "FROM recycle_shop_items rsi "
-        "JOIN item_definitions id ON rsi.item_id = id.item_id "
-        "ORDER BY dim_id, pos_x, pos_y, pos_z;"
-    );
+    std::vector<std::vector<std::string>> allItemsResults =
+        db.query("SELECT si.dim_id, si.pos_x, si.pos_y, si.pos_z, id.item_nbt, 'shop' as source "
+                 "FROM shop_items si "
+                 "JOIN item_definitions id ON si.item_id = id.item_id "
+                 "UNION ALL "
+                 "SELECT rsi.dim_id, rsi.pos_x, rsi.pos_y, rsi.pos_z, id.item_nbt, 'recycle' as source "
+                 "FROM recycle_shop_items rsi "
+                 "JOIN item_definitions id ON rsi.item_id = id.item_id "
+                 "ORDER BY dim_id, pos_x, pos_y, pos_z;");
 
     // 按位置分组物品数据，key = "dimId:x:y:z", value = vector<item_nbt>
     std::unordered_map<std::string, std::vector<std::string>> itemsByPosition;
     for (const auto& itemRow : allItemsResults) {
         if (itemRow.size() >= FloatingTextConstants::MIN_ITEM_FIELDS) {
-            std::string posKey =
-                itemRow[0] + ":" + itemRow[1] + ":" + itemRow[2] + ":" + itemRow[3]; // dimId:x:y:z
-            itemsByPosition[posKey].push_back(itemRow[4]);                           // item_nbt
+            std::string posKey = itemRow[0] + ":" + itemRow[1] + ":" + itemRow[2] + ":" + itemRow[3]; // dimId:x:y:z
+            itemsByPosition[posKey].push_back(itemRow[4]);                                            // item_nbt
         }
     }
     logger.debug("批量加载完成，共 {} 个位置有物品数据。", itemsByPosition.size());
@@ -334,9 +332,8 @@ void FloatingTextManager::loadAllChests() {
                 ft.enableFakeItem = enableFakeItem; // 设置单箱子假物品配置
 
                 // 构建位置键
-                std::string posKey =
-                    std::to_string(dimId) + ":" + std::to_string(posX) + ":" + std::to_string(posY) + ":"
-                    + std::to_string(posZ);
+                std::string posKey = std::to_string(dimId) + ":" + std::to_string(posX) + ":" + std::to_string(posY)
+                                   + ":" + std::to_string(posZ);
 
                 // 从预加载的数据中获取物品
                 auto itemsIt = itemsByPosition.find(posKey);
@@ -450,6 +447,7 @@ void FloatingTextManager::loadAllChests() {
 ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
     logger.debug("dynamicTextUpdateCoroutine: 协程开始运行");
     bool updateText = true; // 交替标志：true更新悬浮字，false更新假物品
+
     while (!mShouldStopUpdate.load()) {
         // 优化：使用结构体批量复制需要更新的数据，减少锁持有时间
         struct UpdateInfo {
@@ -474,14 +472,14 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
             toUpdate.reserve(mFloatingTexts.size()); // 预分配内存避免重新分配
             for (const auto& [key, ft] : mFloatingTexts) {
                 if (ft.isDynamic && !ft.itemNames.empty()) {
-                    toUpdate.push_back({
-                        key,
-                        ft.currentItemIndex,
-                        ft.currentFakeItemIndex,
-                        ft.itemNames.size(),
-                        ft.items.size(),
-                        ft.type
-                    });
+                    toUpdate.push_back(
+                        {key,
+                         ft.currentItemIndex,
+                         ft.currentFakeItemIndex,
+                         ft.itemNames.size(),
+                         ft.items.size(),
+                         ft.type}
+                    );
                 }
             }
         } // 快速释放读锁
@@ -514,10 +512,8 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                     if (info.currentItemIndex >= ft.itemNames.size()) continue;
 
                     ft.currentItemIndex = info.currentItemIndex;
-                    ft.text = TextService::getInstance().generateDynamicShopText(
-                        ft.type,
-                        ft.itemNames[ft.currentItemIndex]
-                    );
+                    ft.text =
+                        TextService::getInstance().generateDynamicShopText(ft.type, ft.itemNames[ft.currentItemIndex]);
                     logger.trace(
                         "dynamicTextUpdateCoroutine: 更新悬浮字 ({},{},{}) 到物品索引 {}: {}",
                         ft.pos.x,
@@ -544,6 +540,7 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
             updateFakeItemsForAllPlayers();
         }
         updateText = !updateText; // 交替
+
         co_await ll::coro::SleepAwaiter(
             std::chrono::seconds(CT::ConfigManager::getInstance().get().floatingTextUpdateIntervalSeconds)
         );
@@ -566,7 +563,7 @@ void FloatingTextManager::stopDynamicTextUpdateLoop() {
 // 更新商店/回收商店的悬浮字物品列表
 void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestType type) {
     std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
-    auto key = std::make_pair(dimId, pos);
+    auto                                key = std::make_pair(dimId, pos);
     if (mFloatingTexts.count(key)) {
         auto& ft = mFloatingTexts.at(key);
         logger.debug(
@@ -806,6 +803,7 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
 }
 
 void registerPlayerConnectionListener() {
+    // 玩家加入事件
     ll::event::EventBus::getInstance().emplaceListener<ll::event::player::PlayerJoinEvent>(
         [](ll::event::player::PlayerJoinEvent& event) {
             auto& player = event.self();
@@ -840,7 +838,7 @@ void registerPlayerConnectionListener() {
 
                     // 批量处理假物品发送
                     if (!keysToProcess.empty()) {
-                        auto& manager = FloatingTextManager::getInstance();
+                        auto&                               manager = FloatingTextManager::getInstance();
                         std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                         for (const auto& key : keysToProcess) {
                             auto it = manager.mFloatingTexts.find(key);
@@ -854,6 +852,16 @@ void registerPlayerConnectionListener() {
             } else {
                 logger.debug("玩家 {} 加入游戏，已为其绘制所有悬浮字。", player.getRealName());
             }
+        }
+    );
+
+    // 玩家离开事件
+    ll::event::EventBus::getInstance().emplaceListener<ll::event::player::PlayerDisconnectEvent>(
+        [](ll::event::player::PlayerDisconnectEvent& event) {
+            auto&       player     = event.self();
+            std::string playerUuid = player.getUuid().asString();
+            FloatingTextManager::getInstance().cleanupPlayerFakeItems(playerUuid);
+            logger.debug("玩家 {} 离开游戏，已清理其假物品记录。", player.getRealName());
         }
     );
 }
@@ -887,7 +895,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
         // 批量移除旧维度的假物品
         if (!keysToRemove.empty()) {
-            auto& manager = FloatingTextManager::getInstance();
+            auto&                               manager = FloatingTextManager::getInstance();
             std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
             for (const auto& key : keysToRemove) {
                 auto it = manager.mFloatingTexts.find(key);
@@ -928,7 +936,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
             // 批量发送新维度的假物品
             if (!keysToAdd.empty()) {
-                auto& manager = FloatingTextManager::getInstance();
+                auto&                               manager = FloatingTextManager::getInstance();
                 std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                 for (const auto& key : keysToAdd) {
                     auto it = manager.mFloatingTexts.find(key);
@@ -940,4 +948,67 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         }
     });
 }
+
+/**
+ * @brief 清理指定玩家的所有假物品记录
+ *
+ * 当玩家离线时调用此方法，从所有悬浮字的 playerFakeItemIds 中移除该玩家的记录。
+ * 这可以防止长期运行时的内存泄漏。
+ *
+ * @param playerUuid 玩家的 UUID
+ */
+void FloatingTextManager::cleanupPlayerFakeItems(const std::string& playerUuid) {
+    std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex);
+
+    size_t totalRemoved = 0;
+    for (auto& [key, ft] : mFloatingTexts) {
+        auto it = ft.playerFakeItemIds.find(playerUuid);
+        if (it != ft.playerFakeItemIds.end()) {
+            ft.playerFakeItemIds.erase(it);
+            totalRemoved++;
+        }
+    }
+
+    logger.trace("已清理玩家 {} 的假物品记录，共清理 {} 条记录。", playerUuid, totalRemoved);
+}
+
+/**
+ * @brief 清理所有离线玩家的假物品记录
+ *
+ * 定期在协程中调用此方法，批量清理所有离线玩家的假物品记录。
+ * 这是一个兜底机制，防止因事件丢失导致的内存泄漏。
+ *
+ * @performance 每 60 秒执行一次，锁持有时间取决于离线玩家数量
+ */
+void FloatingTextManager::cleanupOfflinePlayerFakeItems() {
+    auto level = ll::service::getLevel();
+    if (!level) return;
+
+    // 收集所有在线玩家 UUID
+    std::unordered_set<std::string> onlinePlayerUuids;
+    level->forEachPlayer([&](Player& player) {
+        onlinePlayerUuids.insert(player.getUuid().asString());
+        return true;
+    });
+
+    // 清理离线玩家的假物品记录
+    std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex);
+    size_t                              totalRemoved = 0;
+
+    for (auto& [key, ft] : mFloatingTexts) {
+        for (auto it = ft.playerFakeItemIds.begin(); it != ft.playerFakeItemIds.end();) {
+            if (onlinePlayerUuids.find(it->first) == onlinePlayerUuids.end()) {
+                it = ft.playerFakeItemIds.erase(it); // 离线玩家，清理
+                totalRemoved++;
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    if (totalRemoved > 0) {
+        logger.debug("定期清理：已清理 {} 条离线玩家的假物品记录。", totalRemoved);
+    }
+}
+
 } // namespace CT

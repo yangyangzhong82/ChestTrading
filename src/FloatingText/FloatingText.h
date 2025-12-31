@@ -133,6 +133,10 @@ public:
     void sendFakeItemToPlayer(Player& player, ChestFloatingText& ft);
     void removeFakeItemFromPlayer(Player& player, ChestFloatingText& ft);
     void updateFakeItemsForAllPlayers();
+
+    // 内存管理方法
+    void cleanupPlayerFakeItems(const std::string& playerUuid);
+    void cleanupOfflinePlayerFakeItems();
 };
 
 void registerPlayerConnectionListener();
