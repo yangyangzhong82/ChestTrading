@@ -176,18 +176,9 @@ std::vector<SharedChestData> ChestRepository::getSharedPlayers(BlockPos pos, int
         pos.z
     );
 
-    std::vector<SharedChestData> shared;
-    for (const auto& row : results) {
-        if (row.size() >= 2) {
-            SharedChestData data;
-            data.playerUuid = row[0];
-            data.ownerUuid  = row[1];
-            data.dimId      = dimId;
-            data.pos        = pos;
-            shared.push_back(data);
-        }
-    }
-    return shared;
+    return parseRows<SharedChestData>(results, 2, [&](DbRowParser r) {
+        return SharedChestData{r.getString(0), r.getString(1), dimId, pos};
+    });
 }
 
 bool ChestRepository::isPlayerShared(const std::string& playerUuid, BlockPos pos, int dimId) {

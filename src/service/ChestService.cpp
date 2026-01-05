@@ -128,19 +128,34 @@ BlockPos ChestService::getMainChestPos(BlockPos pos, BlockSource& region) {
  * @note 自动清理：过期条目在读取时自动删除，无需手动管理
  */
 bool ChestCacheManager::getCachedChestInfo(BlockPos pos, int dimId, ChestCacheEntry& entry) {
-    std::shared_lock lock(mCacheMutex);
-    PositionKey      key{dimId, pos.x, pos.y, pos.z};
-    auto             it = mCache.find(key);
-    if (it == mCache.end()) return false;
+    PositionKey key{dimId, pos.x, pos.y, pos.z};
 
-    auto now     = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
-    if (elapsed > mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
-        mCache.erase(it);
-        return false;
+    {
+        std::shared_lock lock(mCacheMutex);
+        auto             it = mCache.find(key);
+        if (it == mCache.end()) return false;
+
+        auto now     = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
+        if (elapsed <= mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
+            entry = it->second;
+            return true;
+        }
+    } // 释放读锁
+
+    // 过期：获取写锁删除条目
+    {
+        std::unique_lock lock(mCacheMutex);
+        auto             it = mCache.find(key);
+        if (it != mCache.end()) {
+            auto now     = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
+            if (elapsed > mCacheTimeoutSeconds.load(std::memory_order_relaxed)) {
+                mCache.erase(it);
+            }
+        }
     }
-    entry = it->second;
-    return true;
+    return false;
 }
 
 void ChestCacheManager::setCachedChestInfo(BlockPos pos, int dimId, const ChestCacheEntry& entry) {

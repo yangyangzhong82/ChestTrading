@@ -37,7 +37,7 @@ target("ChestTrading") -- Change this to your mod name.
     add_packages("levilamina","sqlite3","legacymoney","debug_shape","czmoney","Bedrock-Authority")
     set_exceptions("none") -- To avoid conflicts with /EHa.
     set_kind("shared")
-    set_languages("c++20")
+    set_languages("c++23")
     set_symbols("debug")
     add_headerfiles("src/**.h")
     add_files("src/**.cpp")
