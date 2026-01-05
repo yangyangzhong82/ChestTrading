@@ -44,6 +44,20 @@ std::string TextService::generateChestText(ChestType type, const std::string& ow
                 {"owner", ownerName}
         }
         );
+    case ChestType::AdminShop:
+        return i18n.get(
+            "floating.admin_shop",
+            {
+                {"owner", ownerName}
+        }
+        );
+    case ChestType::AdminRecycle:
+        return i18n.get(
+            "floating.admin_recycle",
+            {
+                {"owner", ownerName}
+        }
+        );
     default:
         return i18n.get(
             "floating.unknown",
@@ -56,18 +70,20 @@ std::string TextService::generateChestText(ChestType type, const std::string& ow
 
 std::string TextService::generateDynamicShopText(ChestType type, const std::string& itemName) {
     auto& i18n = I18nService::getInstance();
-    return type == ChestType::Shop ? i18n.get(
-                                         "floating.shop_sell",
-                                         {
-                                             {"item", itemName}
+    return (type == ChestType::Shop || type == ChestType::AdminShop)
+             ? i18n.get(
+                   "floating.shop_sell",
+                   {
+                       {"item", itemName}
     }
-                                     )
-                                   : i18n.get("floating.recycle_buy", {{"item", itemName}});
+               )
+             : i18n.get("floating.recycle_buy", {{"item", itemName}});
 }
 
 std::string TextService::generateEmptyShopText(ChestType type) {
     auto& i18n = I18nService::getInstance();
-    return type == ChestType::Shop ? i18n.get("floating.shop_empty") : i18n.get("floating.recycle_empty");
+    return (type == ChestType::Shop || type == ChestType::AdminShop) ? i18n.get("floating.shop_empty")
+                                                                     : i18n.get("floating.recycle_empty");
 }
 
 std::string TextService::generateShopItemText(const std::string& itemName, double price, int stock, int chestStock) {
@@ -93,6 +109,10 @@ std::string TextService::getChestTypeName(ChestType type) {
         return i18n.get("chest.type_shop");
     case ChestType::Public:
         return i18n.get("chest.type_public");
+    case ChestType::AdminShop:
+        return i18n.get("chest.type_admin_shop");
+    case ChestType::AdminRecycle:
+        return i18n.get("chest.type_admin_recycle");
     default:
         return i18n.get("chest.type_unknown");
     }

@@ -282,9 +282,11 @@ void FloatingTextManager::loadAllChests() {
                 if (!config.floatingText.enableLockedChest) continue;
                 break;
             case ChestType::RecycleShop:
+            case ChestType::AdminRecycle:
                 if (!config.floatingText.enableRecycleShop) continue;
                 break;
             case ChestType::Shop:
+            case ChestType::AdminShop:
                 if (!config.floatingText.enableShopChest) continue;
                 break;
             case ChestType::Public:
@@ -324,8 +326,9 @@ void FloatingTextManager::loadAllChests() {
                 logger.debug("已为箱子 ({}, {}, {}) in dim {} 创建悬浮字: {}", pos.x, pos.y, pos.z, dimId, text);
             }
 
-            // 如果是商店或回收商店，从预加载的数据中获取物品信息
-            if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
+            // 如果是商店或回收商店（包括官方商店），从预加载的数据中获取物品信息
+            if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop || chestType == ChestType::AdminShop
+                || chestType == ChestType::AdminRecycle) {
                 // 复用上面的 key 变量，避免重复声明
                 auto& ft          = mFloatingTexts.at(key);
                 ft.isDynamic      = true;
@@ -578,7 +581,8 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 static_cast<int>(type)
             );
 
-            if (type != ChestType::Shop && type != ChestType::RecycleShop) {
+            if (type != ChestType::Shop && type != ChestType::RecycleShop && type != ChestType::AdminShop
+                && type != ChestType::AdminRecycle) {
                 logger.warn("updateShopFloatingText: 尝试更新非商店/回收商店类型的悬浮字物品列表，操作无效。");
                 return;
             }
@@ -589,7 +593,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
             Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
             std::vector<std::vector<std::string>> itemResults;
 
-            if (type == ChestType::Shop) {
+            if (type == ChestType::Shop || type == ChestType::AdminShop) {
                 itemResults = db.query(
                     "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
                     "si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
@@ -598,9 +602,10 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                     pos.y,
                     pos.z
                 );
-            } else { // RecycleShop
+            } else { // RecycleShop or AdminRecycle
                 itemResults = db.query(
-                    "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id "
+                    "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = "
+                    "id.item_id "
                     "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
                     dimId,
                     pos.x,
@@ -622,7 +627,8 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                             if (itemName.empty()) {
                                 itemName = itemPtr->getTypeName();
                                 logger.warn(
-                                    "updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: {}",
+                                    "updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: "
+                                    "{}",
                                     itemName
                                 );
                             }

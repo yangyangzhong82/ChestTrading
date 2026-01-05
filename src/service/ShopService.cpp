@@ -195,44 +195,53 @@ PurchaseResult ShopService::purchaseItem(
         };
     }
 
+    // 获取箱子信息，判断是否为官方商店
+    auto chestInfo   = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
+    bool isAdminShop = chestInfo && chestInfo->type == ChestType::AdminShop;
+
     // 获取箱子实体
     auto* chest = getChestActor(region, mainPos);
     if (!chest) {
         return {false, txt.getMessage("shop.purchase_chest_fail")};
     }
 
-    // 检查箱子库存
-    int actualAvailable = countMatchingItems(chest, itemNbt);
-    if (actualAvailable < quantity) {
-        return {
-            false,
-            txt.getMessage("shop.insufficient_stock", {{"stock", std::to_string(actualAvailable)}}
-             )
-        };
-    }
-
     // 使用 ScopeGuard 自动管理回滚操作（RAII）
     ScopeGuard rollbackGuard;
 
-    // 从箱子移除物品
-    int actualRemoved = removeItemsFromChest(chest, itemNbt, quantity);
-    if (actualRemoved < quantity) {
-        // 放回已移除的物品
-        if (actualRemoved > 0) {
-            addItemsToChest(chest, itemNbt, actualRemoved);
+    // 官方商店：无限出售，不检查库存，不移除物品
+    if (!isAdminShop) {
+        // 检查箱子库存
+        int actualAvailable = countMatchingItems(chest, itemNbt);
+        if (actualAvailable < quantity) {
+            return {
+                false,
+                txt.getMessage("shop.insufficient_stock", {{"stock", std::to_string(actualAvailable)}}
+                 )
+            };
         }
-        return {false, txt.getMessage("shop.purchase_chest_fail")};
-    }
-    // 添加回滚操作：放回物品
-    rollbackGuard.addRollback([chest, itemNbt, quantity]() { addItemsToChest(chest, itemNbt, quantity); });
 
-    // 扣钱
-    if (!Economy::reduceMoney(buyer, totalPrice)) {
-        return {false, txt.getMessage("shop.purchase_money_fail")};
-        // rollbackGuard 析构时会自动放回物品
+        // 从箱子移除物品
+        int actualRemoved = removeItemsFromChest(chest, itemNbt, quantity);
+        if (actualRemoved < quantity) {
+            // 放回已移除的物品
+            if (actualRemoved > 0) {
+                addItemsToChest(chest, itemNbt, actualRemoved);
+            }
+            return {false, txt.getMessage("shop.purchase_chest_fail")};
+        }
+        // 添加回滚操作：放回物品
+        rollbackGuard.addRollback([chest, itemNbt, quantity]() { addItemsToChest(chest, itemNbt, quantity); });
     }
-    // 添加回滚操作：退钱
-    rollbackGuard.addRollback([&buyer, totalPrice]() { Economy::addMoney(buyer, totalPrice); });
+
+    // 扣钱（金额为0时跳过）
+    if (totalPrice > 0) {
+        if (!Economy::reduceMoney(buyer, totalPrice)) {
+            return {false, txt.getMessage("shop.purchase_money_fail")};
+            // rollbackGuard 析构时会自动放回物品
+        }
+        // 添加回滚操作：退钱
+        rollbackGuard.addRollback([&buyer, totalPrice]() { Economy::addMoney(buyer, totalPrice); });
+    }
 
     // 使用事务更新数据库库存和记录购买
     auto&       db = Sqlite3Wrapper::getInstance();
@@ -242,11 +251,14 @@ PurchaseResult ShopService::purchaseItem(
         // rollbackGuard 析构时会自动退钱和放回物品
     }
 
-    // 更新数据库库存
-    if (!ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity)) {
-        txn.rollback();
-        return {false, txt.getMessage("shop.purchase_db_fail")};
-        // rollbackGuard 析构时会自动退钱和放回物品
+    // 官方商店不更新库存
+    if (!isAdminShop) {
+        // 更新数据库库存
+        if (!ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity)) {
+            txn.rollback();
+            return {false, txt.getMessage("shop.purchase_db_fail")};
+            // rollbackGuard 析构时会自动退钱和放回物品
+        }
     }
 
     // 记录购买
@@ -272,9 +284,8 @@ PurchaseResult ShopService::purchaseItem(
     // 事务成功提交，取消回滚操作
     rollbackGuard.dismiss();
 
-    // 给店主加钱（扣除税率）
-    auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
-    if (chestInfo && !chestInfo->ownerUuid.empty()) {
+    // 官方商店不给店主加钱
+    if (!isAdminShop && chestInfo && !chestInfo->ownerUuid.empty()) {
         double taxRate     = ConfigManager::getInstance().get().taxSettings.shopTaxRate;
         double ownerIncome = totalPrice * (1.0 - taxRate);
         Economy::addMoneyByUuid(chestInfo->ownerUuid, ownerIncome);
@@ -298,7 +309,8 @@ PurchaseResult ShopService::purchaseItem(
     }
 
     // 更新悬浮字
-    FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
+    ChestType shopType = isAdminShop ? ChestType::AdminShop : ChestType::Shop;
+    FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, shopType);
 
     std::string itemName = itemPtr ? std::string(itemPtr->getName()) : txt.getMessage("shop.unknown_item");
     return {

@@ -21,6 +21,8 @@
     "type_public": "公共箱子",
     "type_recycle": "回收商店",
     "type_shop": "商店",
+    "type_admin_shop": "官方商店",
+    "type_admin_recycle": "官方回收商店",
     "type_unknown": "未知类型",
     "name_locked": "的上锁箱子",
     "name_public": "的公共箱子"
@@ -114,6 +116,8 @@
     "recycle": "§a[回收商店]§r 拥有者: {owner}",
     "shop": "§b[商店箱子]§r 拥有者: {owner}",
     "public": "§d[公共箱子]§r 拥有者: {owner}",
+    "admin_shop": "§6[官方商店]§r",
+    "admin_recycle": "§6[官方回收商店]§r",
     "unknown": "§f[未知箱子类型]§r 拥有者: {owner}",
     "shop_sell": "§b[商店箱子]§r 出售: {item}",
     "recycle_buy": "§a[回收商店]§r 回收: {item}",
@@ -169,6 +173,8 @@
     "button_set_recycle": "设为回收商店",
     "button_set_shop": "设为商店",
     "button_set_public": "设为公共箱子",
+    "button_set_admin_shop": "设为官方商店",
+    "button_set_admin_recycle": "设为官方回收商店",
     "button_cancel": "取消",
     "button_back": "返回",
     "button_add_commission": "添加回收委托",
@@ -353,6 +359,7 @@
     "recycle_description": "查看公开回收商店列表",
     "packchest_description": "打包箱子为物品",
     "packchest_exit": "§a已退出打包箱子模式。",
-    "packchest_enter": "§a已进入打包箱子模式，点击箱子即可打包。再次输入命令退出。"
+    "packchest_enter": "§a已进入打包箱子模式，点击箱子即可打包。再次输入命令退出。",
+    "test_description": "运行自动化测试（开发者工具）"
   }
 }

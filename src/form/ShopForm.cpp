@@ -449,7 +449,18 @@ void showShopItemBuyForm(
 
             int buyCount = 1;
             try {
-                buyCount = std::stoi(std::get<std::string>(result.value().at("buy_count")));
+                const auto& buyCountVal = result.value().at("buy_count");
+                std::string buyCountStr;
+                if (std::holds_alternative<std::string>(buyCountVal)) {
+                    buyCountStr = std::get<std::string>(buyCountVal);
+                } else if (std::holds_alternative<uint64>(buyCountVal)) {
+                    buyCount = static_cast<int>(std::get<uint64>(buyCountVal));
+                } else if (std::holds_alternative<double>(buyCountVal)) {
+                    buyCount = static_cast<int>(std::get<double>(buyCountVal));
+                }
+                if (!buyCountStr.empty()) {
+                    buyCount = std::stoi(buyCountStr);
+                }
                 logger.debug("showShopItemBuyForm: Player {} entered buyCount {}.", p.getRealName(), buyCount);
                 if (buyCount <= 0) {
                     p.sendMessage(txt.getMessage("input.invalid_count"));

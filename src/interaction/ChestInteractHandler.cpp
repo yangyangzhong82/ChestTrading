@@ -28,8 +28,8 @@ constexpr size_t NUM_INTERACTION_SHARDS = 16; // 分段数量（2的幂次）
 
 struct InteractionShard {
     std::unordered_map<std::string, std::chrono::steady_clock::time_point> records;
-    mutable std::mutex                                                      mutex;
-    std::chrono::steady_clock::time_point                                   lastCleanupTime;
+    mutable std::mutex                                                     mutex;
+    std::chrono::steady_clock::time_point                                  lastCleanupTime;
 
     InteractionShard() : lastCleanupTime(std::chrono::steady_clock::now()) {}
 };
@@ -48,7 +48,7 @@ bool shouldDebounce(const std::string& playerUuid) {
     auto  debounceInterval = std::chrono::milliseconds(config.interactionSettings.debounceIntervalMs);
     auto  cleanupThreshold = std::chrono::seconds(config.interactionSettings.cleanupThresholdSec);
 
-    auto& shard = gInteractionShards[getShardIndex(playerUuid)];
+    auto&                       shard = gInteractionShards[getShardIndex(playerUuid)];
     std::lock_guard<std::mutex> lock(shard.mutex); // 只锁定一个分段
 
     // 延迟清理：仅当距离上次清理超过阈值时才执行
@@ -174,11 +174,12 @@ bool handleOpenOrForms(
     auto& chestService = ChestService::getInstance();
 
     if (chestService.canPlayerAccess(playerUuid, pos, dimId, region) || isAdmin) {
-        if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop) {
+        if (chestType == ChestType::Shop || chestType == ChestType::RecycleShop || chestType == ChestType::AdminShop
+            || chestType == ChestType::AdminRecycle) {
             if (isOwner) {
                 return false;
             }
-            if (chestType == ChestType::Shop) {
+            if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
                 showShopChestItemsForm(player, pos, dimId, region);
             } else {
                 showRecycleForm(player, pos, dimId, region);
@@ -188,12 +189,12 @@ bool handleOpenOrForms(
         return false;
     }
 
-    if (chestType == ChestType::Shop) {
+    if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
         showShopChestItemsForm(player, pos, dimId, region);
         return true;
     }
 
-    if (chestType == ChestType::RecycleShop) {
+    if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
         showRecycleForm(player, pos, dimId, region);
         return true;
     }

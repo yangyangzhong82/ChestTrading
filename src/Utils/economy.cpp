@@ -42,7 +42,7 @@ bool hasMoney(Player& player, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
         return LLMoney_Get(player.getXuid()) >= convertToLLMoneyAmount(amount);
     } else { // CzMoney
-        auto balance = czmoney::api::getRawPlayerBalance(player.getUuid().asString(), "money");
+        auto balance = czmoney::api::getPlayerBalance(player.getUuid().asString(), "money");
         if (balance.has_value()) {
             logger.debug(
                 "hasMoney: Player {} (UUID: {}) balance: {}",
@@ -50,7 +50,7 @@ bool hasMoney(Player& player, double amount) {
                 player.getUuid().asString(),
                 balance.value()
             );
-            return (balance.value()) >= amount; // CzMoney API的getRawPlayerBalance直接返回double
+            return balance.value() >= amount;
         }
         logger.warn(
             "hasMoney: Failed to get balance for player {} (UUID: {})",
@@ -62,10 +62,12 @@ bool hasMoney(Player& player, double amount) {
 }
 
 bool reduceMoney(Player& player, double amount) {
+    if (amount <= 0) {
+        return true; // 扣除 0 元视为成功
+    }
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
         int amountToReduce = convertToLLMoneyAmount(amount);
         if (amountToReduce <= 0) {
-            logger.warn("reduceMoney: Amount {} converts to 0 or negative, no money will be reduced", amount);
             return true; // 扣除 0 元视为成功
         }
         return LLMoney_Reduce(player.getXuid(), amountToReduce);
@@ -119,7 +121,7 @@ double getMoney(const std::string& xuid) {
     } else { // CzMoney
         std::string uuid = getUuidStringFromXuid(xuid);
         if (!uuid.empty()) {
-            auto balance = czmoney::api::getRawPlayerBalance(uuid, "money");
+            auto balance = czmoney::api::getPlayerBalance(uuid, "money");
             if (balance.has_value()) {
                 logger.debug("getMoney (CzMoney): Balance for UUID {} is {}", uuid, balance.value());
                 return balance.value();

@@ -57,7 +57,7 @@ void showChestLockForm(
                 });
             }
 
-            if (chestType == ChestType::Shop) {
+            if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
                 fm.appendButton(textService.getMessage("form.button_manage_shop"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShopChestManageForm(p, pos, dimId, region);
@@ -66,7 +66,7 @@ void showChestLockForm(
                     auto& region = p.getDimensionBlockSource();
                     showSetShopNameForm(p, pos, dimId, region);
                 });
-            } else if (chestType == ChestType::RecycleShop) {
+            } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
                 fm.appendButton(textService.getMessage("form.button_manage_recycle"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showRecycleShopManageForm(p, pos, dimId, region);
@@ -87,12 +87,12 @@ void showChestLockForm(
             fm.setTitle(textService.getMessage("form.chest_locked_title"));
             fm.setContent(textService.getMessage("form.chest_locked_content"));
 
-            if (chestType == ChestType::Shop) {
+            if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
                 fm.appendButton(textService.getMessage("form.button_browse_shop"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showShopChestItemsForm(p, pos, dimId, region);
                 });
-            } else if (chestType == ChestType::RecycleShop) {
+            } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
                 fm.appendButton(textService.getMessage("form.button_browse_recycle"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showRecycleForm(p, pos, dimId, region);
@@ -115,18 +115,22 @@ void showChestLockForm(
                     p.sendMessage(errorMsg);
                     return;
                 }
-                if (!Economy::hasMoney(p, cost)) {
-                    p.sendMessage(txt.getMessage(
-                        "economy.insufficient",
-                        {
-                            {"price", MoneyFormat::format(cost)}
+                // 官方商店不检查费用
+                bool isAdminType = (type == ChestType::AdminShop || type == ChestType::AdminRecycle);
+                if (!isAdminType && cost > 0) {
+                    if (!Economy::hasMoney(p, cost)) {
+                        p.sendMessage(txt.getMessage(
+                            "economy.insufficient",
+                            {
+                                {"price", MoneyFormat::format(cost)}
+                        }
+                        ));
+                        return;
                     }
-                    ));
-                    return;
-                }
-                if (!Economy::reduceMoney(p, cost)) {
-                    p.sendMessage(txt.getMessage("economy.deduct_fail"));
-                    return;
+                    if (!Economy::reduceMoney(p, cost)) {
+                        p.sendMessage(txt.getMessage("economy.deduct_fail"));
+                        return;
+                    }
                 }
                 auto result = svc.createChest(playerUuid, pos, dimId, type, region);
                 if (result.success) {
@@ -138,7 +142,9 @@ void showChestLockForm(
                     }
                     ));
                 } else {
-                    Economy::addMoney(p, cost);
+                    if (!isAdminType && cost > 0) {
+                        Economy::addMoney(p, cost);
+                    }
                     p.sendMessage(txt.getMessage(
                         "chest.create_fail",
                         {
@@ -203,6 +209,21 @@ void showChestLockForm(
                 );
             }
         );
+
+        // 官方商店按钮（需要权限）
+        fm.appendButton(
+            textService.getMessage("form.button_set_admin_shop"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(p, pos, dimId, player_uuid, ChestType::AdminShop, 0.0);
+            }
+        );
+
+        fm.appendButton(
+            textService.getMessage("form.button_set_admin_recycle"),
+            [pos, dimId, player_uuid, createChestHandler](Player& p) {
+                createChestHandler(p, pos, dimId, player_uuid, ChestType::AdminRecycle, 0.0);
+            }
+        );
     }
 
     fm.appendButton(textService.getMessage("form.button_cancel"), [player_uuid](Player& p) {
@@ -222,7 +243,9 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
 
     fm.appendToggle("enable_floating_text", txt.getMessage("form.toggle_floating_text"), config.enableFloatingText);
 
-    bool isShopType = (chestType == ChestType::Shop || chestType == ChestType::RecycleShop);
+    bool isShopType =
+        (chestType == ChestType::Shop || chestType == ChestType::RecycleShop || chestType == ChestType::AdminShop
+         || chestType == ChestType::AdminRecycle);
     if (isShopType) {
         fm.appendToggle("enable_fake_item", txt.getMessage("form.toggle_fake_item"), config.enableFakeItem);
         fm.appendToggle("is_public", txt.getMessage("form.toggle_public"), config.isPublic);

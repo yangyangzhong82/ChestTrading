@@ -425,6 +425,12 @@ bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType
     case ChestType::Shop:
         requiredPermission = "chest.create.shop";
         break;
+    case ChestType::AdminShop:
+        requiredPermission = "chest.create.adminshop";
+        break;
+    case ChestType::AdminRecycle:
+        requiredPermission = "chest.create.adminrecycle";
+        break;
     default:
         errorMessage = TextService::getInstance().getMessage("chest.unknown_type");
         return false;
@@ -433,6 +439,11 @@ bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType
     if (!BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, requiredPermission)) {
         errorMessage = TextService::getInstance().getMessage("chest.no_permission");
         return false;
+    }
+
+    // 官方商店不受数量限制
+    if (type == ChestType::AdminShop || type == ChestType::AdminRecycle) {
+        return true;
     }
 
     // 检查数量限制
@@ -506,7 +517,7 @@ bool ChestService::addSharedPlayer(
 
 bool ChestService::removeSharedPlayer(const std::string& targetUuid, BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = getMainChestPos(pos, region);
-    bool success = ChestRepository::getInstance().removeSharedPlayer(targetUuid, mainPos, dimId);
+    bool     success = ChestRepository::getInstance().removeSharedPlayer(targetUuid, mainPos, dimId);
 
     // 缓存一致性：使缓存失效
     if (success) {

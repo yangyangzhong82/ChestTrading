@@ -149,7 +149,7 @@ void registerCommand() {
         registrar.getOrCreateCommand("cttest", i18n.get("command.test_description"), CommandPermissionLevel::Any);
 
     struct TestSubcommand {
-        std::string testType; // all, shop, recycle
+        std::string testType;
     };
 
     testCmd.overload<ll::command::EmptyParam>().execute(
@@ -168,10 +168,38 @@ void registerCommand() {
 
             // 显示测试菜单
             player->sendMessage("§e=== ChestTrading 测试工具 ===");
-            player->sendMessage("§a/cttest shop        §7- 测试商店购买功能");
-            player->sendMessage("§a/cttest recycle    §7- 测试回收功能");
+            player->sendMessage("§7箱子会自动放置，无需手动操作\n");
+            player->sendMessage("§a/cttest quick      §7- 快速测试（核心功能）");
+            player->sendMessage("§a/cttest shop       §7- 测试商店完整功能");
+            player->sendMessage("§a/cttest recycle    §7- 测试回收完整功能");
             player->sendMessage("§a/cttest all        §7- 运行所有测试");
-            player->sendMessage("§7提示: 测试会自动创建和清理箱子");
+            player->sendMessage("§a/cttest cleanup    §7- 清理所有测试箱子\n");
+            player->sendMessage("§e--- 细粒度测试 ---");
+            player->sendMessage("§a/cttest money      §7- 测试金币不足");
+            player->sendMessage("§a/cttest stock      §7- 测试库存不足");
+            player->sendMessage("§a/cttest tax        §7- 测试税率");
+            player->sendMessage("§a/cttest boundary   §7- 测试边界条件");
+            player->sendMessage("§a/cttest rollback   §7- 测试回滚机制");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("quick").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            std::string result = testHelper.runQuickTests(*player);
+            player->sendMessage(result);
+            output.success("快速测试完成");
         }
     );
 
@@ -189,12 +217,17 @@ void registerCommand() {
             }
 
             auto& testHelper = Test::TestHelper::getInstance();
-            std::string result = testHelper.testShopPurchase(*player, true);
+            std::string result;
+            result += testHelper.testShopPurchase(*player, true);
             result += "\n" + testHelper.testShopInventorySync(*player);
             result += "\n" + testHelper.testShopPriceUpdate(*player);
+            result += "\n" + testHelper.testShopInsufficientMoney(*player);
+            result += "\n" + testHelper.testShopInsufficientStock(*player);
+            result += "\n" + testHelper.testShopTaxRate(*player);
+            result += "\n" + testHelper.testShopBoundaryConditions(*player);
 
             player->sendMessage(result);
-            output.success("商店测试完成，详情请查看聊天窗口");
+            output.success("商店测试完成");
         }
     );
 
@@ -212,10 +245,14 @@ void registerCommand() {
             }
 
             auto& testHelper = Test::TestHelper::getInstance();
-            std::string result = testHelper.testRecycle(*player, true);
+            std::string result;
+            result += testHelper.testRecycle(*player, true);
+            result += "\n" + testHelper.testRecycleFilters(*player);
+            result += "\n" + testHelper.testRecycleRollback(*player);
+            result += "\n" + testHelper.testRecycleOwnerInsufficientMoney(*player);
 
             player->sendMessage(result);
-            output.success("回收测试完成，详情请查看聊天窗口");
+            output.success("回收测试完成");
         }
     );
 
@@ -236,7 +273,124 @@ void registerCommand() {
             std::string result = testHelper.runAllTests(*player);
 
             player->sendMessage(result);
-            output.success("所有测试完成，详情请查看聊天窗口");
+            output.success("所有测试完成");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("cleanup").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            testHelper.cleanupAllTestChests(*player);
+
+            player->sendMessage("§a已清理所有测试箱子");
+            output.success("清理完成");
+        }
+    );
+
+    // 细粒度测试命令
+    testCmd.overload<TestSubcommand>().text("money").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            player->sendMessage(testHelper.testShopInsufficientMoney(*player));
+            output.success("金币不足测试完成");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("stock").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            player->sendMessage(testHelper.testShopInsufficientStock(*player));
+            output.success("库存不足测试完成");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("tax").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            player->sendMessage(testHelper.testShopTaxRate(*player));
+            output.success("税率测试完成");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("boundary").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            player->sendMessage(testHelper.testShopBoundaryConditions(*player));
+            output.success("边界条件测试完成");
+        }
+    );
+
+    testCmd.overload<TestSubcommand>().text("rollback").execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+
+            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+
+            auto& testHelper = Test::TestHelper::getInstance();
+            player->sendMessage(testHelper.testRecycleRollback(*player));
+            output.success("回滚测试完成");
         }
     );
 }

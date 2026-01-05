@@ -21,6 +21,8 @@
     "type_public": "Public Chest",
     "type_recycle": "Recycle Shop",
     "type_shop": "Shop",
+    "type_admin_shop": "Admin Shop",
+    "type_admin_recycle": "Admin Recycle Shop",
     "type_unknown": "Unknown Type",
     "name_locked": "'s Locked Chest",
     "name_public": "'s Public Chest"
@@ -114,6 +116,8 @@
     "recycle": "§a[Recycle Shop]§r Owner: {owner}",
     "shop": "§b[Shop Chest]§r Owner: {owner}",
     "public": "§d[Public Chest]§r Owner: {owner}",
+    "admin_shop": "§6[Admin Shop]§r",
+    "admin_recycle": "§6[Admin Recycle Shop]§r",
     "unknown": "§f[Unknown Type]§r Owner: {owner}",
     "shop_sell": "§b[Shop Chest]§r Selling: {item}",
     "recycle_buy": "§a[Recycle Shop]§r Buying: {item}",
@@ -169,6 +173,8 @@
     "button_set_recycle": "Set as Recycle Shop",
     "button_set_shop": "Set as Shop",
     "button_set_public": "Set as Public Chest",
+    "button_set_admin_shop": "Set as Admin Shop",
+    "button_set_admin_recycle": "Set as Admin Recycle Shop",
     "button_cancel": "Cancel",
     "button_back": "Back",
     "button_add_commission": "Add Commission",
@@ -353,6 +359,7 @@
     "recycle_description": "View public recycle shop list",
     "packchest_description": "Pack chest as item",
     "packchest_exit": "§aExited pack chest mode.",
-    "packchest_enter": "§aEntered pack chest mode, click a chest to pack it. Enter command again to exit."
+    "packchest_enter": "§aEntered pack chest mode, click a chest to pack it. Enter command again to exit.",
+    "test_description": "Run automated tests (developer tool)"
   }
 }
