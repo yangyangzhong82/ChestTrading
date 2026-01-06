@@ -303,14 +303,21 @@
     "preview_recycle_entry": "§f- {name} §6[回收价: {price}]\n",
     "preview_notice": "\n§c注意: 需要前往商店位置点击箱子才能购买！",
     "preview_recycle_notice": "\n§c注意: 需要前往商店位置点击箱子才能回收！",
-    "button_search": "§e🔍 搜索",
+    "button_search": "§e 搜索",
     "button_prev_page": "§a<< 上一页",
     "button_next_page": "§a下一页 >>",
     "button_close": "§c关闭",
     "button_back_list": "§7返回列表",
     "button_teleport": "§a传送到商店",
     "teleport_hint": "§a请点击箱子进行购买。",
-    "teleport_recycle_hint": "§a请点击箱子进行回收。"
+    "teleport_recycle_hint": "§a请点击箱子进行回收。",
+    "official_tag": "§6[官方]§r",
+    "filter_official": "商店类型",
+    "filter_all": "全部商店",
+    "filter_official_shops": "仅官方商店",
+    "filter_player_shops": "仅玩家商店",
+    "filter_official_only": "§6筛选: 仅官方商店",
+    "filter_player_only": "§7筛选: 仅玩家商店"
   },
   "item_display": {
     "durability": "§a耐久: {current} / {max}",

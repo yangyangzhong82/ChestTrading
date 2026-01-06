@@ -54,7 +54,7 @@ static bool shopContainsItem(const ChestData& shop, const std::string& keyword) 
     );
 
     // findAllItems/findAllRecycleItems 已经 JOIN 了 item_definitions，直接使用 itemNbt 字段
-    if (shop.type == ChestType::Shop) {
+    if (shop.type == ChestType::Shop || shop.type == ChestType::AdminShop) {
         auto items = ShopRepository::getInstance().findAllItems(shop.pos, shop.dimId);
         logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
         for (const auto& item : items) {
@@ -73,7 +73,7 @@ static bool shopContainsItem(const ChestData& shop, const std::string& keyword) 
                 }
             }
         }
-    } else if (shop.type == ChestType::RecycleShop) {
+    } else if (shop.type == ChestType::RecycleShop || shop.type == ChestType::AdminRecycle) {
         auto items = ShopRepository::getInstance().findAllRecycleItems(shop.pos, shop.dimId);
         logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
         for (const auto& item : items) {
@@ -122,16 +122,32 @@ static const ShopListI18nKeys RECYCLE_I18N_KEYS = {
 };
 
 // 前向声明
-static void showSearchForm(Player& player, bool isRecycle);
+static void showSearchForm(Player& player, bool isRecycle, OfficialFilter currentFilter);
 
 using ShopPreviewCallback = void (*)(Player&, const ChestData&);
-using ShopListCallback    = void (*)(Player&, int, const std::string&, const std::string&);
+using ShopListCallback    = void (*)(Player&, int, const std::string&, const std::string&, OfficialFilter);
+
+// 判断是否为官方商店类型
+static bool isOfficialShopType(ChestType type) {
+    return type == ChestType::AdminShop || type == ChestType::AdminRecycle;
+}
+
+// 判断类型是否匹配目标（考虑官方商店）
+static bool matchesTargetType(ChestType chestType, ChestType targetType) {
+    if (targetType == ChestType::Shop) {
+        return chestType == ChestType::Shop || chestType == ChestType::AdminShop;
+    } else if (targetType == ChestType::RecycleShop) {
+        return chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle;
+    }
+    return chestType == targetType;
+}
 
 static void showShopListFormImpl(
     Player&                 player,
     int                     currentPage,
     const std::string&      searchKeyword,
     const std::string&      searchType,
+    OfficialFilter          officialFilter,
     ChestType               targetType,
     const ShopListI18nKeys& keys,
     ShopPreviewCallback     previewCallback,
@@ -147,7 +163,7 @@ static void showShopListFormImpl(
     // 预先批量查询所有潜在店主的名称
     std::vector<std::string> filterUuids;
     for (const auto& chest : allChests) {
-        if (chest.type == targetType && chest.isPublic) {
+        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
             filterUuids.push_back(chest.ownerUuid);
         }
     }
@@ -155,7 +171,12 @@ static void showShopListFormImpl(
 
     std::vector<ChestData> shops;
     for (const auto& chest : allChests) {
-        if (chest.type == targetType && chest.isPublic) {
+        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
+            // 官方商店筛选
+            bool isOfficial = isOfficialShopType(chest.type);
+            if (officialFilter == OfficialFilter::Official && !isOfficial) continue;
+            if (officialFilter == OfficialFilter::Player && isOfficial) continue;
+
             if (!searchKeyword.empty()) {
                 if (searchType == "owner") {
                     const std::string& ownerName = filterNameCache[chest.ownerUuid];
@@ -195,6 +216,12 @@ static void showShopListFormImpl(
             }
             );
         }
+        // 显示官方商店筛选状态
+        if (officialFilter == OfficialFilter::Official) {
+            contentText += "\n" + i18n.get("public_shop.filter_official_only");
+        } else if (officialFilter == OfficialFilter::Player) {
+            contentText += "\n" + i18n.get("public_shop.filter_player_only");
+        }
         fm.setContent(contentText);
 
         int startIdx = currentPage * SHOPS_PER_PAGE;
@@ -213,31 +240,41 @@ static void showShopListFormImpl(
 
             std::string shopDisplayName = shop.shopName.empty() ? i18n.get(keys.ownerShop, {{"owner", ownerName}})
                                                                 : shop.shopName;
-            std::string buttonText = "§b" + shopDisplayName + "§r\n§7" + CT::FormUtils::dimIdToString(shop.dimId)
-                                   + " §e[" + std::to_string(shop.pos.x) + ", " + std::to_string(shop.pos.y) + ", "
-                                   + std::to_string(shop.pos.z) + "]";
+
+            // 官方商店添加标识
+            std::string officialTag;
+            if (isOfficialShopType(shop.type)) {
+                officialTag = i18n.get("public_shop.official_tag") + " ";
+            }
+
+            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n§7"
+                                   + CT::FormUtils::dimIdToString(shop.dimId) + " §e[" + std::to_string(shop.pos.x)
+                                   + ", " + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]";
 
             fm.appendButton(buttonText, [shop, previewCallback](Player& p) { previewCallback(p, shop); });
         }
     }
 
     bool isRecycle = (targetType == ChestType::RecycleShop);
-    fm.appendButton(i18n.get("public_shop.button_search"), [isRecycle](Player& p) { showSearchForm(p, isRecycle); });
+    fm.appendButton(
+        i18n.get("public_shop.button_search"),
+        [isRecycle, officialFilter](Player& p) { showSearchForm(p, isRecycle, officialFilter); }
+    );
 
     if (totalPages > 1) {
         if (currentPage > 0) {
             fm.appendButton(
                 i18n.get("public_shop.button_prev_page"),
-                [currentPage, searchKeyword, searchType, listCallback](Player& p) {
-                    listCallback(p, currentPage - 1, searchKeyword, searchType);
+                [currentPage, searchKeyword, searchType, officialFilter, listCallback](Player& p) {
+                    listCallback(p, currentPage - 1, searchKeyword, searchType, officialFilter);
                 }
             );
         }
         if (currentPage < totalPages - 1) {
             fm.appendButton(
                 i18n.get("public_shop.button_next_page"),
-                [currentPage, searchKeyword, searchType, listCallback](Player& p) {
-                    listCallback(p, currentPage + 1, searchKeyword, searchType);
+                [currentPage, searchKeyword, searchType, officialFilter, listCallback](Player& p) {
+                    listCallback(p, currentPage + 1, searchKeyword, searchType, officialFilter);
                 }
             );
         }
@@ -247,7 +284,7 @@ static void showShopListFormImpl(
     fm.sendTo(player);
 }
 
-static void showSearchForm(Player& player, bool isRecycle) {
+static void showSearchForm(Player& player, bool isRecycle, OfficialFilter currentFilter) {
     auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
     fm.setTitle(isRecycle ? i18n.get("public_shop.search_recycle_title") : i18n.get("public_shop.search_title"));
@@ -258,60 +295,94 @@ static void showSearchForm(Player& player, bool isRecycle) {
         0
     );
     fm.appendInput("keyword", i18n.get("public_shop.search_keyword"), i18n.get("public_shop.search_keyword_hint"));
-    fm.sendTo(player, [isRecycle](Player& p, ll::form::CustomFormResult const& result, ll::form::FormCancelReason) {
-        if (!result.has_value() || result->empty()) return;
 
-        uint64      typeIdx = 0;
-        std::string keyword;
+    // 添加官方商店筛选选项
+    fm.appendDropdown(
+        "official",
+        i18n.get("public_shop.filter_official"),
+        {i18n.get("public_shop.filter_all"),
+         i18n.get("public_shop.filter_official_shops"),
+         i18n.get("public_shop.filter_player_shops")},
+        static_cast<int>(currentFilter)
+    );
 
-        auto typeIt = result->find("type");
-        if (typeIt != result->end()) {
-            if (auto* ptr = std::get_if<uint64>(&typeIt->second)) {
-                typeIdx = *ptr;
-            } else if (auto* dptr = std::get_if<double>(&typeIt->second)) {
-                typeIdx = static_cast<uint64>(*dptr);
-            } else if (auto* sptr = std::get_if<std::string>(&typeIt->second)) {
-                // dropdown 返回字符串时，检查是否是"物品名称/类型"
-                auto& i18n = I18nService::getInstance();
-                if (*sptr == i18n.get("public_shop.search_by_item")) {
-                    typeIdx = 1;
+    fm.sendTo(
+        player,
+        [isRecycle](Player& p, ll::form::CustomFormResult const& result, ll::form::FormCancelReason) {
+            if (!result.has_value() || result->empty()) return;
+
+            uint64         typeIdx        = 0;
+            std::string    keyword;
+            OfficialFilter officialFilter = OfficialFilter::All;
+
+            auto typeIt = result->find("type");
+            if (typeIt != result->end()) {
+                if (auto* ptr = std::get_if<uint64>(&typeIt->second)) {
+                    typeIdx = *ptr;
+                } else if (auto* dptr = std::get_if<double>(&typeIt->second)) {
+                    typeIdx = static_cast<uint64>(*dptr);
+                } else if (auto* sptr = std::get_if<std::string>(&typeIt->second)) {
+                    // dropdown 返回字符串时，检查是否是"物品名称/类型"
+                    auto& i18n = I18nService::getInstance();
+                    if (*sptr == i18n.get("public_shop.search_by_item")) {
+                        typeIdx = 1;
+                    }
+                    logger.debug("showSearchForm: type 是 string, 值={}", *sptr);
                 }
-                logger.debug("showSearchForm: type 是 string, 值={}", *sptr);
+            }
+
+            auto keywordIt = result->find("keyword");
+            if (keywordIt != result->end()) {
+                logger.debug("showSearchForm: 找到 keyword 字段, variant index={}", keywordIt->second.index());
+                if (auto* ptr = std::get_if<std::string>(&keywordIt->second)) {
+                    keyword = *ptr;
+                    logger.debug("showSearchForm: keyword={}", keyword);
+                }
+            } else {
+                logger.warn("showSearchForm: 未找到 keyword 字段");
+            }
+
+            // 获取官方商店筛选选项
+            auto officialIt = result->find("official");
+            if (officialIt != result->end()) {
+                uint64 officialIdx = 0;
+                if (auto* ptr = std::get_if<uint64>(&officialIt->second)) {
+                    officialIdx = *ptr;
+                } else if (auto* dptr = std::get_if<double>(&officialIt->second)) {
+                    officialIdx = static_cast<uint64>(*dptr);
+                }
+                officialFilter = static_cast<OfficialFilter>(officialIdx);
+            }
+
+            std::string searchType = (typeIdx == 0) ? "owner" : "item";
+            logger.debug(
+                "showSearchForm: 搜索类型={}, 关键词={}, 官方筛选={}",
+                searchType,
+                keyword,
+                static_cast<int>(officialFilter)
+            );
+            if (isRecycle) {
+                showPublicRecycleShopListForm(p, 0, keyword, searchType, officialFilter);
+            } else {
+                showPublicShopListForm(p, 0, keyword, searchType, officialFilter);
             }
         }
-
-        auto keywordIt = result->find("keyword");
-        if (keywordIt != result->end()) {
-            logger.debug("showSearchForm: 找到 keyword 字段, variant index={}", keywordIt->second.index());
-            if (auto* ptr = std::get_if<std::string>(&keywordIt->second)) {
-                keyword = *ptr;
-                logger.debug("showSearchForm: keyword={}", keyword);
-            }
-        } else {
-            logger.warn("showSearchForm: 未找到 keyword 字段");
-        }
-
-        std::string searchType = (typeIdx == 0) ? "owner" : "item";
-        logger.debug("showSearchForm: 搜索类型={}, 关键词={}", searchType, keyword);
-        if (isRecycle) {
-            showPublicRecycleShopListForm(p, 0, keyword, searchType);
-        } else {
-            showPublicShopListForm(p, 0, keyword, searchType);
-        }
-    });
+    );
 }
 
 void showPublicShopListForm(
     Player&            player,
     int                currentPage,
     const std::string& searchKeyword,
-    const std::string& searchType
+    const std::string& searchType,
+    OfficialFilter     officialFilter
 ) {
     showShopListFormImpl(
         player,
         currentPage,
         searchKeyword,
         searchType,
+        officialFilter,
         ChestType::Shop,
         SHOP_I18N_KEYS,
         showShopPreviewForm,
@@ -323,13 +394,15 @@ void showPublicRecycleShopListForm(
     Player&            player,
     int                currentPage,
     const std::string& searchKeyword,
-    const std::string& searchType
+    const std::string& searchType,
+    OfficialFilter     officialFilter
 ) {
     showShopListFormImpl(
         player,
         currentPage,
         searchKeyword,
         searchType,
+        officialFilter,
         ChestType::RecycleShop,
         RECYCLE_I18N_KEYS,
         showRecycleShopPreviewForm,

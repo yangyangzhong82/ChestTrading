@@ -6,20 +6,29 @@
 
 namespace CT {
 
+// 官方商店筛选选项
+enum class OfficialFilter {
+    All      = 0, // 全部
+    Official = 1, // 仅官方
+    Player   = 2  // 仅玩家
+};
+
 // 显示公开商店列表
 void showPublicShopListForm(
     Player&            player,
-    int                currentPage   = 0,
-    const std::string& searchKeyword = "",
-    const std::string& searchType    = "owner"
+    int                currentPage    = 0,
+    const std::string& searchKeyword  = "",
+    const std::string& searchType     = "owner",
+    OfficialFilter     officialFilter = OfficialFilter::All
 );
 
 // 显示公开回收商店列表
 void showPublicRecycleShopListForm(
     Player&            player,
-    int                currentPage   = 0,
-    const std::string& searchKeyword = "",
-    const std::string& searchType    = "owner"
+    int                currentPage    = 0,
+    const std::string& searchKeyword  = "",
+    const std::string& searchType     = "owner",
+    OfficialFilter     officialFilter = OfficialFilter::All
 );
 
 // 显示商店预览表单（只能预览，不能购买，可传送）

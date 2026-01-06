@@ -303,14 +303,21 @@
     "preview_recycle_entry": "§f- {name} §6[Recycle Price: {price}]\n",
     "preview_notice": "\n§cNote: You need to go to the shop location and click the chest to purchase!",
     "preview_recycle_notice": "\n§cNote: You need to go to the shop location and click the chest to recycle!",
-    "button_search": "§e🔍 Search",
+    "button_search": "§e Search",
     "button_prev_page": "§a<< Previous",
     "button_next_page": "§aNext >>",
     "button_close": "§cClose",
     "button_back_list": "§7Back to List",
     "button_teleport": "§aTeleport to Shop",
     "teleport_hint": "§aPlease click the chest to purchase.",
-    "teleport_recycle_hint": "§aPlease click the chest to recycle."
+    "teleport_recycle_hint": "§aPlease click the chest to recycle.",
+    "official_tag": "§6[Official]§r",
+    "filter_official": "Shop Type",
+    "filter_all": "All Shops",
+    "filter_official_shops": "Official Shops Only",
+    "filter_player_shops": "Player Shops Only",
+    "filter_official_only": "§6Filter: Official Shops Only",
+    "filter_player_only": "§7Filter: Player Shops Only"
   },
   "item_display": {
     "durability": "§aDurability: {current} / {max}",
