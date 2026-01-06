@@ -2,6 +2,7 @@
 #include "ChestService.h"
 #include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
+#include "PlayerLimitService.h"
 #include "TextService.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -183,6 +184,13 @@ RecycleResult RecycleService::executeFullRecycle(
             0,
             0.0
         };
+    }
+
+    // 5.5 检查玩家限购
+    auto limitCheck =
+        PlayerLimitService::getInstance().checkLimit(pos, dimId, recycler.getUuid().asString(), quantity, false);
+    if (!limitCheck.allowed) {
+        return {false, limitCheck.message, 0, 0.0};
     }
 
     // 6. 查找并记录要转移的物品（精确记录槽位和数量）

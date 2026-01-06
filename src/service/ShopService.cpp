@@ -2,6 +2,7 @@
 #include "ChestService.h"
 #include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
+#include "PlayerLimitService.h"
 #include "TextService.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/ScopeGuard.h"
@@ -193,6 +194,13 @@ PurchaseResult ShopService::purchaseItem(
             txt.getMessage("shop.insufficient_money", {{"price", MoneyFormat::format(totalPrice)}}
              )
         };
+    }
+
+    // 检查限购
+    auto limitCheck =
+        PlayerLimitService::getInstance().checkLimit(mainPos, dimId, buyer.getUuid().asString(), quantity, true);
+    if (!limitCheck.allowed) {
+        return {false, limitCheck.message};
     }
 
     // 获取箱子信息，判断是否为官方商店

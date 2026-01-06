@@ -346,6 +346,20 @@
     "manage_closed": "§cYou closed the management form.",
     "teleport_failed": "§cTeleport failed, coordinate parsing error."
   },
+  "limit": {
+    "manage_btn": "Limit Management",
+    "shop_title": "Shop Purchase Limit",
+    "recycle_title": "Recycle Limit",
+    "input_count": "Limit Count (max trades per player within time window)",
+    "input_seconds": "Time Window (seconds)",
+    "hint_zero": "§7Hint: Set limit count to 0 or negative to remove the limit",
+    "removed": "§aPurchase limit removed!",
+    "set_success": "§aPurchase limit set! Limit: {count}, Window: {seconds} seconds",
+    "exceeded": "§c{type} failed! You have reached the limit ({limit}) within {seconds} seconds.",
+    "partial": "§c{type} failed! You can only {type} {remaining} more in current window, but requested {requested}.",
+    "type_buy": "Purchase",
+    "type_recycle": "Recycle"
+  },
   "command": {
     "player_only": "This command can only be executed by players.",
     "no_permission": "You do not have permission to execute this command.",

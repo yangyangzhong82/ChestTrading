@@ -1,5 +1,6 @@
 #include "LockForm.h"
 #include "Config/ConfigManager.h"
+#include "PlayerLimitForm.h"
 #include "RecycleForm.h"
 #include "ShopForm.h"
 #include "Utils/MoneyFormat.h"
@@ -9,6 +10,7 @@
 #include "logger.h"
 #include "mc/platform/UUID.h"
 #include "service/ChestService.h"
+#include "service/I18nService.h"
 #include "service/TextService.h"
 
 namespace CT {
@@ -66,6 +68,10 @@ void showChestLockForm(
                     auto& region = p.getDimensionBlockSource();
                     showSetShopNameForm(p, pos, dimId, region);
                 });
+                fm.appendButton(I18nService::getInstance().get("limit.manage_btn"), [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showPlayerLimitForm(p, pos, dimId, region, true);
+                });
             } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
                 fm.appendButton(textService.getMessage("form.button_manage_recycle"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
@@ -74,6 +80,10 @@ void showChestLockForm(
                 fm.appendButton(textService.getMessage("form.button_set_shop_name"), [pos, dimId](Player& p) {
                     auto& region = p.getDimensionBlockSource();
                     showSetRecycleShopNameForm(p, pos, dimId, region);
+                });
+                fm.appendButton(I18nService::getInstance().get("limit.manage_btn"), [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showPlayerLimitForm(p, pos, dimId, region, false);
                 });
             }
 

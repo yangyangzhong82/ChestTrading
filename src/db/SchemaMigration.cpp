@@ -12,6 +12,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV2,
         migrateToV3,
         migrateToV4,
+        migrateToV5,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -152,6 +153,26 @@ bool SchemaMigration::migrateToV4(Sqlite3Wrapper& db) {
         // recycle_records: 优化带时间排序的物品查询
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_item_time ON recycle_records(dim_id, pos_x, pos_y, pos_z, "
         "item_id, timestamp DESC);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV5(Sqlite3Wrapper& db) {
+    // 添加玩家限购表
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS player_limits ("
+        "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
+        "player_uuid TEXT NOT NULL DEFAULT '', limit_count INTEGER NOT NULL, limit_seconds INTEGER NOT NULL, "
+        "is_shop INTEGER NOT NULL, "
+        "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, player_uuid, is_shop), "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);",
+
+        "CREATE INDEX IF NOT EXISTS idx_player_limits_pos ON player_limits(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_player_limits_player ON player_limits(player_uuid);"
     };
 
     for (const char* sql : sqls) {
