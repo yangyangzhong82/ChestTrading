@@ -330,7 +330,15 @@
     "no_recycle_items": "§7No items in public recycle shops.",
     "no_match": "§7No matching items found.",
     "total_items": "§eTotal {count} items §7(Page {page}/{total})",
-    "search_result": "\n§6Search: {keyword}"
+    "search_result": "\n§6Search: {keyword}",
+    "item_detail_title": "Item Details",
+    "recycle_detail_title": "Recycle Commission Details",
+    "item_name": "§eItem: §f{name}\n",
+    "item_price": "§ePrice: §6{price}\n",
+    "recycle_price": "§eRecycle Price: §6{price}\n",
+    "item_shop": "§eShop: §f{shop}\n",
+    "item_location": "§eLocation: §7{dim} [{x}, {y}, {z}]\n",
+    "item_official": "§6[Official Shop]\n"
   },
   "item_display": {
     "durability": "§aDurability: {current} / {max}",

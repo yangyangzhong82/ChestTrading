@@ -46,51 +46,96 @@ void showChestLockForm(
             }
             ));
 
-            fm.appendButton(textService.getMessage("form.button_remove_settings"), [pos, dimId](Player& p) {
-                auto& region = p.getDimensionBlockSource();
-                auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
-                p.sendMessage(result.message);
-            });
+            fm.appendButton(
+                textService.getMessage("form.button_remove_settings"),
+                "textures/ui/trash_default",
+                "path",
+                [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
+                    p.sendMessage(result.message);
+                }
+            );
 
             if (chestType == ChestType::Locked) {
-                fm.appendButton(textService.getMessage("form.button_share_chest"), [pos, dimId, ownerUuid](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showShareForm(p, pos, dimId, ownerUuid, region);
-                });
+                fm.appendButton(
+                    textService.getMessage("form.button_share_chest"),
+                    "textures/ui/FriendsIcon",
+                    "path",
+                    [pos, dimId, ownerUuid](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showShareForm(p, pos, dimId, ownerUuid, region);
+                    }
+                );
             }
 
             if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
-                fm.appendButton(textService.getMessage("form.button_manage_shop"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showShopChestManageForm(p, pos, dimId, region);
-                });
-                fm.appendButton(textService.getMessage("form.button_set_shop_name"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showSetShopNameForm(p, pos, dimId, region);
-                });
-                fm.appendButton(I18nService::getInstance().get("limit.manage_btn"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showPlayerLimitForm(p, pos, dimId, region, true);
-                });
+                fm.appendButton(
+                    textService.getMessage("form.button_manage_shop"),
+                    "textures/ui/store_home_icon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showShopChestManageForm(p, pos, dimId, region);
+                    }
+                );
+                fm.appendButton(
+                    textService.getMessage("form.button_set_shop_name"),
+                    "textures/ui/editIcon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showSetShopNameForm(p, pos, dimId, region);
+                    }
+                );
+                fm.appendButton(
+                    I18nService::getInstance().get("limit.manage_btn"),
+                    "textures/ui/permissions_member_star",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showPlayerLimitForm(p, pos, dimId, region, true);
+                    }
+                );
             } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
-                fm.appendButton(textService.getMessage("form.button_manage_recycle"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showRecycleShopManageForm(p, pos, dimId, region);
-                });
-                fm.appendButton(textService.getMessage("form.button_set_shop_name"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showSetRecycleShopNameForm(p, pos, dimId, region);
-                });
-                fm.appendButton(I18nService::getInstance().get("limit.manage_btn"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showPlayerLimitForm(p, pos, dimId, region, false);
-                });
+                fm.appendButton(
+                    textService.getMessage("form.button_manage_recycle"),
+                    "textures/ui/trade_icon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showRecycleShopManageForm(p, pos, dimId, region);
+                    }
+                );
+                fm.appendButton(
+                    textService.getMessage("form.button_set_shop_name"),
+                    "textures/ui/editIcon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showSetRecycleShopNameForm(p, pos, dimId, region);
+                    }
+                );
+                fm.appendButton(
+                    I18nService::getInstance().get("limit.manage_btn"),
+                    "textures/ui/permissions_member_star",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showPlayerLimitForm(p, pos, dimId, region, false);
+                    }
+                );
             }
 
-            fm.appendButton(textService.getMessage("form.button_chest_settings"), [pos, dimId, chestType](Player& p) {
-                auto& region = p.getDimensionBlockSource();
-                showChestSettingsForm(p, pos, dimId, region, chestType);
-            });
+            fm.appendButton(
+                textService.getMessage("form.button_chest_settings"),
+                "textures/ui/settings_glyph_color_2x",
+                "path",
+                [pos, dimId, chestType](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showChestSettingsForm(p, pos, dimId, region, chestType);
+                }
+            );
 
         } else {
             // 当前玩家不是主人
@@ -98,15 +143,25 @@ void showChestLockForm(
             fm.setContent(textService.getMessage("form.chest_locked_content"));
 
             if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
-                fm.appendButton(textService.getMessage("form.button_browse_shop"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showShopChestItemsForm(p, pos, dimId, region);
-                });
+                fm.appendButton(
+                    textService.getMessage("form.button_browse_shop"),
+                    "textures/ui/store_home_icon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showShopChestItemsForm(p, pos, dimId, region);
+                    }
+                );
             } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
-                fm.appendButton(textService.getMessage("form.button_browse_recycle"), [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showRecycleForm(p, pos, dimId, region);
-                });
+                fm.appendButton(
+                    textService.getMessage("form.button_browse_recycle"),
+                    "textures/ui/trade_icon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showRecycleForm(p, pos, dimId, region);
+                    }
+                );
             }
         }
     } else {
@@ -166,6 +221,8 @@ void showChestLockForm(
 
         fm.appendButton(
             textService.getMessage("form.button_lock_normal"),
+            "textures/ui/lock_color",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(
                     p,
@@ -180,6 +237,8 @@ void showChestLockForm(
 
         fm.appendButton(
             textService.getMessage("form.button_set_recycle"),
+            "textures/ui/trade_icon",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(
                     p,
@@ -194,6 +253,8 @@ void showChestLockForm(
 
         fm.appendButton(
             textService.getMessage("form.button_set_shop"),
+            "textures/ui/store_home_icon",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(
                     p,
@@ -208,6 +269,8 @@ void showChestLockForm(
 
         fm.appendButton(
             textService.getMessage("form.button_set_public"),
+            "textures/ui/world_glyph_color_2x",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(
                     p,
@@ -223,6 +286,8 @@ void showChestLockForm(
         // 官方商店按钮（需要权限）
         fm.appendButton(
             textService.getMessage("form.button_set_admin_shop"),
+            "textures/ui/permissions_op_crown",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(p, pos, dimId, player_uuid, ChestType::AdminShop, 0.0);
             }
@@ -230,15 +295,20 @@ void showChestLockForm(
 
         fm.appendButton(
             textService.getMessage("form.button_set_admin_recycle"),
+            "textures/ui/permissions_op_crown",
+            "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
                 createChestHandler(p, pos, dimId, player_uuid, ChestType::AdminRecycle, 0.0);
             }
         );
     }
 
-    fm.appendButton(textService.getMessage("form.button_cancel"), [player_uuid](Player& p) {
-        logger.debug("玩家 {} 取消了操作。", player_uuid);
-    });
+    fm.appendButton(
+        textService.getMessage("form.button_cancel"),
+        "textures/ui/cancel",
+        "path",
+        [player_uuid](Player& p) { logger.debug("玩家 {} 取消了操作。", player_uuid); }
+    );
 
     fm.sendTo(player);
 }

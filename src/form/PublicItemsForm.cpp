@@ -14,6 +14,10 @@ namespace CT {
 
 static const int ITEMS_PER_PAGE = 10;
 
+// 前向声明
+static void showShopItemDetailForm(Player& player, const PublicShopItemData& item);
+static void showRecycleItemDetailForm(Player& player, const PublicRecycleItemData& item);
+
 static std::string toLower(const std::string& str) {
     std::string result = str;
     std::transform(result.begin(), result.end(), result.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -110,40 +114,40 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
 
             if (!texturePath.empty()) {
                 fm.appendButton(buttonText, texturePath, "path", [item](Player& p) {
-                    auto& i18n = I18nService::getInstance();
-                    if (CT::FormUtils::teleportToShop(p, item.pos, item.dimId)) {
-                        p.sendMessage(i18n.get("public_shop.teleport_hint"));
-                    }
+                    showShopItemDetailForm(p, item);
                 });
             } else {
-                fm.appendButton(buttonText, [item](Player& p) {
-                    auto& i18n = I18nService::getInstance();
-                    if (CT::FormUtils::teleportToShop(p, item.pos, item.dimId)) {
-                        p.sendMessage(i18n.get("public_shop.teleport_hint"));
-                    }
-                });
+                fm.appendButton(buttonText, [item](Player& p) { showShopItemDetailForm(p, item); });
             }
         }
     }
 
     // 搜索按钮
-    fm.appendButton(i18n.get("public_shop.button_search"), [](Player& p) { showSearchForm(p); });
+    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
+        showSearchForm(p);
+    });
 
     // 分页按钮
     if (totalPages > 1) {
         if (currentPage > 0) {
-            fm.appendButton(i18n.get("public_shop.button_prev_page"), [currentPage, searchKeyword](Player& p) {
-                showPublicItemsForm(p, currentPage - 1, searchKeyword);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                "textures/ui/arrow_left",
+                "path",
+                [currentPage, searchKeyword](Player& p) { showPublicItemsForm(p, currentPage - 1, searchKeyword); }
+            );
         }
         if (currentPage < totalPages - 1) {
-            fm.appendButton(i18n.get("public_shop.button_next_page"), [currentPage, searchKeyword](Player& p) {
-                showPublicItemsForm(p, currentPage + 1, searchKeyword);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                "textures/ui/arrow_right",
+                "path",
+                [currentPage, searchKeyword](Player& p) { showPublicItemsForm(p, currentPage + 1, searchKeyword); }
+            );
         }
     }
 
-    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player& p) {});
     fm.sendTo(player);
 }
 
@@ -256,38 +260,42 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
 
             if (!texturePath.empty()) {
                 fm.appendButton(buttonText, texturePath, "path", [item](Player& p) {
-                    auto& i18n = I18nService::getInstance();
-                    if (CT::FormUtils::teleportToShop(p, item.pos, item.dimId)) {
-                        p.sendMessage(i18n.get("public_shop.teleport_recycle_hint"));
-                    }
+                    showRecycleItemDetailForm(p, item);
                 });
             } else {
-                fm.appendButton(buttonText, [item](Player& p) {
-                    auto& i18n = I18nService::getInstance();
-                    if (CT::FormUtils::teleportToShop(p, item.pos, item.dimId)) {
-                        p.sendMessage(i18n.get("public_shop.teleport_recycle_hint"));
-                    }
-                });
+                fm.appendButton(buttonText, [item](Player& p) { showRecycleItemDetailForm(p, item); });
             }
         }
     }
 
-    fm.appendButton(i18n.get("public_shop.button_search"), [](Player& p) { showRecycleSearchForm(p); });
+    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
+        showRecycleSearchForm(p);
+    });
 
     if (totalPages > 1) {
         if (currentPage > 0) {
-            fm.appendButton(i18n.get("public_shop.button_prev_page"), [currentPage, searchKeyword](Player& p) {
-                showPublicRecycleItemsForm(p, currentPage - 1, searchKeyword);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                "textures/ui/arrow_left",
+                "path",
+                [currentPage, searchKeyword](Player& p) {
+                    showPublicRecycleItemsForm(p, currentPage - 1, searchKeyword);
+                }
+            );
         }
         if (currentPage < totalPages - 1) {
-            fm.appendButton(i18n.get("public_shop.button_next_page"), [currentPage, searchKeyword](Player& p) {
-                showPublicRecycleItemsForm(p, currentPage + 1, searchKeyword);
-            });
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                "textures/ui/arrow_right",
+                "path",
+                [currentPage, searchKeyword](Player& p) {
+                    showPublicRecycleItemsForm(p, currentPage + 1, searchKeyword);
+                }
+            );
         }
     }
 
-    fm.appendButton(i18n.get("public_shop.button_close"), [](Player& p) {});
+    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player& p) {});
     fm.sendTo(player);
 }
 
@@ -312,6 +320,111 @@ static void showRecycleSearchForm(Player& player) {
         }
         showPublicRecycleItemsForm(p, 0, keyword);
     });
+}
+
+static void showItemDetailFormImpl(
+    Player&            player,
+    const std::string& itemNbt,
+    const std::string& ownerUuid,
+    const std::string& shopName,
+    double             price,
+    BlockPos           pos,
+    int                dimId,
+    bool               isOfficial,
+    bool               isRecycle
+) {
+    auto& i18n = I18nService::getInstance();
+
+    auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbt);
+    if (!itemPtr) return;
+
+    auto        ownerNameCache  = CT::FormUtils::getPlayerNameCache({ownerUuid});
+    std::string ownerName       = ownerNameCache[ownerUuid];
+    std::string ownerShopKey    = isRecycle ? "public_shop.owner_recycle_shop" : "public_shop.owner_shop";
+    std::string shopDisplayName = shopName.empty() ? i18n.get(
+                                                         ownerShopKey,
+                                                         {
+                                                             {"owner", ownerName}
+    }
+                                                     )
+                                                   : shopName;
+
+    ll::form::SimpleForm fm;
+    fm.setTitle(i18n.get(isRecycle ? "public_items.recycle_detail_title" : "public_items.item_detail_title"));
+
+    // 使用 getItemDisplayString 显示完整物品信息
+    std::string content  = CT::FormUtils::getItemDisplayString(*itemPtr, 0, true) + "\n\n";
+    content             += i18n.get(
+        isRecycle ? "public_items.recycle_price" : "public_items.item_price",
+        {
+            {"price", CT::MoneyFormat::format(price)}
+    }
+    );
+    content += i18n.get(
+        "public_items.item_shop",
+        {
+            {"shop", shopDisplayName}
+    }
+    );
+    content += i18n.get(
+        "public_items.item_location",
+        {
+            {"dim", CT::FormUtils::dimIdToString(dimId)},
+            {"x",   std::to_string(pos.x)              },
+            {"y",   std::to_string(pos.y)              },
+            {"z",   std::to_string(pos.z)              }
+    }
+    );
+    if (isOfficial) {
+        content += i18n.get("public_items.item_official");
+    }
+    content += "\n" + i18n.get(isRecycle ? "public_shop.preview_recycle_notice" : "public_shop.preview_notice");
+    fm.setContent(content);
+
+    std::string tpHintKey = isRecycle ? "public_shop.teleport_recycle_hint" : "public_shop.teleport_hint";
+    fm.appendButton(
+        i18n.get("public_shop.button_teleport"),
+        "textures/ui/flyingascend_pressed",
+        "path",
+        [pos, dimId, tpHintKey](Player& p) {
+            if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
+                p.sendMessage(I18nService::getInstance().get(tpHintKey));
+            }
+        }
+    );
+    fm.appendButton(i18n.get("public_shop.button_back_list"), "textures/ui/arrow_left", "path", [isRecycle](Player& p) {
+        isRecycle ? showPublicRecycleItemsForm(p) : showPublicItemsForm(p);
+    });
+    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player&) {});
+    fm.sendTo(player);
+}
+
+static void showShopItemDetailForm(Player& player, const PublicShopItemData& item) {
+    showItemDetailFormImpl(
+        player,
+        item.itemNbt,
+        item.ownerUuid,
+        item.shopName,
+        item.price,
+        item.pos,
+        item.dimId,
+        item.isOfficial,
+        false
+    );
+}
+
+static void showRecycleItemDetailForm(Player& player, const PublicRecycleItemData& item) {
+    showItemDetailFormImpl(
+        player,
+        item.itemNbt,
+        item.ownerUuid,
+        item.shopName,
+        item.price,
+        item.pos,
+        item.dimId,
+        item.isOfficial,
+        true
+    );
 }
 
 } // namespace CT

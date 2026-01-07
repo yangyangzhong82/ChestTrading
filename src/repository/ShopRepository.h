@@ -57,6 +57,31 @@ struct PurchaseRecordData {
     std::string itemNbt; // 关联的物品NBT
 };
 
+// 公开商店物品数据（包含商店信息）
+struct PublicShopItemData {
+    int         dimId;
+    BlockPos    pos;
+    std::string ownerUuid;
+    std::string shopName;
+    int         itemId;
+    std::string itemNbt;
+    double      price;
+    int         dbCount;
+    bool        isOfficial; // 是否官方商店
+};
+
+// 公开回收商店物品数据
+struct PublicRecycleItemData {
+    int         dimId;
+    BlockPos    pos;
+    std::string ownerUuid;
+    std::string shopName;
+    int         itemId;
+    std::string itemNbt;
+    double      price;
+    bool        isOfficial;
+};
+
 /**
  * @brief 商店数据访问层
  */
@@ -90,6 +115,10 @@ public:
     bool                           incrementRecycledCount(BlockPos pos, int dimId, int itemId, int amount);
     bool                           addRecycleRecord(const RecycleRecordData& record);
     std::vector<RecycleRecordData> getRecycleRecords(BlockPos pos, int dimId, int itemId, int limit = 50);
+
+    // === 公开商店物品查询 ===
+    std::vector<PublicShopItemData>    findAllPublicShopItems();
+    std::vector<PublicRecycleItemData> findAllPublicRecycleItems();
 
 private:
     ShopRepository() = default;

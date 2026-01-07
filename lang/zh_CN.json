@@ -330,7 +330,15 @@
     "no_recycle_items": "§7当前没有公开回收商店的物品。",
     "no_match": "§7没有找到匹配的物品。",
     "total_items": "§e共 {count} 个物品 §7(第 {page}/{total} 页)",
-    "search_result": "\n§6搜索: {keyword}"
+    "search_result": "\n§6搜索: {keyword}",
+    "item_detail_title": "商品详情",
+    "recycle_detail_title": "回收委托详情",
+    "item_name": "§e物品: §f{name}\n",
+    "item_price": "§e售价: §6{price}\n",
+    "recycle_price": "§e回收价: §6{price}\n",
+    "item_shop": "§e商店: §f{shop}\n",
+    "item_location": "§e位置: §7{dim} [{x}, {y}, {z}]\n",
+    "item_official": "§6[官方商店]\n"
   },
   "item_display": {
     "durability": "§a耐久: {current} / {max}",
