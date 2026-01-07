@@ -319,6 +319,19 @@
     "filter_official_only": "§6Filter: Official Shops Only",
     "filter_player_only": "§7Filter: Player Shops Only"
   },
+  "public_items": {
+    "list_title": "Public Shop Items",
+    "recycle_list_title": "Public Recycle Shop Items",
+    "search_title": "Search Items",
+    "recycle_search_title": "Search Recycle Items",
+    "search_keyword": "Item Name",
+    "search_hint": "Enter item name keyword",
+    "no_items": "§7No items in public shops.",
+    "no_recycle_items": "§7No items in public recycle shops.",
+    "no_match": "§7No matching items found.",
+    "total_items": "§eTotal {count} items §7(Page {page}/{total})",
+    "search_result": "\n§6Search: {keyword}"
+  },
   "item_display": {
     "durability": "§aDurability: {current} / {max}",
     "aux_value": "§eAux Value: {value}",
@@ -381,6 +394,8 @@
     "packchest_description": "Pack chest as item",
     "packchest_exit": "§aExited pack chest mode.",
     "packchest_enter": "§aEntered pack chest mode, click a chest to pack it. Enter command again to exit.",
-    "test_description": "Run automated tests (developer tool)"
+    "test_description": "Run automated tests (developer tool)",
+    "items_description": "View public shop items list",
+    "recycleitems_description": "View public recycle shop items list"
   }
 }

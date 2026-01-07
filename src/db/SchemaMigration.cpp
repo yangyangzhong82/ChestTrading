@@ -124,7 +124,7 @@ bool SchemaMigration::migrateToV2(Sqlite3Wrapper& db) {
         "pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_shop_items_item_id ON recycle_shop_items(item_id);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_position ON recycle_records(dim_id, pos_x, pos_y, pos_z);",
-        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, Duo_x, pos_y, pos_z, item_id);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_timestamp ON recycle_records(timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_recycler ON recycle_records(recycler_uuid);"
     };

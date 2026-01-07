@@ -304,7 +304,8 @@ void Sqlite3Wrapper::setCachedResult(const std::string& key, const std::vector<s
 bool Sqlite3Wrapper::shouldSkipCache(const std::string& sql) {
     std::string lowerSql = sql;
     std::transform(lowerSql.begin(), lowerSql.end(), lowerSql.begin(), [](unsigned char c) { return std::tolower(c); });
-    return lowerSql.find("chests") != std::string::npos || lowerSql.find("shared_chests") != std::string::npos;
+    return lowerSql.find("chests") != std::string::npos || lowerSql.find("shared_chests") != std::string::npos
+        || lowerSql.find("recycle_shop_items") != std::string::npos || lowerSql.find("shop_items") != std::string::npos;
 }
 
 // === 异步操作实现 ===

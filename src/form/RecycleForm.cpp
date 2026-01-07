@@ -809,85 +809,54 @@ void showCommissionDetailsForm(
 }
 
 void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    // 异步查询回收委托列表
-    auto& db = Sqlite3Wrapper::getInstance();
+    ll::form::SimpleForm fm;
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("form.recycle_view_title"));
 
-    // 获取玩家UUID用于后续回调
-    std::string playerUuid = player.getUuid().asString();
+    // 使用同步查询，与 showRecycleItemListForm 保持一致
+    auto commissions = RecycleService::getInstance().getCommissions(pos, dimId);
 
-    logger
-        .debug("showViewRecycleCommissionsForm: 开始异步查询回收委托 pos({},{},{}) dim {}", pos.x, pos.y, pos.z, dimId);
+    logger.debug("showViewRecycleCommissionsForm: 查询完成，委托数: {}", commissions.size());
 
-    // 异步查询数据库
-    auto future = db.queryAsync(
-        "SELECT d.item_nbt, r.price, r.max_recycle_count, r.current_recycled_count "
-        "FROM recycle_shop_items r JOIN item_definitions d ON r.item_id = d.item_id "
-        "WHERE r.dim_id = ? AND r.pos_x = ? AND r.pos_y = ? AND r.pos_z = ?",
-        dimId,
-        pos.x,
-        pos.y,
-        pos.z
-    );
+    if (commissions.empty()) {
+        fm.setContent(txt.getMessage("form.recycle_view_empty"));
+    } else {
+        fm.setContent(txt.getMessage("form.recycle_view_content"));
+        for (const auto& commission : commissions) {
+            auto itemNbt = CT::NbtUtils::parseSNBT(commission.itemNbt);
+            if (!itemNbt) continue;
+            itemNbt->at("Count") = ByteTag(1);
+            auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+            if (!itemPtr) continue;
+            ItemStack item = *itemPtr;
 
-    // 使用线程池等待查询完成，然后回调到主线程显示表单
-    db.thenOnMainThread(std::move(future), [playerUuid, pos, dimId](std::vector<std::vector<std::string>> commissions) {
-        logger.debug("showViewRecycleCommissionsForm: 异步查询完成，委托数: {}", commissions.size());
-
-        // 重新获取玩家对象
-        auto* player = ll::service::getLevel()->getPlayer(mce::UUID::fromString(playerUuid));
-        if (!player) {
-            logger.warn("showViewRecycleCommissionsForm: 玩家 {} 已离线，无法显示表单", playerUuid);
-            return;
-        }
-
-        ll::form::SimpleForm fm;
-        auto&                txt = TextService::getInstance();
-        fm.setTitle(txt.getMessage("form.recycle_view_title"));
-
-        if (commissions.empty()) {
-            fm.setContent(txt.getMessage("form.recycle_view_empty"));
-        } else {
-            fm.setContent(txt.getMessage("form.recycle_view_content"));
-            for (const auto& row : commissions) {
-                std::string itemNbtStr           = row[0];
-                double      price                = std::stod(row[1]);
-                int         maxRecycleCount      = std::stoi(row[2]);
-                int         currentRecycledCount = std::stoi(row[3]);
-
-                auto itemNbt = CT::NbtUtils::parseSNBT(itemNbtStr);
-                if (!itemNbt) continue;
-                itemNbt->at("Count") = ByteTag(1);
-                auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
-                if (!itemPtr) continue;
-                ItemStack item = *itemPtr;
-
-                std::string progress = txt.getMessage("form.unlimited_label");
-                if (maxRecycleCount > 0) {
-                    progress =
-                        "§a[" + std::to_string(currentRecycledCount) + " / " + std::to_string(maxRecycleCount) + "]§r";
-                }
-
-                std::string buttonText = std::string(item.getName()) + " §e" + progress
-                                       + txt.getMessage(
-                                           "form.price_tag",
-                                           {
-                                               {"price", CT::MoneyFormat::format(price)}
-                }
-                                       );
-                fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
-                });
+            std::string progress = txt.getMessage("form.unlimited_label");
+            if (commission.maxRecycleCount > 0) {
+                progress = "§a[" + std::to_string(commission.currentRecycledCount) + " / "
+                         + std::to_string(commission.maxRecycleCount) + "]§r";
             }
+
+            std::string buttonText = std::string(item.getName()) + " §e" + progress
+                                   + txt.getMessage(
+                                       "form.price_tag",
+                                       {
+                                           {"price", CT::MoneyFormat::format(commission.price)}
+            }
+                                   );
+            std::string itemNbtStr = commission.itemNbt;
+            fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
+                auto& region = p.getDimensionBlockSource();
+                showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
+            });
         }
+    }
 
-        fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
-            auto& region = p.getDimensionBlockSource();
-            showRecycleShopManageForm(p, pos, dimId, region);
-        });
-
-        fm.sendTo(*player);
+    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
+        auto& region = p.getDimensionBlockSource();
+        showRecycleShopManageForm(p, pos, dimId, region);
     });
+
+    fm.sendTo(player);
 }
 
 

@@ -18,9 +18,8 @@ bool ItemTextureManager::loadTextures(const std::string& filePath) {
         const auto&    data = j.contains("texture_data") ? j["texture_data"] : j;
         if (data.is_object()) {
             for (auto const& [itemName, itemData] : data.items()) {
-                std::string key = standardizeItemName(itemName);
                 parseTextureEntry(
-                    key,
+                    itemName,
                     itemData.is_object() && itemData.contains("textures") ? itemData["textures"] : itemData
                 );
             }
@@ -208,6 +207,11 @@ std::string ItemTextureManager::getTexture(const std::string& rawItemName, short
     std::string name = standardizeItemName(rawItemName);
     auto        it   = mItemTextures.find(name);
 
+    // 优先查找独立的 spawn_egg_xxx 条目（新路径格式）
+    if (name.rfind("spawn_egg_", 0) == 0 && it != mItemTextures.end() && !it->second.empty()) {
+        return it->second[0];
+    }
+
     if (it != mItemTextures.end() && !it->second.empty()) {
         size_t idx = 0;
         if (name.find("potion") != std::string::npos || name == "tipped_arrow" || (name == "arrow" && aux > 0)) {
@@ -276,73 +280,6 @@ std::string ItemTextureManager::getTexture(const std::string& rawItemName, short
                                               16, 18, 19, 20, 25, 26, 27, 28, 29, 30};
                     if (idx < (int)(sizeof(off) / sizeof(off[0]))) idx = off[idx];
                 }
-            }
-        } else if (name == "spawn_egg") {
-            // 处理 ID 383 的旧版刷怪蛋 (通过 aux 映射)
-            static const std::unordered_map<short, int> sMap = {
-                {10, 0 }, // Chicken
-                {11, 1 }, // Cow
-                {12, 2 }, // Pig
-                {13, 3 }, // Sheep
-                {14, 4 }, // Wolf
-                {15, 5 }, // Mooshroom
-                {16, 6 }, // Creeper
-                {17, 7 }, // Enderman
-                {18, 8 }, // Silverfish
-                {19, 9 }, // Skeleton
-                {20, 10}, // Slime
-                {21, 11}, // Spider
-                {22, 12}, // Zombie
-                {23, 13}, // Pigzombie
-                {24, 14}, // Villager
-                {25, 15}, // Squid
-                {26, 16}, // Ocelot
-                {27, 17}, // Witch
-                {28, 18}, // Bat
-                {29, 19}, // Ghast
-                {30, 20}, // Magma Cube
-                {31, 21}, // Blaze
-                {32, 22}, // Cave Spider
-                {33, 23}, // Horse
-                {34, 24}, // Rabbit
-                {35, 25}, // Endermite
-                {36, 26}, // Guardian
-                {37, 27}, // Stray
-                {38, 28}, // Husk
-                {39, 29}, // Wither Skeleton (Wither in json is 29)
-                {40, 30}, // Donkey
-                {41, 31}, // Mule
-                {42, 32}, // Skeleton Horse
-                {43, 33}, // Zombie Horse
-                {44, 34}, // Shulker
-                {45, 35}, // NPC
-                {46, 36}, // Elder Guardian
-                {47, 37}, // Polar Bear
-                {48, 38}, // Llama
-                {49, 39}, // Vindicator
-                {50, 40}, // Evoker
-                {51, 41}, // Vex
-                {52, 42}, // Zombie Villager
-                {53, 43}, // Parrot
-                {54, 44}, // Tropical Fish (Clownfish)
-                {55, 45}, // Cod
-                {56, 46}, // Pufferfish
-                {57, 47}, // Salmon
-                {58, 48}, // Drowned
-                {59, 49}, // Dolphin
-                {60, 50}, // Turtle
-                {61, 51}, // Phantom
-                {62, 52}, // Agent
-                {63, 53}, // Cat
-                {64, 54}, // Panda
-                {65, 55}, // Fox
-                {66, 56}, // Pillager
-                {67, 57}  // Ravager
-            };
-            if (auto sit = sMap.find(aux); sit != sMap.end()) {
-                idx = sit->second;
-            } else {
-                idx = 0;
             }
         } else idx = static_cast<size_t>(aux);
         return it->second[idx < it->second.size() ? idx : 0];

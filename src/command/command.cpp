@@ -2,6 +2,7 @@
 #include "Bedrock-Authority/permission/PermissionManager.h"
 #include "Config/ConfigManager.h"
 #include "form/AdminForm.h"
+#include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
@@ -120,6 +121,37 @@ void registerCommand() {
         }
     );
 
+    // 注册 /items 命令 - 打开公开商店物品列表
+    auto& itemsCmd =
+        registrar.getOrCreateCommand("items", i18n.get("command.items_description"), CommandPermissionLevel::Any);
+    itemsCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showPublicItemsForm(*player);
+        }
+    );
+
+    // 注册 /recycleitems 命令 - 打开公开回收商店物品列表
+    auto& recycleItemsCmd = registrar.getOrCreateCommand(
+        "recycleitems",
+        i18n.get("command.recycleitems_description"),
+        CommandPermissionLevel::Any
+    );
+    recycleItemsCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showPublicRecycleItemsForm(*player);
+        }
+    );
+
     // 注册 /packchest 命令 - 打包箱子模式
     auto& packCmd = registrar.getOrCreateCommand(
         "packchest",
@@ -161,7 +193,8 @@ void registerCommand() {
             }
 
             // 权限检查：只允许管理员使用测试命令
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -191,13 +224,14 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
 
-            auto& testHelper = Test::TestHelper::getInstance();
-            std::string result = testHelper.runQuickTests(*player);
+            auto&       testHelper = Test::TestHelper::getInstance();
+            std::string result     = testHelper.runQuickTests(*player);
             player->sendMessage(result);
             output.success("快速测试完成");
         }
@@ -211,12 +245,13 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
 
-            auto& testHelper = Test::TestHelper::getInstance();
+            auto&       testHelper = Test::TestHelper::getInstance();
             std::string result;
             result += testHelper.testShopPurchase(*player, true);
             result += "\n" + testHelper.testShopInventorySync(*player);
@@ -239,12 +274,13 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
 
-            auto& testHelper = Test::TestHelper::getInstance();
+            auto&       testHelper = Test::TestHelper::getInstance();
             std::string result;
             result += testHelper.testRecycle(*player, true);
             result += "\n" + testHelper.testRecycleFilters(*player);
@@ -264,13 +300,14 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
 
-            auto& testHelper = Test::TestHelper::getInstance();
-            std::string result = testHelper.runAllTests(*player);
+            auto&       testHelper = Test::TestHelper::getInstance();
+            std::string result     = testHelper.runAllTests(*player);
 
             player->sendMessage(result);
             output.success("所有测试完成");
@@ -285,7 +322,8 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -307,7 +345,8 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -326,7 +365,8 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -345,7 +385,8 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -356,43 +397,49 @@ void registerCommand() {
         }
     );
 
-    testCmd.overload<TestSubcommand>().text("boundary").execute(
-        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
-            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
-            if (!player) {
-                output.error(i18n.get("command.player_only"));
-                return;
+    testCmd.overload<TestSubcommand>()
+        .text("boundary")
+        .execute(
+            [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+                auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+                if (!player) {
+                    output.error(i18n.get("command.player_only"));
+                    return;
+                }
+
+                if (!BA::permission::PermissionManager::getInstance()
+                         .hasPermission(player->getUuid().asString(), "chest.admin")) {
+                    output.error(i18n.get("command.no_permission"));
+                    return;
+                }
+
+                auto& testHelper = Test::TestHelper::getInstance();
+                player->sendMessage(testHelper.testShopBoundaryConditions(*player));
+                output.success("边界条件测试完成");
             }
+        );
 
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
-                output.error(i18n.get("command.no_permission"));
-                return;
+    testCmd.overload<TestSubcommand>()
+        .text("rollback")
+        .execute(
+            [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
+                auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+                if (!player) {
+                    output.error(i18n.get("command.player_only"));
+                    return;
+                }
+
+                if (!BA::permission::PermissionManager::getInstance()
+                         .hasPermission(player->getUuid().asString(), "chest.admin")) {
+                    output.error(i18n.get("command.no_permission"));
+                    return;
+                }
+
+                auto& testHelper = Test::TestHelper::getInstance();
+                player->sendMessage(testHelper.testRecycleRollback(*player));
+                output.success("回滚测试完成");
             }
-
-            auto& testHelper = Test::TestHelper::getInstance();
-            player->sendMessage(testHelper.testShopBoundaryConditions(*player));
-            output.success("边界条件测试完成");
-        }
-    );
-
-    testCmd.overload<TestSubcommand>().text("rollback").execute(
-        [&i18n](CommandOrigin const& origin, CommandOutput& output, TestSubcommand const&, class Command const&) {
-            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
-            if (!player) {
-                output.error(i18n.get("command.player_only"));
-                return;
-            }
-
-            if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
-                output.error(i18n.get("command.no_permission"));
-                return;
-            }
-
-            auto& testHelper = Test::TestHelper::getInstance();
-            player->sendMessage(testHelper.testRecycleRollback(*player));
-            output.success("回滚测试完成");
-        }
-    );
+        );
 }
 
 } // namespace CT

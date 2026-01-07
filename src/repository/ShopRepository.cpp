@@ -316,4 +316,58 @@ std::vector<RecycleRecordData> ShopRepository::getRecycleRecords(BlockPos pos, i
     });
 }
 
+std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, c.type, "
+         "s.item_id, s.price, s.db_count, d.item_nbt "
+         "FROM chests c "
+         "JOIN shop_items s ON c.dim_id = s.dim_id AND c.pos_x = s.pos_x AND c.pos_y = s.pos_y AND c.pos_z = s.pos_z "
+         "JOIN item_definitions d ON s.item_id = d.item_id "
+         "WHERE c.is_public = 1 AND c.type IN (2, 5) "
+         "ORDER BY c.shop_name, c.player_uuid;"
+    );
+
+    return parseRows<PublicShopItemData>(results, 11, [](DbRowParser r) {
+        int chestType = r.getInt(6);
+        return PublicShopItemData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            r.getString(4),
+            r.getString(5),
+            r.getInt(7),
+            r.getString(10),
+            r.getDouble(8),
+            r.getInt(9),
+            chestType == 5  // AdminShop = 5
+        };
+    });
+}
+
+std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query("SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, c.type, "
+                             "r.item_id, r.price, d.item_nbt "
+                             "FROM chests c "
+                             "JOIN recycle_shop_items r ON c.dim_id = r.dim_id AND c.pos_x = r.pos_x AND c.pos_y = "
+                             "r.pos_y AND c.pos_z = r.pos_z "
+                             "JOIN item_definitions d ON r.item_id = d.item_id "
+                             "WHERE c.is_public = 1 AND c.type IN (3, 6) "
+                             "ORDER BY c.shop_name, c.player_uuid;");
+
+    return parseRows<PublicRecycleItemData>(results, 10, [](DbRowParser r) {
+        int chestType = r.getInt(6);
+        return PublicRecycleItemData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            r.getString(4),
+            r.getString(5),
+            r.getInt(7),
+            r.getString(9),
+            r.getDouble(8),
+            chestType == 6  // AdminRecycle = 6
+        };
+    });
+}
+
 } // namespace CT
