@@ -161,6 +161,35 @@ std::vector<PurchaseRecordData> ShopRepository::getPurchaseRecords(BlockPos pos,
     });
 }
 
+std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const std::string& playerUuid, int limit) {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT p.id, p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id, p.buyer_uuid, "
+         "p.purchase_count, p.total_price, p.timestamp, d.item_nbt "
+         "FROM purchase_records p "
+         "JOIN item_definitions d ON p.item_id = d.item_id "
+         "WHERE p.buyer_uuid = ? "
+         "GROUP BY p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id "
+         "ORDER BY MAX(p.timestamp) DESC LIMIT ?;",
+        playerUuid,
+        limit
+    );
+
+    return parseRows<PurchaseRecordData>(results, 11, [](DbRowParser r) {
+        return PurchaseRecordData{
+            r.getInt(0),
+            r.getInt(1),
+            BlockPos{r.getInt(2), r.getInt(3), r.getInt(4)},
+            r.getInt(5),
+            r.getString(6),
+            r.getInt(7),
+            r.getDouble(8),
+            r.getString(9),
+            r.getString(10)
+        };
+    });
+}
+
 std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, int dimId) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(

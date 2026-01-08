@@ -51,7 +51,9 @@
     "chest_empty": "The chest is empty.\n",
     "no_records": "§7No purchase records for this shop.",
     "records_title": "§aRecent purchase records:\n",
-    "unknown_item": "Unknown Item"
+    "unknown_item": "Unknown Item",
+    "no_purchase_history": "§7You don't have any purchase records yet.",
+    "purchase_history_hint": "§7Click an item to teleport to the corresponding shop (teleport fee may apply)."
   },
   "recycle": {
     "success": "§aSuccessfully recycled {item} x{count}, earned §6{price}§a coins.",
@@ -161,6 +163,7 @@
     "shop_buy_title": "Buy Item",
     "shop_records_title": "Purchase Records",
     "shop_set_name_title": "Set Shop Name",
+    "purchase_history_title": "My Purchase History",
     "button_remove_settings": "Remove Settings",
     "button_share_chest": "Share Chest",
     "button_manage_shop": "Manage Shop Items",
@@ -188,6 +191,7 @@
     "button_add_online": "Add Online Player",
     "button_add_offline": "Add Offline Player",
     "button_remove_share": "Remove Shared Player",
+    "button_purchase_history": "Last Purchase Record",
     "label_setting_commission": "Setting recycle commission for {item}",
     "label_available_count": "Available count: {count}",
     "label_unit_price": "Recycle Price: {price}",
@@ -251,6 +255,7 @@
     "select_remove_player": "Select shared players to remove:",
     "remaining_stock": "Remaining Stock: §b{stock}§r",
     "purchase_record_format": "§f{timestamp} - {player} bought {item} x{count} for {price} coins\n",
+    "history_item_button": "{item}\n§7Purchased: {stock} | Total Cost: {price}",
     "label_page_select": "--- Page Selection ---",
     "label_player_select": "--- Player Selection (Submit form after selecting page) ---",
     "label_select_online": "Select online players to share with:",

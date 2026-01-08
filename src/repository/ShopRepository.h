@@ -106,6 +106,7 @@ public:
     // === 购买记录 ===
     bool                            addPurchaseRecord(const PurchaseRecordData& record);
     std::vector<PurchaseRecordData> getPurchaseRecords(BlockPos pos, int dimId, int limit = 50);
+    std::vector<PurchaseRecordData> getPlayerPurchaseHistory(const std::string& playerUuid, int limit = 50);
 
     // === 回收商店 ===
     std::vector<RecycleItemData>   findAllRecycleItems(BlockPos pos, int dimId);

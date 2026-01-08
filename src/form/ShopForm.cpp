@@ -1,4 +1,5 @@
 #include "ShopForm.h"
+#include "Config/ConfigManager.h"
 #include "FormUtils.h"
 #include "LockForm.h"
 #include "Utils/MoneyFormat.h"
@@ -13,6 +14,7 @@
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
 #include "service/ShopService.h"
+#include "service/TeleportService.h"
 #include "service/TextService.h"
 
 
@@ -77,6 +79,10 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         }
     }
 
+    fm.appendButton(txt.getMessage("form.button_purchase_history"), [pos, dimId](Player& p) {
+        showPlayerPurchaseHistoryForm(p);
+    });
+
     fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
@@ -90,6 +96,96 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
             region
         );
     });
+    fm.sendTo(player);
+}
+
+void showPlayerPurchaseHistoryForm(Player& player) {
+    ll::form::SimpleForm fm;
+    auto&                txt        = TextService::getInstance();
+    std::string          playerUuid = player.getUuid().asString();
+
+    fm.setTitle(txt.getMessage("form.purchase_history_title"));
+
+    auto records = ShopRepository::getInstance().getPlayerPurchaseHistory(playerUuid, 20);
+
+    if (records.empty()) {
+        fm.setContent(txt.getMessage("shop.no_purchase_history"));
+    } else {
+        fm.setContent(txt.getMessage("shop.purchase_history_hint"));
+        for (const auto& record : records) {
+            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(record.itemNbt);
+            if (!itemPtr) continue;
+
+            std::string itemName    = itemPtr->getName();
+            std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
+            std::string buttonText  = txt.getMessage(
+                "form.history_item_button",
+                {
+                    {"item",  itemName                                  },
+                    {"stock", std::to_string(record.purchaseCount)      },
+                    {"price", CT::MoneyFormat::format(record.totalPrice)}
+            }
+            );
+
+            BlockPos recordPos  = record.pos;
+            int      recordDim  = record.dimId;
+            int      itemId     = record.itemId;
+            auto     itemNbtStr = record.itemNbt;
+
+            auto callback = [recordPos, recordDim, itemId, itemNbtStr](Player& p) {
+                auto& txt    = TextService::getInstance();
+                auto& config = ConfigManager::getInstance().get();
+
+                // 检查传送冷却
+                std::string uuid = p.getUuid().asString();
+                if (!TeleportService::getInstance().canTeleport(uuid)) {
+                    int remaining = TeleportService::getInstance().getRemainingCooldown(uuid);
+                    p.sendMessage(txt.getMessage(
+                        "teleport.cooldown",
+                        {
+                            {"seconds", std::to_string(remaining)}
+                    }
+                    ));
+                    return;
+                }
+
+                // 检查金钱
+                double cost = config.teleportSettings.teleportCost;
+                if (cost > 0 && Economy::getMoney(p) < cost) {
+                    p.sendMessage(txt.getMessage(
+                        "teleport.insufficient_money",
+                        {
+                            {"cost", CT::MoneyFormat::format(cost)}
+                    }
+                    ));
+                    return;
+                }
+
+                // 扣钱并传送
+                if (cost > 0) Economy::reduceMoney(p, cost);
+                TeleportService::getInstance().recordTeleport(uuid);
+
+                p.teleport(Vec3(recordPos.x + 0.5f, recordPos.y + 1.0f, recordPos.z + 0.5f), recordDim);
+                p.sendMessage(txt.getMessage(
+                    "teleport.success",
+                    {
+                        {"cost", CT::MoneyFormat::format(cost)}
+                }
+                ));
+            };
+
+            if (!texturePath.empty()) {
+                fm.appendButton(buttonText, texturePath, "path", callback);
+            } else {
+                fm.appendButton(buttonText, callback);
+            }
+        }
+    }
+
+    fm.appendButton(txt.getMessage("form.button_back"), [](Player& p) {
+        // 返回时不做任何操作，关闭表单即可
+    });
+
     fm.sendTo(player);
 }
 

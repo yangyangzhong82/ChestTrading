@@ -51,7 +51,9 @@
     "chest_empty": "箱子是空的。\n",
     "no_records": "§7该商店暂无购买记录。",
     "records_title": "§a最近的购买记录:\n",
-    "unknown_item": "未知物品"
+    "unknown_item": "未知物品",
+    "no_purchase_history": "§7你还没有任何购买记录。",
+    "purchase_history_hint": "§7点击商品可直接传送到对应的商店（可能会收取传送费）。"
   },
   "recycle": {
     "success": "§a成功回收 {item} x{count}，获得 §6{price}§a 金币。",
@@ -161,6 +163,7 @@
     "shop_buy_title": "购买商品",
     "shop_records_title": "购买记录",
     "shop_set_name_title": "设置商店名称",
+    "purchase_history_title": "我的购买记录",
     "button_remove_settings": "移除设置",
     "button_share_chest": "分享箱子",
     "button_manage_shop": "管理商店物品",
@@ -188,6 +191,7 @@
     "button_add_online": "添加在线玩家",
     "button_add_offline": "添加离线玩家",
     "button_remove_share": "移除分享玩家",
+    "button_purchase_history": "上次购买记录",
     "label_setting_commission": "正在为物品 {item} 设置回收委托",
     "label_available_count": "你拥有的数量: {count}",
     "label_unit_price": "回收单价: {price}",
@@ -251,6 +255,7 @@
     "select_remove_player": "选择要移除的分享玩家：",
     "remaining_stock": "剩余库存: §b{stock}§r",
     "purchase_record_format": "§f{timestamp} - {player} 购买了 {item} x{count}，花费 {price} 金币\n",
+    "history_item_button": "{item}\n§7累计购买: {stock} | 总计花费: {price}",
     "label_page_select": "--- 分页选择 ---",
     "label_player_select": "--- 玩家选择 (请在选择页码后提交表单) ---",
     "label_select_online": "选择要分享的在线玩家：",
