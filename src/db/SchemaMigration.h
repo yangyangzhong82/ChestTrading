@@ -18,4 +18,6 @@ private:
     static bool migrateToV3(Sqlite3Wrapper& db);
     static bool migrateToV4(Sqlite3Wrapper& db);
     static bool migrateToV5(Sqlite3Wrapper& db);
+    static bool migrateToV6(Sqlite3Wrapper& db);
+    static bool migrateToV7(Sqlite3Wrapper& db);
 };

@@ -1,4 +1,5 @@
 #include "RecycleForm.h"
+#include "DynamicPricingForm.h"
 #include "FormUtils.h"
 #include "LLMoney.h"
 #include "LockForm.h"
@@ -24,6 +25,7 @@
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
+#include "service/DynamicPricingService.h"
 #include "service/RecycleService.h"
 #include "service/TextService.h"
 
@@ -797,6 +799,18 @@ void showCommissionDetailsForm(
                 auto& region = p.getDimensionBlockSource();
                 showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
             });
+
+            // 官方回收商店显示动态价格设置按钮
+            auto& region    = player->getDimensionBlockSource();
+            auto  chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            if (chestInfo && chestInfo->type == ChestType::AdminRecycle) {
+                int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
+                if (itemId > 0) {
+                    fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [pos, dimId, itemId](Player& p) {
+                        showDynamicPricingForm(p, pos, dimId, itemId, false);
+                    });
+                }
+            }
 
             fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
                 auto& region = p.getDimensionBlockSource();

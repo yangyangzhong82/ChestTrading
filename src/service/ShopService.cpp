@@ -1,6 +1,7 @@
 #include "ShopService.h"
 #include "ChestService.h"
 #include "Config/ConfigManager.h"
+#include "DynamicPricingService.h"
 #include "FloatingText/FloatingText.h"
 #include "PlayerLimitService.h"
 #include "TextService.h"
@@ -185,7 +186,34 @@ PurchaseResult ShopService::purchaseItem(
         return {false, txt.getMessage("shop.item_not_exist")};
     }
 
-    double totalPrice = quantity * itemOpt->price;
+    // 获取箱子信息，判断是否为官方商店
+    auto chestInfo   = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
+    bool isAdminShop = chestInfo && chestInfo->type == ChestType::AdminShop;
+
+    // 官方商店检查动态价格
+    double unitPrice = itemOpt->price;
+    if (isAdminShop) {
+        auto dpInfo = DynamicPricingService::getInstance().getPriceInfo(mainPos, dimId, itemId, true);
+        if (dpInfo) {
+            // 检查是否可以交易
+            if (!dpInfo->canTrade) {
+                return {false, txt.getMessage("dynamic_pricing.sold_out")};
+            }
+            if (dpInfo->remainingQuantity != -1 && quantity > dpInfo->remainingQuantity) {
+                return {
+                    false,
+                    txt.getMessage(
+                        "dynamic_pricing.exceed_limit",
+                        {{"remaining", std::to_string(dpInfo->remainingQuantity)}}
+                    )
+                };
+            }
+            // 使用动态价格
+            unitPrice = dpInfo->currentPrice;
+        }
+    }
+
+    double totalPrice = quantity * unitPrice;
 
     // 检查金钱
     if (!Economy::hasMoney(buyer, totalPrice)) {
@@ -202,10 +230,6 @@ PurchaseResult ShopService::purchaseItem(
     if (!limitCheck.allowed) {
         return {false, limitCheck.message};
     }
-
-    // 获取箱子信息，判断是否为官方商店
-    auto chestInfo   = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
-    bool isAdminShop = chestInfo && chestInfo->type == ChestType::AdminShop;
 
     // 获取箱子实体
     auto* chest = getChestActor(region, mainPos);
@@ -291,6 +315,11 @@ PurchaseResult ShopService::purchaseItem(
 
     // 事务成功提交，取消回滚操作
     rollbackGuard.dismiss();
+
+    // 官方商店记录动态价格交易量
+    if (isAdminShop) {
+        DynamicPricingService::getInstance().recordTrade(mainPos, dimId, itemId, true, quantity);
+    }
 
     // 官方商店不给店主加钱
     if (!isAdminShop && chestInfo && !chestInfo->ownerUuid.empty()) {

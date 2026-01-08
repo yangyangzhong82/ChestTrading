@@ -1,6 +1,7 @@
 #include "RecycleService.h"
 #include "ChestService.h"
 #include "Config/ConfigManager.h"
+#include "DynamicPricingService.h"
 #include "FloatingText/FloatingText.h"
 #include "PlayerLimitService.h"
 #include "TextService.h"
@@ -139,7 +140,32 @@ RecycleResult RecycleService::executeFullRecycle(
     std::string ownerUuid      = chestInfo->ownerUuid;
     bool        isAdminRecycle = chestInfo->type == ChestType::AdminRecycle;
 
-    double totalPrice = unitPrice * quantity;
+    // 官方回收商店检查动态价格
+    double actualUnitPrice = unitPrice;
+    if (isAdminRecycle) {
+        auto dpInfo = DynamicPricingService::getInstance().getPriceInfo(pos, dimId, itemId, false);
+        if (dpInfo) {
+            // 检查是否可以交易
+            if (!dpInfo->canTrade) {
+                return {false, txt.getMessage("dynamic_pricing.recycle_stopped"), 0, 0.0};
+            }
+            if (dpInfo->remainingQuantity != -1 && quantity > dpInfo->remainingQuantity) {
+                return {
+                    false,
+                    txt.getMessage(
+                        "dynamic_pricing.recycle_exceed_limit",
+                        {{"remaining", std::to_string(dpInfo->remainingQuantity)}}
+                    ),
+                    0,
+                    0.0
+                };
+            }
+            // 使用动态价格
+            actualUnitPrice = dpInfo->currentPrice;
+        }
+    }
+
+    double totalPrice = actualUnitPrice * quantity;
 
     // 2. 官方回收商店不检查店主余额，普通回收商店需要检查
     if (!isAdminRecycle) {
@@ -373,6 +399,11 @@ RecycleResult RecycleService::executeFullRecycle(
             itemId,
             quantity
         );
+    }
+
+    // 官方回收商店记录动态价格交易量
+    if (isAdminRecycle) {
+        DynamicPricingService::getInstance().recordTrade(pos, dimId, itemId, false, quantity);
     }
 
     recycler.refreshInventory();

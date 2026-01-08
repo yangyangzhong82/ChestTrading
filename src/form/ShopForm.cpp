@@ -1,5 +1,6 @@
 #include "ShopForm.h"
 #include "Config/ConfigManager.h"
+#include "DynamicPricingForm.h"
 #include "FormUtils.h"
 #include "LockForm.h"
 #include "Utils/MoneyFormat.h"
@@ -13,6 +14,7 @@
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
+#include "service/DynamicPricingService.h"
 #include "service/ShopService.h"
 #include "service/TeleportService.h"
 #include "service/TextService.h"
@@ -308,6 +310,14 @@ void showShopItemManageForm(
         auto& region = p.getDimensionBlockSource();
         showShopItemPriceForm(p, item, pos, dimId, region);
     });
+
+    // 官方商店显示动态价格设置按钮
+    auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+    if (chestInfo && chestInfo->type == ChestType::AdminShop) {
+        fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [pos, dimId, itemId](Player& p) {
+            showDynamicPricingForm(p, pos, dimId, itemId, true);
+        });
+    }
 
     fm.appendButton(txt.getMessage("form.button_remove_item"), [pos, dimId, itemId](Player& p) {
         auto& region = p.getDimensionBlockSource();

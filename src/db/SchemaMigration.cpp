@@ -13,6 +13,8 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV3,
         migrateToV4,
         migrateToV5,
+        migrateToV6,
+        migrateToV7,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -179,4 +181,32 @@ bool SchemaMigration::migrateToV5(Sqlite3Wrapper& db) {
         if (!db.execute(sql)) return false;
     }
     return true;
+}
+
+bool SchemaMigration::migrateToV6(Sqlite3Wrapper& db) {
+    // 动态价格表：支持官方商店/回收的动态定价
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS dynamic_pricing ("
+        "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
+        "item_id INTEGER NOT NULL, is_shop INTEGER NOT NULL, "
+        "price_tiers TEXT NOT NULL, stop_threshold INTEGER NOT NULL DEFAULT -1, "
+        "current_count INTEGER NOT NULL DEFAULT 0, reset_interval_hours INTEGER NOT NULL DEFAULT 24, "
+        "last_reset_time INTEGER NOT NULL, "
+        "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, item_id, is_shop), "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE, "
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);",
+
+        "CREATE INDEX IF NOT EXISTS idx_dynamic_pricing_pos ON dynamic_pricing(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_dynamic_pricing_reset ON dynamic_pricing(last_reset_time);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV7(Sqlite3Wrapper& db) {
+    // 添加 enabled 字段到 dynamic_pricing 表
+    return db.execute("ALTER TABLE dynamic_pricing ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;");
 }
