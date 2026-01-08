@@ -134,9 +134,11 @@ void showDynamicPricingForm(Player& player, BlockPos pos, int dimId, int itemId,
                     // 阶梯1（基础价格）
                     std::string tier1Str   = std::get<std::string>(result->at("tier1_price"));
                     double      tier1Price = tier1Str.empty() ? 100.0 : std::stod(tier1Str);
-                    if (tier1Price > 0) {
-                        tiers.push_back({0, tier1Price});
+                    if (tier1Price <= 0) {
+                        p.sendMessage(i18n.get("input.invalid_number"));
+                        return;
                     }
+                    tiers.push_back({0, tier1Price});
 
                     // 阶梯2-8
                     for (int i = 2; i <= 8; ++i) {
@@ -146,9 +148,11 @@ void showDynamicPricingForm(Player& player, BlockPos pos, int dimId, int itemId,
                         if (!thresholdStr.empty() && !priceStr.empty()) {
                             int    threshold = std::stoi(thresholdStr);
                             double price     = std::stod(priceStr);
-                            if (threshold > 0 && price > 0) {
-                                tiers.push_back({threshold, price});
+                            if (threshold <= 0 || price <= 0) {
+                                p.sendMessage(i18n.get("input.invalid_number"));
+                                return;
                             }
+                            tiers.push_back({threshold, price});
                         }
                     }
 
@@ -161,7 +165,7 @@ void showDynamicPricingForm(Player& player, BlockPos pos, int dimId, int itemId,
                     std::string resetStr = std::get<std::string>(result->at("reset_hours"));
                     stopThreshold        = stopStr.empty() ? -1 : std::stoi(stopStr);
                     resetHours           = resetStr.empty() ? 24 : std::stoi(resetStr);
-                    if (resetHours <= 0) resetHours = 24;
+                    if (resetHours < 1) resetHours = 1; // 最小1小时
                 } else {
                     // 禁用时使用默认值
                     tiers.push_back({0, 100});

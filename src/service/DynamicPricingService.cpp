@@ -98,6 +98,9 @@ bool DynamicPricingService::setDynamicPricing(
     int                           resetHours,
     bool                          enabled
 ) {
+    // 查询现有配置，保留计数和重置时间
+    auto existingOpt = DynamicPricingRepository::getInstance().find(pos, dimId, itemId, isShop);
+
     DynamicPricingData data;
     data.dimId              = dimId;
     data.pos                = pos;
@@ -105,10 +108,17 @@ bool DynamicPricingService::setDynamicPricing(
     data.isShop             = isShop;
     data.priceTiers         = tiers;
     data.stopThreshold      = stopThreshold;
-    data.currentCount       = 0;
     data.resetIntervalHours = resetHours;
-    data.lastResetTime      = std::time(nullptr);
     data.enabled            = enabled;
+
+    if (existingOpt) {
+        // 保留现有计数和重置时间
+        data.currentCount  = existingOpt->currentCount;
+        data.lastResetTime = existingOpt->lastResetTime;
+    } else {
+        data.currentCount  = 0;
+        data.lastResetTime = std::time(nullptr);
+    }
 
     return DynamicPricingRepository::getInstance().upsert(data);
 }

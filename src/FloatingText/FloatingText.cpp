@@ -25,6 +25,7 @@
 #include "mc/world/level/ChangeDimensionRequest.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include "service/DynamicPricingService.h"
 #include "service/TextService.h"
 
 
@@ -541,6 +542,8 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
         if (!updateText) {
             // 更新所有玩家的假物品
             updateFakeItemsForAllPlayers();
+            // 检查并重置过期的动态价格计数器
+            DynamicPricingService::getInstance().checkAndResetCounters();
         }
         updateText = !updateText; // 交替
 
