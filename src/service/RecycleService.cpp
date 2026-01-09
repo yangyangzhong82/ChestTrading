@@ -69,6 +69,7 @@ bool RecycleService::updateCommission(BlockPos pos, int dimId, int itemId, doubl
         FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, ChestType::RecycleShop);
         return true;
     }
+    logger.error("更新回收委托失败: itemId={}, price={}", itemId, price);
     return false;
 }
 
@@ -97,10 +98,12 @@ bool RecycleService::executeDbUpdate(
 
     Transaction txn(db);
     if (!txn.isActive()) {
+        logger.error("回收数据库更新失败: 无法开始事务");
         return false;
     }
 
     if (!shopRepo.incrementRecycledCount(pos, dimId, itemId, quantity)) {
+        logger.error("回收数据库更新失败: 无法更新回收计数, itemId={}, quantity={}", itemId, quantity);
         return false;
     }
 
@@ -113,10 +116,15 @@ bool RecycleService::executeDbUpdate(
     record.totalPrice   = totalPrice;
 
     if (!shopRepo.addRecycleRecord(record)) {
+        logger.error("回收数据库更新失败: 无法添加回收记录, itemId={}", itemId);
         return false;
     }
 
-    return txn.commit();
+    if (!txn.commit()) {
+        logger.error("回收数据库更新失败: 无法提交事务");
+        return false;
+    }
+    return true;
 }
 
 RecycleResult RecycleService::executeFullRecycle(

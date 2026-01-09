@@ -72,6 +72,8 @@ bool ShopService::removeItem(BlockPos pos, int dimId, int itemId, BlockSource& r
     bool     success = ShopRepository::getInstance().removeItem(mainPos, dimId, itemId);
     if (success) {
         FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
+    } else {
+        logger.error("删除商店物品失败: itemId={}", itemId);
     }
     return success;
 }

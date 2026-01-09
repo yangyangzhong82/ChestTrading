@@ -131,7 +131,13 @@ int ChestRepository::countByOwnerAndType(const std::string& ownerUuid, ChestType
     if (!results.empty() && !results[0].empty()) {
         try {
             return std::stoi(results[0][0]);
-        } catch (...) {
+        } catch (const std::exception& e) {
+            logger.error(
+                "统计箱子数量失败: 解析结果异常, uuid={}, type={}, error={}",
+                ownerUuid,
+                static_cast<int>(type),
+                e.what()
+            );
             return 0;
         }
     }

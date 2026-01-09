@@ -1,5 +1,6 @@
 #include "PlayerLimitService.h"
 #include "TextService.h"
+#include "logger.h"
 #include "repository/PlayerLimitRepository.h"
 
 namespace CT {
@@ -63,11 +64,19 @@ bool PlayerLimitService::setLimit(
     bool               isShop
 ) {
     PlayerLimitConfig config{dimId, pos, playerUuid, limitCount, limitSeconds, isShop};
-    return PlayerLimitRepository::getInstance().upsertLimit(config);
+    bool              result = PlayerLimitRepository::getInstance().upsertLimit(config);
+    if (!result) {
+        logger.error("设置限购失败: playerUuid={}, limitCount={}, isShop={}", playerUuid, limitCount, isShop);
+    }
+    return result;
 }
 
 bool PlayerLimitService::removeLimit(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop) {
-    return PlayerLimitRepository::getInstance().removeLimit(pos, dimId, playerUuid, isShop);
+    bool result = PlayerLimitRepository::getInstance().removeLimit(pos, dimId, playerUuid, isShop);
+    if (!result) {
+        logger.error("删除限购失败: playerUuid={}, isShop={}", playerUuid, isShop);
+    }
+    return result;
 }
 
 std::optional<PlayerLimitConfig>

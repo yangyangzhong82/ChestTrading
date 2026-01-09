@@ -1,4 +1,5 @@
 #include "ThreadPool.h"
+#include "logger.h"
 
 ThreadPool::ThreadPool(size_t numThreads) : mStop(false), mActiveTasks(0) {
 
@@ -36,8 +37,10 @@ ThreadPool::ThreadPool(size_t numThreads) : mStop(false), mActiveTasks(0) {
                 if (task) {
                     try {
                         task();
+                    } catch (const std::exception& e) {
+                        CT::logger.error("线程池任务执行异常: {}", e.what());
                     } catch (...) {
-                        // 忽略异常，确保计数正确递减
+                        CT::logger.error("线程池任务执行未知异常");
                     }
                     this->mActiveTasks--;
 

@@ -1,4 +1,5 @@
 #include "DynamicPricingRepository.h"
+#include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
 #include "logger.h"
 #include "nlohmann/json.hpp"
@@ -82,8 +83,8 @@ bool DynamicPricingRepository::removeAll(BlockPos pos, int dimId) {
 }
 
 std::optional<DynamicPricingData> DynamicPricingRepository::find(BlockPos pos, int dimId, int itemId, bool isShop) {
-    auto& db   = Sqlite3Wrapper::getInstance();
-    auto  rows = db.query(
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
         "SELECT price_tiers, stop_threshold, current_count, reset_interval_hours, last_reset_time, enabled "
          "FROM dynamic_pricing WHERE dim_id=? AND pos_x=? AND pos_y=? AND pos_z=? AND item_id=? AND is_shop=?",
         dimId,
@@ -93,50 +94,48 @@ std::optional<DynamicPricingData> DynamicPricingRepository::find(BlockPos pos, i
         itemId,
         isShop ? 1 : 0
     );
-    if (rows.empty()) return std::nullopt;
 
-    DynamicPricingData data;
-    data.dimId              = dimId;
-    data.pos                = pos;
-    data.itemId             = itemId;
-    data.isShop             = isShop;
-    data.priceTiers         = deserializeTiers(rows[0][0]);
-    data.stopThreshold      = std::stoi(rows[0][1]);
-    data.currentCount       = std::stoi(rows[0][2]);
-    data.resetIntervalHours = std::stoi(rows[0][3]);
-    data.lastResetTime      = std::stoll(rows[0][4]);
-    data.enabled            = std::stoi(rows[0][5]) != 0;
-    return data;
+    return parseSingleRow<DynamicPricingData>(results, 6, [&](DbRowParser r) {
+        return DynamicPricingData{
+            dimId,
+            pos,
+            itemId,
+            isShop,
+            deserializeTiers(r.getString(0)),
+            r.getInt(1),
+            r.getInt(2),
+            r.getInt(3),
+            std::stoll(r.getString(4)),
+            r.getBool(5)
+        };
+    });
 }
 
 std::vector<DynamicPricingData> DynamicPricingRepository::findAll(BlockPos pos, int dimId) {
-    auto&                           db = Sqlite3Wrapper::getInstance();
-    std::vector<DynamicPricingData> result;
-    auto                            rows = db.query(
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
         "SELECT item_id, is_shop, price_tiers, stop_threshold, current_count, reset_interval_hours, last_reset_time, "
-                                   "enabled "
-                                   "FROM dynamic_pricing WHERE dim_id=? AND pos_x=? AND pos_y=? AND pos_z=?",
+         "enabled FROM dynamic_pricing WHERE dim_id=? AND pos_x=? AND pos_y=? AND pos_z=?",
         dimId,
         pos.x,
         pos.y,
         pos.z
     );
 
-    for (const auto& row : rows) {
-        DynamicPricingData data;
-        data.dimId              = dimId;
-        data.pos                = pos;
-        data.itemId             = std::stoi(row[0]);
-        data.isShop             = std::stoi(row[1]) != 0;
-        data.priceTiers         = deserializeTiers(row[2]);
-        data.stopThreshold      = std::stoi(row[3]);
-        data.currentCount       = std::stoi(row[4]);
-        data.resetIntervalHours = std::stoi(row[5]);
-        data.lastResetTime      = std::stoll(row[6]);
-        data.enabled            = std::stoi(row[7]) != 0;
-        result.push_back(data);
-    }
-    return result;
+    return parseRows<DynamicPricingData>(results, 8, [&](DbRowParser r) {
+        return DynamicPricingData{
+            dimId,
+            pos,
+            r.getInt(0),
+            r.getBool(1),
+            deserializeTiers(r.getString(2)),
+            r.getInt(3),
+            r.getInt(4),
+            r.getInt(5),
+            std::stoll(r.getString(6)),
+            r.getBool(7)
+        };
+    });
 }
 
 bool DynamicPricingRepository::incrementCount(BlockPos pos, int dimId, int itemId, bool isShop, int amount) {

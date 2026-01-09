@@ -1,6 +1,7 @@
 #include "PlayerLimitRepository.h"
 #include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
+#include "logger.h"
 
 namespace CT {
 
@@ -116,7 +117,8 @@ int PlayerLimitRepository::getTradeCountInWindow(
     if (!results.empty() && !results[0].empty()) {
         try {
             return std::stoi(results[0][0]);
-        } catch (...) {
+        } catch (const std::exception& e) {
+            logger.error("查询交易记录数量失败: 解析结果异常, playerUuid={}, error={}", playerUuid, e.what());
             return 0;
         }
     }

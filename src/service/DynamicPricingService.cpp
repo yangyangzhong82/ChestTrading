@@ -1,4 +1,5 @@
 #include "DynamicPricingService.h"
+#include "logger.h"
 #include "repository/DynamicPricingRepository.h"
 #include <algorithm>
 #include <ctime>
@@ -85,7 +86,11 @@ bool DynamicPricingService::canTrade(BlockPos pos, int dimId, int itemId, bool i
 }
 
 bool DynamicPricingService::recordTrade(BlockPos pos, int dimId, int itemId, bool isShop, int quantity) {
-    return DynamicPricingRepository::getInstance().incrementCount(pos, dimId, itemId, isShop, quantity);
+    bool result = DynamicPricingRepository::getInstance().incrementCount(pos, dimId, itemId, isShop, quantity);
+    if (!result) {
+        logger.error("记录动态价格交易失败: itemId={}, isShop={}, quantity={}", itemId, isShop, quantity);
+    }
+    return result;
 }
 
 bool DynamicPricingService::setDynamicPricing(
@@ -120,11 +125,19 @@ bool DynamicPricingService::setDynamicPricing(
         data.lastResetTime = std::time(nullptr);
     }
 
-    return DynamicPricingRepository::getInstance().upsert(data);
+    bool result = DynamicPricingRepository::getInstance().upsert(data);
+    if (!result) {
+        logger.error("设置动态价格失败: itemId={}, isShop={}", itemId, isShop);
+    }
+    return result;
 }
 
 bool DynamicPricingService::removeDynamicPricing(BlockPos pos, int dimId, int itemId, bool isShop) {
-    return DynamicPricingRepository::getInstance().remove(pos, dimId, itemId, isShop);
+    bool result = DynamicPricingRepository::getInstance().remove(pos, dimId, itemId, isShop);
+    if (!result) {
+        logger.error("删除动态价格失败: itemId={}, isShop={}", itemId, isShop);
+    }
+    return result;
 }
 
 std::optional<DynamicPricingData>

@@ -503,6 +503,9 @@ bool ChestService::addSharedPlayer(
     data.pos        = mainPos;
 
     bool success = ChestRepository::getInstance().addSharedPlayer(data);
+    if (!success) {
+        logger.error("添加分享玩家失败: targetUuid={}", targetUuid);
+    }
 
     // 缓存一致性：虽然分享关系不影响基本缓存信息，但为了一致性仍然使缓存失效
     if (success) {
@@ -518,6 +521,9 @@ bool ChestService::addSharedPlayer(
 bool ChestService::removeSharedPlayer(const std::string& targetUuid, BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = getMainChestPos(pos, region);
     bool     success = ChestRepository::getInstance().removeSharedPlayer(targetUuid, mainPos, dimId);
+    if (!success) {
+        logger.error("移除分享玩家失败: targetUuid={}", targetUuid);
+    }
 
     // 缓存一致性：使缓存失效
     if (success) {
@@ -544,6 +550,10 @@ bool ChestService::updateChestConfig(BlockPos pos, int dimId, BlockSource& regio
     BlockPos mainPos = getMainChestPos(pos, region);
     bool     success = ChestRepository::getInstance()
                        .updateConfig(mainPos, dimId, config.enableFloatingText, config.enableFakeItem, config.isPublic);
+
+    if (!success) {
+        logger.error("更新箱子配置失败: pos=({},{},{}), dimId={}", mainPos.x, mainPos.y, mainPos.z, dimId);
+    }
 
     if (success) {
         // 缓存一致性：使缓存失效
@@ -584,6 +594,9 @@ ChestConfigData ChestService::getChestConfig(BlockPos pos, int dimId, BlockSourc
 bool ChestService::setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& name) {
     BlockPos mainPos = getMainChestPos(pos, region);
     bool     success = ChestRepository::getInstance().updateShopName(mainPos, dimId, name);
+    if (!success) {
+        logger.error("设置商店名称失败: name={}", name);
+    }
 
     // 缓存一致性：使缓存失效
     if (success) {
