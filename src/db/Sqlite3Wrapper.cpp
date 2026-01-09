@@ -135,6 +135,7 @@ Transaction::Transaction(Sqlite3Wrapper& db) : mDb(db), mLock(db.mDbMutex) {
     if (sqlite3_exec(mDb.db, "BEGIN TRANSACTION;", nullptr, nullptr, &err_msg) == SQLITE_OK) {
         mActive = true;
         mDb.mStats.transactionCount++;
+        mDb.mCurrentTransaction = this;
     } else {
         CT::logger.error("无法开始事务: {}", err_msg ? err_msg : "未知错误");
         if (err_msg) sqlite3_free(err_msg);
@@ -144,6 +145,9 @@ Transaction::Transaction(Sqlite3Wrapper& db) : mDb(db), mLock(db.mDbMutex) {
 Transaction::~Transaction() {
     if (mActive && !mCommitted) {
         rollback();
+    }
+    if (mDb.mCurrentTransaction == this) {
+        mDb.mCurrentTransaction = nullptr;
     }
 }
 
@@ -157,9 +161,13 @@ bool Transaction::commit() {
         return false;
     }
 
-    mCommitted = true;
-    mActive    = false;
-    mDb.clearCache();
+    mCommitted              = true;
+    mActive                 = false;
+    mDb.mCurrentTransaction = nullptr;
+    // 只清除受影响表的缓存
+    for (const auto& table : mAffectedTables) {
+        mDb.clearCacheForTable(table);
+    }
     return true;
 }
 
@@ -172,8 +180,15 @@ void Transaction::rollback() {
         if (err_msg) sqlite3_free(err_msg);
     }
 
-    mActive = false;
-    mDb.clearCache();
+    mActive                 = false;
+    mDb.mCurrentTransaction = nullptr;
+    // 回滚不需要清除缓存，因为数据没有变化
+}
+
+void Transaction::markTableAffected(const std::string& tableName) {
+    if (!tableName.empty()) {
+        mAffectedTables.insert(tableName);
+    }
 }
 
 void Sqlite3Wrapper::clearCache() {

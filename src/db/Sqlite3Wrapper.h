@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -33,17 +34,24 @@ public:
     void rollback();
     bool isActive() const { return mActive; }
 
+    // 记录受影响的表
+    void markTableAffected(const std::string& tableName);
+
 private:
     Sqlite3Wrapper&                        mDb;
     std::unique_lock<std::recursive_mutex> mLock;
     bool                                   mActive    = false;
     bool                                   mCommitted = false;
+    std::unordered_set<std::string>        mAffectedTables;
 };
 
 class Sqlite3Wrapper {
 public:
     friend class Transaction;
     friend class SchemaMigration;
+
+    // 当前活动事务（用于精细化缓存清理）
+    Transaction* mCurrentTransaction = nullptr;
 
     // 获取单例实例
     static Sqlite3Wrapper& getInstance() {
@@ -255,7 +263,14 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     sqlite3_clear_bindings(stmt);
 
     if (result) {
-        clearCacheForTable(extractTableName(sql));
+        std::string tableName = extractTableName(sql);
+        if (mCurrentTransaction) {
+            // 事务中：记录受影响的表，提交时统一清理
+            mCurrentTransaction->markTableAffected(tableName);
+        } else {
+            // 非事务：立即清理缓存
+            clearCacheForTable(tableName);
+        }
     }
 
     return result;
@@ -281,7 +296,14 @@ int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args)
     sqlite3_clear_bindings(stmt);
 
     if (success) {
-        clearCacheForTable(extractTableName(sql));
+        std::string tableName = extractTableName(sql);
+        if (mCurrentTransaction) {
+            // 事务中：记录受影响的表，提交时统一清理
+            mCurrentTransaction->markTableAffected(tableName);
+        } else {
+            // 非事务：立即清理缓存
+            clearCacheForTable(tableName);
+        }
     }
 
     return changes;
@@ -408,6 +430,8 @@ bool Sqlite3Wrapper::executeBatch(
             return false; // txn 析构时自动 rollback
         }
 
+        // 执行成功后记录受影响的表
+        txn.markTableAffected(extractTableName(sql));
         sqlite3_finalize(stmt);
     }
 
