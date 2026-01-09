@@ -82,6 +82,17 @@ struct PublicRecycleItemData {
     bool        isOfficial;
 };
 
+// 箱子销量统计数据
+struct ChestSalesData {
+    int         dimId;
+    BlockPos    pos;
+    std::string ownerUuid;
+    std::string shopName;
+    int         totalSalesCount;
+    double      totalRevenue;
+    std::string lastSaleTime;
+};
+
 /**
  * @brief 商店数据访问层
  */
@@ -120,6 +131,9 @@ public:
     // === 公开商店物品查询 ===
     std::vector<PublicShopItemData>    findAllPublicShopItems();
     std::vector<PublicRecycleItemData> findAllPublicRecycleItems();
+
+    // === 销量统计 ===
+    std::vector<ChestSalesData> getChestSalesRanking(int limit = 50);
 
 private:
     ShopRepository() = default;

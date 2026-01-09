@@ -434,6 +434,14 @@
     "packchest_enter": "§a已进入打包箱子模式，点击箱子即可打包。再次输入命令退出。",
     "test_description": "运行自动化测试（开发者工具）",
     "items_description": "查看公开商店物品列表",
-    "recycleitems_description": "查看公开回收商店物品列表"
+    "recycleitems_description": "查看公开回收商店物品列表",
+    "ranking_description": "查看销量榜单"
+  },
+  "sales_ranking": {
+    "title": "销量榜单",
+    "no_data": "§7暂无销量数据。",
+    "header": "§e共 {count} 个商店",
+    "entry": "§6#{rank} §b{shop} §7({owner})\n§7位置: §e{location} §7| 销量: §a{count} §7| 收入: §6{revenue}\n§7最近成交: §e{last_time}",
+    "no_sales": "无成交"
   }
 }

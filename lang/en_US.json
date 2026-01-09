@@ -434,6 +434,14 @@
     "packchest_enter": "§aEntered pack chest mode, click a chest to pack it. Enter command again to exit.",
     "test_description": "Run automated tests (developer tool)",
     "items_description": "View public shop items list",
-    "recycleitems_description": "View public recycle shop items list"
+    "recycleitems_description": "View public recycle shop items list",
+    "ranking_description": "View sales ranking"
+  },
+  "sales_ranking": {
+    "title": "Sales Ranking",
+    "no_data": "§7No sales data available.",
+    "header": "§eTotal {count} shops",
+    "entry": "§6#{rank} §b{shop} §7({owner})\n§7Location: §e{location} §7| Sales: §a{count} §7| Revenue: §6{revenue}\n§7Last sale: §e{last_time}",
+    "no_sales": "No sales"
   }
 }

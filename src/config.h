@@ -58,6 +58,10 @@ struct InteractionSettings {
     int cleanupThresholdSec = 60;  // 交互记录清理阈值（秒）
 };
 
+struct SalesRankingSettings {
+    int maxDisplayCount = 50; // 销量榜单最多显示数量
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -74,4 +78,5 @@ struct Config {
     TaxSettings          taxSettings;                                  // 税率设置
     ResourcePaths        resourcePaths;                                // 数据库/贴图等路径配置
     InteractionSettings  interactionSettings;                          // 交互相关设置
+    SalesRankingSettings salesRankingSettings;                         // 销量榜单设置
 };

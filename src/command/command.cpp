@@ -4,6 +4,7 @@
 #include "form/AdminForm.h"
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
+#include "form/SalesRankingForm.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -149,6 +150,20 @@ void registerCommand() {
                 return;
             }
             showPublicRecycleItemsForm(*player);
+        }
+    );
+
+    // 注册 /ranking 命令 - 打开销量榜单
+    auto& rankingCmd =
+        registrar.getOrCreateCommand("ranking", i18n.get("command.ranking_description"), CommandPermissionLevel::Any);
+    rankingCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showSalesRankingForm(*player);
         }
     );
 
