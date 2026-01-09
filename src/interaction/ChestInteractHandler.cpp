@@ -9,8 +9,10 @@
 #include "form/ShopForm.h"
 #include "logger.h"
 #include "mc/nbt/CompoundTagVariant.h"
+#include "mc/nbt/ListTag.h"
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "repository/ChestRepository.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
 
@@ -86,14 +88,13 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     auto& chestService = ChestService::getInstance();
     auto  mainPos      = chestService.getMainChestPos(originalPos, region);
 
-    // 若是特殊箱子（有配置），仅允许主人打包；且需先清理配置记录
+    // 若是特殊箱子（有配置），仅允许主人打包
     auto chestInfo = chestService.getChestInfo(mainPos, dimId, region);
     if (chestInfo.has_value()) {
         if (chestInfo->ownerUuid != playerUuid) {
             player.sendMessage("§c你不是这个箱子的主人，无法打包。");
             return true;
         }
-        chestService.removeChest(mainPos, dimId, region);
     }
 
     auto* blockActor = region.getBlockEntity(originalPos);
@@ -116,7 +117,21 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     CompoundTag tagNbt;
     tagNbt["Items"] = chestNbt->at("Items").get<ListTag>();
-    itemNbt["tag"]  = std::move(tagNbt);
+
+    // 如果有配置，打包到数据库并只存储 packed_id
+    if (chestInfo.has_value()) {
+        int64_t packedId = ChestRepository::getInstance().packChest(mainPos, dimId);
+        if (packedId < 0) {
+            player.sendMessage("§c打包箱子配置失败。");
+            return true;
+        }
+
+        CompoundTag ctData;
+        ctData["packedId"]     = Int64Tag(packedId);
+        tagNbt["ChestTrading"] = std::move(ctData);
+    }
+
+    itemNbt["tag"] = std::move(tagNbt);
 
     auto chestItem = NbtUtils::createItemFromNbt(itemNbt);
     if (!chestItem) {

@@ -558,3 +558,6 @@ fabric.properties
 /.idea/
 /.vscode/
 /bin/
+
+# AI
+/.claude/

@@ -3,6 +3,8 @@
 #include "db/Sqlite3Wrapper.h"
 #include "logger.h"
 
+#include <chrono>
+
 namespace CT {
 
 ChestRepository& ChestRepository::getInstance() {
@@ -233,6 +235,155 @@ bool ChestRepository::updateShopName(BlockPos pos, int dimId, const std::string&
         pos.y,
         pos.z
     );
+}
+
+int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
+    auto& db = Sqlite3Wrapper::getInstance();
+
+    // 获取箱子信息
+    auto chestInfo = findByPosition(pos, dimId);
+    if (!chestInfo) return -1;
+
+    int64_t packedTime =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    // 插入到 packed_chests
+    if (!db.execute(
+            "INSERT INTO packed_chests (player_uuid, orig_dim_id, orig_pos_x, orig_pos_y, orig_pos_z, "
+            "type, shop_name, enable_floating_text, enable_fake_item, is_public, packed_time) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            chestInfo->ownerUuid,
+            dimId,
+            pos.x,
+            pos.y,
+            pos.z,
+            static_cast<int>(chestInfo->type),
+            chestInfo->shopName,
+            chestInfo->enableFloatingText ? 1 : 0,
+            chestInfo->enableFakeItem ? 1 : 0,
+            chestInfo->isPublic ? 1 : 0,
+            packedTime
+        )) {
+        return -1;
+    }
+
+    // 获取 packed_id
+    auto result = db.query("SELECT last_insert_rowid();");
+    if (result.empty() || result[0].empty()) return -1;
+    int64_t packedId = std::stoll(result[0][0]);
+
+    // 复制商店商品
+    db.execute(
+        "INSERT INTO packed_shop_items (packed_id, item_id, price, db_count, slot) "
+        "SELECT ?, item_id, price, db_count, slot FROM shop_items "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        packedId,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    // 复制回收商店商品
+    db.execute(
+        "INSERT INTO packed_recycle_items (packed_id, item_id, price, min_durability, required_enchants, "
+        "max_recycle_count, current_recycled_count, required_aux_value) "
+        "SELECT ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
+        "current_recycled_count, required_aux_value FROM recycle_shop_items "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        packedId,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    // 复制分享玩家
+    db.execute(
+        "INSERT INTO packed_shared_chests (packed_id, player_uuid, owner_uuid) "
+        "SELECT ?, player_uuid, owner_uuid FROM shared_chests "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        packedId,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
+
+    // 删除原箱子数据（级联删除会清理关联表）
+    remove(pos, dimId);
+
+    return packedId;
+}
+
+bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimId) {
+    auto& db = Sqlite3Wrapper::getInstance();
+
+    // 获取打包的箱子信息
+    auto result = db.query(
+        "SELECT player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public "
+        "FROM packed_chests WHERE packed_id = ?;",
+        packedId
+    );
+    if (result.empty()) return false;
+
+    // 恢复箱子主表
+    if (!db.execute(
+            "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
+            "enable_floating_text, enable_fake_item, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            result[0][0], // player_uuid
+            newDimId,
+            newPos.x,
+            newPos.y,
+            newPos.z,
+            std::stoi(result[0][1]), // type
+            result[0][2],            // shop_name
+            std::stoi(result[0][3]), // enable_floating_text
+            std::stoi(result[0][4]), // enable_fake_item
+            std::stoi(result[0][5])  // is_public
+        )) {
+        return false;
+    }
+
+    // 恢复商店商品
+    db.execute(
+        "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, db_count, slot) "
+        "SELECT ?, ?, ?, ?, item_id, price, db_count, slot FROM packed_shop_items WHERE packed_id = ?;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z,
+        packedId
+    );
+
+    // 恢复回收商店商品
+    db.execute(
+        "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, min_durability, "
+        "required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
+        "SELECT ?, ?, ?, ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
+        "current_recycled_count, required_aux_value FROM packed_recycle_items WHERE packed_id = ?;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z,
+        packedId
+    );
+
+    // 恢复分享玩家
+    db.execute(
+        "INSERT INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) "
+        "SELECT player_uuid, owner_uuid, ?, ?, ?, ? FROM packed_shared_chests WHERE packed_id = ?;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z,
+        packedId
+    );
+
+    // 删除打包数据
+    db.execute("DELETE FROM packed_chests WHERE packed_id = ?;", packedId);
+
+    return true;
 }
 
 } // namespace CT

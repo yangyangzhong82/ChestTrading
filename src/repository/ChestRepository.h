@@ -59,6 +59,10 @@ public:
     bool updateConfig(BlockPos pos, int dimId, bool enableFloatingText, bool enableFakeItem, bool isPublic);
     bool updateShopName(BlockPos pos, int dimId, const std::string& shopName);
 
+    // === 打包/恢复 ===
+    int64_t packChest(BlockPos pos, int dimId);                           // 返回 packed_id，失败返回 -1
+    bool    unpackChest(int64_t packedId, BlockPos newPos, int newDimId); // 恢复到新位置
+
 private:
     ChestRepository() = default;
 };

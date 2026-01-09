@@ -15,6 +15,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV5,
         migrateToV6,
         migrateToV7,
+        migrateToV8,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -209,4 +210,43 @@ bool SchemaMigration::migrateToV6(Sqlite3Wrapper& db) {
 bool SchemaMigration::migrateToV7(Sqlite3Wrapper& db) {
     // 添加 enabled 字段到 dynamic_pricing 表
     return db.execute("ALTER TABLE dynamic_pricing ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;");
+}
+
+bool SchemaMigration::migrateToV8(Sqlite3Wrapper& db) {
+    // 打包箱子表：存储被打包的箱子配置，放置时恢复
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS packed_chests ("
+        "packed_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "player_uuid TEXT NOT NULL, orig_dim_id INTEGER NOT NULL, orig_pos_x INTEGER NOT NULL, "
+        "orig_pos_y INTEGER NOT NULL, orig_pos_z INTEGER NOT NULL, type INTEGER NOT NULL, "
+        "shop_name TEXT NOT NULL DEFAULT '', enable_floating_text INTEGER NOT NULL DEFAULT 1, "
+        "enable_fake_item INTEGER NOT NULL DEFAULT 1, is_public INTEGER NOT NULL DEFAULT 1, "
+        "packed_time INTEGER NOT NULL);",
+
+        "CREATE TABLE IF NOT EXISTS packed_shop_items ("
+        "packed_id INTEGER NOT NULL, item_id INTEGER NOT NULL, price REAL NOT NULL, "
+        "db_count INTEGER NOT NULL DEFAULT 0, slot INTEGER, "
+        "PRIMARY KEY (packed_id, item_id), "
+        "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE);",
+
+        "CREATE TABLE IF NOT EXISTS packed_recycle_items ("
+        "packed_id INTEGER NOT NULL, item_id INTEGER NOT NULL, price REAL NOT NULL, "
+        "min_durability INTEGER DEFAULT 0, required_enchants TEXT NOT NULL DEFAULT '', "
+        "max_recycle_count INTEGER NOT NULL DEFAULT 0, current_recycled_count INTEGER NOT NULL DEFAULT 0, "
+        "required_aux_value INTEGER NOT NULL DEFAULT -1, "
+        "PRIMARY KEY (packed_id, item_id), "
+        "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE);",
+
+        "CREATE TABLE IF NOT EXISTS packed_shared_chests ("
+        "packed_id INTEGER NOT NULL, player_uuid TEXT NOT NULL, owner_uuid TEXT NOT NULL, "
+        "PRIMARY KEY (packed_id, player_uuid), "
+        "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE);",
+
+        "CREATE INDEX IF NOT EXISTS idx_packed_chests_player ON packed_chests(player_uuid);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
 }
