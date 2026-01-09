@@ -3,8 +3,7 @@
 #include "SchemaMigration.h"
 #include "logger.h"
 #include <algorithm>
-#include <iomanip>
-#include <sstream>
+#include <string_view>
 #include <vector>
 
 #include "Config/ConfigManager.h"
@@ -189,7 +188,7 @@ void Sqlite3Wrapper::clearCacheForTable(const std::string& tableName) {
     }
     std::lock_guard<std::mutex> lock(mCacheMutex);
     for (auto it = mQueryCache.begin(); it != mQueryCache.end();) {
-        if (it->first.find(tableName) != std::string::npos) {
+        if (it->second.sql.find(tableName) != std::string::npos) {
             it = mQueryCache.erase(it);
         } else {
             ++it;
@@ -248,39 +247,46 @@ bool Sqlite3Wrapper::isColumnExists(const std::string& tableName, const std::str
     return false;
 }
 
-std::string Sqlite3Wrapper::generateCacheKey(const std::string& sql, const std::vector<Value>& params) {
-    std::stringstream ss;
-    ss << sql;
-
+size_t Sqlite3Wrapper::generateCacheKey(const std::string& sql, const std::vector<Value>& params) {
+    size_t hash = std::hash<std::string>{}(sql);
     for (const auto& param : params) {
-        ss << "|";
-        std::visit(
-            [&ss](auto&& arg) {
+        size_t h = std::visit(
+            [](auto&& arg) -> size_t {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, int>) {
-                    ss << arg;
+                    return std::hash<int>{}(arg);
                 } else if constexpr (std::is_same_v<T, long long>) {
-                    ss << arg;
+                    return std::hash<long long>{}(arg);
                 } else if constexpr (std::is_same_v<T, double>) {
-                    ss << std::fixed << std::setprecision(10) << arg;
+                    return std::hash<double>{}(arg);
                 } else if constexpr (std::is_same_v<T, std::string>) {
-                    ss << arg;
+                    return std::hash<std::string>{}(arg);
                 } else if constexpr (std::is_same_v<T, const char*>) {
-                    ss << arg;
+                    return std::hash<std::string_view>{}(arg);
                 }
+                return 0;
             },
             param
         );
+        hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
     }
-
-    return ss.str();
+    return hash;
 }
 
-bool Sqlite3Wrapper::getCachedResult(const std::string& key, std::vector<std::vector<std::string>>& result) {
+bool Sqlite3Wrapper::getCachedResult(
+    size_t                                 key,
+    const std::string&                     sql,
+    std::vector<std::vector<std::string>>& result
+) {
     std::lock_guard<std::mutex> lock(mCacheMutex);
 
     auto it = mQueryCache.find(key);
     if (it == mQueryCache.end()) {
+        return false;
+    }
+
+    // 验证 SQL 是否匹配，防止哈希冲突
+    if (it->second.sql != sql) {
         return false;
     }
 
@@ -296,9 +302,13 @@ bool Sqlite3Wrapper::getCachedResult(const std::string& key, std::vector<std::ve
     return true;
 }
 
-void Sqlite3Wrapper::setCachedResult(const std::string& key, const std::vector<std::vector<std::string>>& result) {
+void Sqlite3Wrapper::setCachedResult(
+    size_t                                       key,
+    const std::string&                           sql,
+    const std::vector<std::vector<std::string>>& result
+) {
     std::lock_guard<std::mutex> lock(mCacheMutex);
-    mQueryCache[key] = {result, std::chrono::steady_clock::now()};
+    mQueryCache[key] = {sql, result, std::chrono::steady_clock::now()};
 }
 
 bool Sqlite3Wrapper::shouldSkipCache(const std::string& sql) {

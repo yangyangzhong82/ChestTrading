@@ -10,6 +10,7 @@
 #include <mutex>
 #include <sqlite3.h>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -152,13 +153,14 @@ private:
 
     // 查询缓存相关
     struct CacheEntry {
+        std::string                           sql; // 用于哈希冲突验证
         std::vector<std::vector<std::string>> result;
         std::chrono::steady_clock::time_point timestamp;
     };
-    std::unordered_map<std::string, CacheEntry> mQueryCache;
-    std::mutex                                  mCacheMutex;
-    int                                         mCacheTimeoutSeconds = 60; // 默认缓存60秒
-    bool                                        mCacheEnabled        = true;
+    std::unordered_map<size_t, CacheEntry> mQueryCache;
+    std::mutex                             mCacheMutex;
+    int                                    mCacheTimeoutSeconds = 60; // 默认缓存60秒
+    bool                                   mCacheEnabled        = true;
 
     // 统计信息
     mutable DbStats mStats;
@@ -183,16 +185,16 @@ private:
 
     // 生成缓存键（高效版本）
     template <typename... Args>
-    std::string generateCacheKeyFast(const std::string& sql, Args&&... args);
+    size_t generateCacheKeyFast(const std::string& sql, Args&&... args);
 
     // 生成缓存键
-    std::string generateCacheKey(const std::string& sql, const std::vector<Value>& params);
+    size_t generateCacheKey(const std::string& sql, const std::vector<Value>& params);
 
     // 从缓存获取结果
-    bool getCachedResult(const std::string& key, std::vector<std::vector<std::string>>& result);
+    bool getCachedResult(size_t key, const std::string& sql, std::vector<std::vector<std::string>>& result);
 
     // 存储结果到缓存
-    void setCachedResult(const std::string& key, const std::vector<std::vector<std::string>>& result);
+    void setCachedResult(size_t key, const std::string& sql, const std::vector<std::vector<std::string>>& result);
 
     // 判断查询是否应跳过缓存
     bool shouldSkipCache(const std::string& sql);
@@ -212,24 +214,23 @@ private:
 
 // --- 模板函数的实现需要放在头文件中 ---
 
-// 高效缓存键生成辅助
+// 高效缓存键生成辅助 - 使用哈希代替字符串拼接
 namespace detail {
-inline void appendToKey(std::string& key, int v) { key += std::to_string(v); }
-inline void appendToKey(std::string& key, long long v) { key += std::to_string(v); }
-inline void appendToKey(std::string& key, double v) { key += std::to_string(v); }
-inline void appendToKey(std::string& key, const std::string& v) { key += v; }
-inline void appendToKey(std::string& key, const char* v) { key += v; }
+inline void   hashCombine(size_t& seed, size_t h) { seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
+inline size_t hashValue(int v) { return std::hash<int>{}(v); }
+inline size_t hashValue(long long v) { return std::hash<long long>{}(v); }
+inline size_t hashValue(double v) { return std::hash<double>{}(v); }
+inline size_t hashValue(const std::string& v) { return std::hash<std::string>{}(v); }
+inline size_t hashValue(const char* v) { return std::hash<std::string_view>{}(v); }
 } // namespace detail
 
 template <typename... Args>
-std::string Sqlite3Wrapper::generateCacheKeyFast(const std::string& sql, Args&&... args) {
-    std::string key;
-    key.reserve(sql.size() + sizeof...(args) * 16);
-    key = sql;
+size_t Sqlite3Wrapper::generateCacheKeyFast(const std::string& sql, Args&&... args) {
+    size_t hash = std::hash<std::string>{}(sql);
     if constexpr (sizeof...(args) > 0) {
-        ((key += '|', detail::appendToKey(key, args)), ...);
+        (detail::hashCombine(hash, detail::hashValue(args)), ...);
     }
-    return key;
+    return hash;
 }
 
 template <typename... Args>
@@ -290,12 +291,12 @@ template <typename... Args>
 std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& sql, Args&&... args) {
     std::vector<std::vector<std::string>> results;
 
-    const bool  skipCache = shouldSkipCache(sql);
-    std::string cacheKey;
+    const bool skipCache = shouldSkipCache(sql);
+    size_t     cacheKey  = 0;
 
     if (mCacheEnabled && !skipCache) {
         cacheKey = generateCacheKeyFast(sql, args...);
-        if (getCachedResult(cacheKey, results)) {
+        if (getCachedResult(cacheKey, sql, results)) {
             mStats.cacheHits++;
             return results;
         }
@@ -327,7 +328,7 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
     sqlite3_clear_bindings(stmt);
 
     if (mCacheEnabled && !skipCache) {
-        setCachedResult(cacheKey, results);
+        setCachedResult(cacheKey, sql, results);
     }
 
     return results;
