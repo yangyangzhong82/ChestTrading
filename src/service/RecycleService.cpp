@@ -175,26 +175,33 @@ RecycleResult RecycleService::executeFullRecycle(
 
     double totalPrice = actualUnitPrice * quantity;
 
-    // 2. 官方回收商店不检查店主余额，普通回收商店需要检查
+    // 2. 普通回收商店：先原子扣除店主金钱（解决竞态条件）
+    bool ownerMoneyDeducted = false;
     if (!isAdminRecycle) {
-        auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
-        if (!ownerInfo) {
-            return {false, txt.getMessage("recycle.owner_not_found"), 0, 0.0};
-        }
-        if (Economy::getMoney(ownerInfo->xuid) < totalPrice) {
+        if (!Economy::reduceMoneyByUuid(ownerUuid, totalPrice)) {
             return {false, txt.getMessage("recycle.owner_insufficient"), 0, 0.0};
         }
+        ownerMoneyDeducted = true;
     }
+
+    // 辅助lambda：退还店主金钱
+    auto refundOwner = [&]() {
+        if (ownerMoneyDeducted) {
+            Economy::addMoneyByUuid(ownerUuid, totalPrice);
+        }
+    };
 
     // 3. 获取箱子实体
     auto* chest = getChestActor(region, pos);
     if (!chest) {
+        refundOwner();
         return {false, txt.getMessage("recycle.chest_entity_fail"), 0, 0.0};
     }
 
     // 4. 获取委托信息
     auto commission = shopRepo.findRecycleItem(pos, dimId, itemId);
     if (!commission) {
+        refundOwner();
         return {false, txt.getMessage("recycle.no_commission"), 0, 0.0};
     }
 
@@ -211,6 +218,7 @@ RecycleResult RecycleService::executeFullRecycle(
 
     // 5. 检查回收数量限制（官方回收商店可设置无限回收，maxRecycleCount=0表示无限）
     if (maxRecycleCount > 0 && (currentRecycledCount + quantity) > maxRecycleCount) {
+        refundOwner();
         return {
             false,
             txt.getMessage("recycle.max_reached", {{"max", std::to_string(maxRecycleCount)}}
@@ -224,6 +232,7 @@ RecycleResult RecycleService::executeFullRecycle(
     auto limitCheck =
         PlayerLimitService::getInstance().checkLimit(pos, dimId, recycler.getUuid().asString(), quantity, false);
     if (!limitCheck.allowed) {
+        refundOwner();
         return {false, limitCheck.message, 0, 0.0};
     }
 
@@ -281,6 +290,7 @@ RecycleResult RecycleService::executeFullRecycle(
     }
 
     if (foundCount < quantity) {
+        refundOwner();
         return {false, txt.getMessage("recycle.item_insufficient"), 0, 0.0};
     }
 
@@ -304,6 +314,7 @@ RecycleResult RecycleService::executeFullRecycle(
             }
         }
         if (chestAvailableSpace < quantity) {
+            refundOwner();
             return {false, txt.getMessage("recycle.chest_full"), 0, 0.0};
         }
 
@@ -354,6 +365,7 @@ RecycleResult RecycleService::executeFullRecycle(
                         }
                     }
                 }
+                refundOwner();
                 recycler.refreshInventory();
                 return {false, txt.getMessage("recycle.chest_full"), 0, 0.0};
             }
@@ -362,38 +374,7 @@ RecycleResult RecycleService::executeFullRecycle(
         playerInventory.removeItem(tr.slot, tr.count);
     }
 
-    // 9. 官方回收商店不扣店主钱，普通回收商店需要扣
-    if (!isAdminRecycle) {
-        if (!Economy::reduceMoneyByUuid(ownerUuid, totalPrice)) {
-            // 扣款失败，精确回滚：只移除本次新增的部分
-            for (int i = 0; i < chest->getContainerSize(); ++i) {
-                const auto& chestItem = chest->getItem(i);
-                if (!chestItem.isNull()) {
-                    auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
-                    if (chestItemNbt) {
-                        auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                        if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                            int initialCount = chestInitialCounts.count(i) ? chestInitialCounts[i] : 0;
-                            int currentCount = chestItem.mCount;
-                            int addedCount   = currentCount - initialCount;
-                            if (addedCount > 0) {
-                                ItemStack returnItem = chestItem;
-                                returnItem.setStackSize(addedCount);
-                                chest->removeItem(i, addedCount);
-                                if (!recycler.add(returnItem)) {
-                                    recycler.drop(returnItem, true);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            recycler.refreshInventory();
-            return {false, txt.getMessage("recycle.money_refund"), 0, 0.0};
-        }
-    }
-
-    // 10. 给回收者加钱（扣除税率）
+    // 9. 给回收者加钱（扣除税率）
     double taxRate      = ConfigManager::getInstance().get().taxSettings.recycleTaxRate;
     double recyclerGain = totalPrice * (1.0 - taxRate);
     Economy::addMoney(recycler, recyclerGain);
