@@ -32,7 +32,8 @@
     "pack_config_fail": "§c打包箱子配置失败。",
     "pack_item_fail": "§c创建物品失败。",
     "pack_inventory_full": "§c背包已满，无法打包箱子。",
-    "pack_success": "§a箱子已打包成物品！"
+    "pack_success": "§a箱子已打包成物品！",
+    "pack_large_chest_forbidden": "§c不允许打包大箱子！请先将其拆分为单箱子。"
   },
   "shop": {
     "insufficient_money": "§c你的金币不足！需要 §6{price}§c 金币。",

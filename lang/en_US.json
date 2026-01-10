@@ -32,7 +32,8 @@
     "pack_config_fail": "§cFailed to pack chest config.",
     "pack_item_fail": "§cFailed to create item.",
     "pack_inventory_full": "§cInventory full, cannot pack chest.",
-    "pack_success": "§aChest packed into item!"
+    "pack_success": "§aChest packed into item!",
+    "pack_large_chest_forbidden": "§cCannot pack large chests! Please split it into single chests first."
   },
   "shop": {
     "insufficient_money": "§cInsufficient coins! Need §6{price}§c coins.",

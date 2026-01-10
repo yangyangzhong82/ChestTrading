@@ -10,11 +10,13 @@
 #include "logger.h"
 #include "mc/nbt/CompoundTagVariant.h"
 #include "mc/nbt/ListTag.h"
+#include "mc/world/level/block/BlockActorType.h"
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
+
 
 #include <array>
 #include <chrono>
@@ -85,12 +87,23 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     setPackChestMode(playerUuid, false);
 
+    auto& txt = TextService::getInstance();
+
+    // 检查是否为大箱子，禁止打包大箱子
+    auto* blockActor = region.getBlockEntity(originalPos);
+    if (blockActor && blockActor->mType == BlockActorType::Chest) {
+        auto* chest = static_cast<ChestBlockActor*>(blockActor);
+        if (chest->mLargeChestPaired) {
+            player.sendMessage(txt.getMessage("chest.pack_large_chest_forbidden"));
+            return true;
+        }
+    }
+
     auto& chestService = ChestService::getInstance();
     auto  mainPos      = chestService.getMainChestPos(originalPos, region);
 
     // 若是特殊箱子（有配置），仅允许主人打包
-    auto& txt       = TextService::getInstance();
-    auto  chestInfo = chestService.getChestInfo(mainPos, dimId, region);
+    auto chestInfo = chestService.getChestInfo(mainPos, dimId, region);
     if (chestInfo.has_value()) {
         if (chestInfo->ownerUuid != playerUuid) {
             player.sendMessage(txt.getMessage("chest.pack_not_owner"));
@@ -98,7 +111,6 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
         }
     }
 
-    auto* blockActor = region.getBlockEntity(originalPos);
     if (!blockActor) {
         player.sendMessage(txt.getMessage("chest.pack_entity_fail"));
         return true;
