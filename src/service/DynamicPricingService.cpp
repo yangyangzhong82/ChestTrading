@@ -28,21 +28,15 @@ bool DynamicPricingService::checkAndResetIfNeeded(DynamicPricingData& data) {
 double DynamicPricingService::calculatePrice(const DynamicPricingData& data) {
     if (data.priceTiers.empty()) return 0.0;
 
-    // 按阈值降序排序
-    auto tiers = data.priceTiers;
-    std::sort(tiers.begin(), tiers.end(), [](const PriceTier& a, const PriceTier& b) {
-        return a.threshold > b.threshold;
-    });
-
-    // 找到当前所在阶梯
-    for (const auto& tier : tiers) {
+    // priceTiers 已在反序列化时按阈值降序排序
+    for (const auto& tier : data.priceTiers) {
         if (data.currentCount >= tier.threshold) {
             return tier.price;
         }
     }
 
     // 返回最低阈值的价格
-    return tiers.back().price;
+    return data.priceTiers.back().price;
 }
 
 std::optional<DynamicPriceInfo> DynamicPricingService::getPriceInfo(BlockPos pos, int dimId, int itemId, bool isShop) {
@@ -107,11 +101,15 @@ bool DynamicPricingService::setDynamicPricing(
     auto existingOpt = DynamicPricingRepository::getInstance().find(pos, dimId, itemId, isShop);
 
     DynamicPricingData data;
-    data.dimId              = dimId;
-    data.pos                = pos;
-    data.itemId             = itemId;
-    data.isShop             = isShop;
-    data.priceTiers         = tiers;
+    data.dimId      = dimId;
+    data.pos        = pos;
+    data.itemId     = itemId;
+    data.isShop     = isShop;
+    data.priceTiers = tiers;
+    // 按阈值降序排序，保持与 deserializeTiers 一致
+    std::sort(data.priceTiers.begin(), data.priceTiers.end(), [](const PriceTier& a, const PriceTier& b) {
+        return a.threshold > b.threshold;
+    });
     data.stopThreshold      = stopThreshold;
     data.resetIntervalHours = resetHours;
     data.enabled            = enabled;

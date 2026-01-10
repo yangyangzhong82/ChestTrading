@@ -3,6 +3,7 @@
 #include "db/Sqlite3Wrapper.h"
 #include "logger.h"
 #include "nlohmann/json.hpp"
+#include <algorithm>
 #include <ctime>
 
 namespace CT {
@@ -30,6 +31,10 @@ std::vector<PriceTier> DynamicPricingRepository::deserializeTiers(const std::str
         for (const auto& item : arr) {
             tiers.push_back({item["threshold"].get<int>(), item["price"].get<double>()});
         }
+        // 按阈值降序排序，避免每次计算价格时重复排序
+        std::sort(tiers.begin(), tiers.end(), [](const PriceTier& a, const PriceTier& b) {
+            return a.threshold > b.threshold;
+        });
     } catch (const std::exception& e) {
         logger.error("deserializeTiers failed: {}", e.what());
     }
