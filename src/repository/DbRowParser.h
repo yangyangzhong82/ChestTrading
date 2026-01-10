@@ -40,7 +40,15 @@ std::optional<T> parseSingleRow(const std::vector<std::vector<std::string>>& res
     if (results.empty() || results[0].size() < minCols) {
         return std::nullopt;
     }
-    return parser(DbRowParser(results[0]));
+    try {
+        return parser(DbRowParser(results[0]));
+    } catch (const std::exception& e) {
+        logger.error("DbRowParser: Failed to parse single row: {}", e.what());
+        return std::nullopt;
+    } catch (...) {
+        logger.error("DbRowParser: Failed to parse single row: unknown exception");
+        return std::nullopt;
+    }
 }
 
 /**
