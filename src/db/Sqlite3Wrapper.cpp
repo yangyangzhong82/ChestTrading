@@ -18,6 +18,8 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         db = nullptr;
     }
 
+    mDbPath = db_path; // 保存路径用于读连接池
+
     if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
         CT::logger.error("无法打开数据库: {}", sqlite3_errmsg(db));
         return false;
@@ -71,6 +73,14 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
         );
     }
 
+    // 初始化读连接池（仅在 WAL 模式下有效）
+    if (CT::ConfigManager::getInstance().get().enableWalMode) {
+        mReadConnPoolSize = CT::ConfigManager::getInstance().get().databaseThreadPoolSize;
+        if (initReadConnPool()) {
+            CT::logger.info("读连接池已初始化，连接数: {}", mReadConnPoolSize);
+        }
+    }
+
     // 初始化缓存超时时间
     mQueryCache.setTimeout(CT::ConfigManager::getInstance().get().databaseCacheTimeoutSec);
 
@@ -79,6 +89,9 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 
 void Sqlite3Wrapper::close() {
     mClosing = true;
+
+    // 先关闭读连接池（唤醒所有等待连接的线程）
+    closeReadConnPool();
 
     // 等待所有异步任务完成
     waitForAllAsyncTasks();
@@ -98,6 +111,76 @@ void Sqlite3Wrapper::close() {
     mQueryCache.clear();
 
     mClosing = false;
+}
+
+// === 读连接池实现 ===
+
+bool Sqlite3Wrapper::initReadConnPool() {
+    std::lock_guard<std::mutex> lock(mReadConnMutex);
+
+    int busyTimeoutMs = CT::ConfigManager::getInstance().get().busyTimeoutMs;
+
+    for (size_t i = 0; i < mReadConnPoolSize; ++i) {
+        sqlite3* conn = nullptr;
+        if (sqlite3_open_v2(mDbPath.c_str(), &conn, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+            CT::logger.error("无法创建读连接 {}: {}", i, conn ? sqlite3_errmsg(conn) : "未知错误");
+            if (conn) sqlite3_close(conn);
+            continue;
+        }
+        sqlite3_busy_timeout(conn, busyTimeoutMs);
+        mReadConnPool.push(conn);
+    }
+
+    return !mReadConnPool.empty();
+}
+
+void Sqlite3Wrapper::closeReadConnPool() {
+    {
+        std::unique_lock<std::mutex> lock(mReadConnMutex);
+
+        // 等待所有活跃连接归还
+        mReadConnCond.wait(lock, [this] { return mActiveReadConns.load() == 0; });
+
+        while (!mReadConnPool.empty()) {
+            sqlite3* conn = mReadConnPool.front();
+            mReadConnPool.pop();
+            if (conn) sqlite3_close(conn);
+        }
+    }
+    // 在锁外通知所有等待的线程
+    mReadConnCond.notify_all();
+}
+
+sqlite3* Sqlite3Wrapper::acquireReadConn() {
+    std::unique_lock<std::mutex> lock(mReadConnMutex);
+
+    // 循环等待可用连接或关闭信号，超时 5 秒
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!mClosing && mReadConnPool.empty()) {
+        if (mReadConnCond.wait_until(lock, deadline) == std::cv_status::timeout) {
+            return nullptr;
+        }
+    }
+
+    if (mClosing || mReadConnPool.empty()) {
+        return nullptr;
+    }
+
+    sqlite3* conn = mReadConnPool.front();
+    mReadConnPool.pop();
+    mActiveReadConns++;
+    return conn;
+}
+
+void Sqlite3Wrapper::releaseReadConn(sqlite3* conn) {
+    if (!conn) return;
+
+    {
+        std::lock_guard<std::mutex> lock(mReadConnMutex);
+        mReadConnPool.push(conn);
+        mActiveReadConns--;
+    }
+    mReadConnCond.notify_one();
 }
 
 sqlite3_stmt* Sqlite3Wrapper::getOrPrepareStmt(const std::string& sql) {

@@ -8,6 +8,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <queue>
 #include <sqlite3.h>
 #include <string>
 #include <unordered_map>
@@ -151,7 +152,7 @@ private:
     ~Sqlite3Wrapper();
 
     sqlite3*             db;
-    std::recursive_mutex mDbMutex; // 数据库操作互斥锁
+    std::recursive_mutex mDbMutex; // 数据库操作互斥锁（仅用于写操作）
 
     // 预处理语句缓存
     std::unordered_map<std::string, sqlite3_stmt*> mStmtCache;
@@ -166,6 +167,26 @@ private:
     std::unique_ptr<ThreadPool> mThreadPool;
     size_t                      mThreadPoolSize = 4; // 默认4个线程
     std::atomic<bool>           mClosing{false};     // 关闭状态标志
+
+    // === 读连接池（用于实现真正的读并发）===
+    std::string             mDbPath;               // 数据库路径
+    std::queue<sqlite3*>    mReadConnPool;         // 空闲读连接队列
+    std::mutex              mReadConnMutex;        // 读连接池互斥锁
+    std::condition_variable mReadConnCond;         // 读连接可用条件变量
+    size_t                  mReadConnPoolSize = 4; // 读连接池大小
+    std::atomic<size_t>     mActiveReadConns{0};   // 活跃读连接数
+
+    // 初始化读连接池
+    bool initReadConnPool();
+    // 关闭读连接池
+    void closeReadConnPool();
+    // 获取一个读连接（阻塞直到可用）
+    sqlite3* acquireReadConn();
+    // 归还读连接
+    void releaseReadConn(sqlite3* conn);
+    // 使用读连接执行查询
+    template <typename... Args>
+    std::vector<std::vector<std::string>> queryWithReadConn(sqlite3* conn, const std::string& sql, Args&&... args);
 
     // 内部辅助函数,用于绑定参数
     template <size_t I = 1, typename T, typename... Args>
@@ -418,12 +439,77 @@ std::future<std::vector<std::vector<std::string>>> Sqlite3Wrapper::queryAsync(co
     // 捕获参数的副本
     auto params = std::make_tuple(std::forward<Args>(args)...);
 
+    // 使用读连接池实现真正的并发查询
     return mThreadPool->enqueue([this, sql, params = std::move(params)]() {
-        return std::apply(
-            [this, &sql](auto&&... args) { return this->query(sql, std::forward<decltype(args)>(args)...); },
+        sqlite3* readConn = this->acquireReadConn();
+        if (!readConn) {
+            // 读连接池不可用，回退到主连接
+            return std::apply(
+                [this, &sql](auto&&... args) { return this->query(sql, std::forward<decltype(args)>(args)...); },
+                params
+            );
+        }
+        auto result = std::apply(
+            [this, readConn, &sql](auto&&... args) {
+                return this->queryWithReadConn(readConn, sql, std::forward<decltype(args)>(args)...);
+            },
             params
         );
+        this->releaseReadConn(readConn);
+        return result;
     });
+}
+
+// 使用读连接执行查询（无锁，带缓存）
+template <typename... Args>
+std::vector<std::vector<std::string>>
+Sqlite3Wrapper::queryWithReadConn(sqlite3* conn, const std::string& sql, Args&&... args) {
+    std::vector<std::vector<std::string>> results;
+    if (!conn) return results;
+
+    // 检查缓存
+    const bool skipCache = QueryCache::shouldSkip(sql);
+    size_t     cacheKey  = 0;
+    if (!skipCache) {
+        cacheKey = QueryCache::generateKeyFast(sql, args...);
+        if (mQueryCache.get(cacheKey, sql, results)) {
+            mStats.cacheHits++;
+            return results;
+        }
+    }
+    mStats.cacheMisses++;
+    mStats.queryCount++;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(conn, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        CT::logger.error("读连接查询准备失败: {}", sqlite3_errmsg(conn));
+        return results;
+    }
+
+    // RAII 确保 stmt 被释放
+    auto stmtGuard = [](sqlite3_stmt* s) {
+        if (s) sqlite3_finalize(s);
+    };
+    std::unique_ptr<sqlite3_stmt, decltype(stmtGuard)> stmtPtr(stmt, stmtGuard);
+
+    bind_args(stmt, std::forward<Args>(args)...);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        std::vector<std::string> row;
+        int                      col_count = sqlite3_column_count(stmt);
+        for (int i = 0; i < col_count; ++i) {
+            const char* col_text = reinterpret_cast<const char*>(sqlite3_column_text(stmt, i));
+            row.push_back(col_text ? col_text : "NULL");
+        }
+        results.push_back(std::move(row));
+    }
+
+    // 更新缓存
+    if (!skipCache) {
+        mQueryCache.set(cacheKey, sql, results);
+    }
+
+    return results;
 }
 
 // 在线程池中等待 future 完成，然后在主线程执行回调
