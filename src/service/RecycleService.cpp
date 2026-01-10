@@ -6,6 +6,7 @@
 #include "PlayerLimitService.h"
 #include "TextService.h"
 #include "Utils/NbtUtils.h"
+#include "Utils/ScopeGuard.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -305,7 +306,7 @@ RecycleResult RecycleService::executeFullRecycle(
         for (int i = 0; i < chest->getContainerSize(); ++i) {
             const auto& chestItem = chest->getItem(i);
             if (chestItem.isNull()) {
-                chestAvailableSpace += chestItem.getMaxStackSize();
+                chestAvailableSpace += 64;//空槽位
             } else {
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (chestItemNbt) {
@@ -336,7 +337,20 @@ RecycleResult RecycleService::executeFullRecycle(
         }
     }
 
-    // 8. 执行物品转移
+    // 使用 ScopeGuard 自动管理回滚操作（RAII）
+    ScopeGuard rollbackGuard;
+
+    // 8. 官方回收商店：保存原始物品副本用于回滚
+    std::vector<ItemStack> originalItemsForRollback;
+    if (isAdminRecycle) {
+        for (const auto& tr : transferRecords) {
+            ItemStack copy = playerInventory.getItem(tr.slot);
+            copy.setStackSize(tr.count);
+            originalItemsForRollback.push_back(std::move(copy));
+        }
+    }
+
+    // 9. 执行物品转移
     for (const auto& tr : transferRecords) {
         if (!isAdminRecycle) {
             // 普通回收商店：物品转移到箱子
@@ -370,21 +384,54 @@ RecycleResult RecycleService::executeFullRecycle(
         playerInventory.removeItem(tr.slot, tr.count);
     }
 
-    // 9. 给回收者加钱（扣除税率）
+    // 添加回滚操作：将物品从箱子移回玩家背包
+    if (!isAdminRecycle) {
+        rollbackGuard.addRollback([&]() {
+            // 从箱子移除本次新增的物品
+            for (int i = 0; i < chest->getContainerSize(); ++i) {
+                const auto& chestItem = chest->getItem(i);
+                if (chestItem.isNull()) continue;
+                auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
+                if (!chestItemNbt) continue;
+                auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                if (NbtUtils::toSNBT(*cleanedNbt) != commissionNbtStr) continue;
+                int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
+                if (addedCount > 0) {
+                    ItemStack returnItem = chestItem;
+                    returnItem.setStackSize(addedCount);
+                    chest->removeItem(i, addedCount);
+                    if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
+                }
+            }
+            refundOwner();
+            recycler.refreshInventory();
+        });
+    } else {
+        // 官方回收商店：使用保存的原始物品副本进行回滚（保留完整属性）
+        rollbackGuard.addRollback([&originalItemsForRollback, &recycler]() {
+            for (auto& item : originalItemsForRollback) {
+                if (!recycler.add(item)) recycler.drop(item, true);
+            }
+            recycler.refreshInventory();
+        });
+    }
+
+    // 10. 给回收者加钱（扣除税率）
     double taxRate      = ConfigManager::getInstance().get().taxSettings.recycleTaxRate;
     double recyclerGain = totalPrice * (1.0 - taxRate);
     Economy::addMoney(recycler, recyclerGain);
 
+    // 添加回滚操作：扣除回收者金钱（LIFO 顺序：先回滚金钱，再回滚物品）
+    rollbackGuard.addRollback([&]() { Economy::reduceMoney(recycler, recyclerGain); });
+
     // 11. 更新数据库（事务）
     if (!executeDbUpdate(recycler, pos, dimId, itemId, quantity, totalPrice)) {
-        // 数据库更新失败，但金钱和物品已转移，记录错误但不回滚（避免复杂性）
-        logger.error(
-            "Recycle DB update failed but transaction completed. Player: {}, ItemId: {}, Count: {}",
-            recycler.getRealName(),
-            itemId,
-            quantity
-        );
+        return {false, txt.getMessage("recycle.db_fail"), 0, 0.0};
+        // rollbackGuard 析构时会自动回滚金钱和物品
     }
+
+    // 事务成功提交，取消回滚操作
+    rollbackGuard.dismiss();
 
     // 官方回收商店记录动态价格交易量
     if (isAdminRecycle) {
