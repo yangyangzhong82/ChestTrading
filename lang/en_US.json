@@ -354,6 +354,24 @@
     "item_location": "§eLocation: §7{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[Official Shop]\n"
   },
+  "player_list": {
+    "list_title": "Shop Owners",
+    "recycle_list_title": "Recycle Shop Owners",
+    "no_players": "§7No shop owners available.",
+    "no_recycle_players": "§7No recycle shop owners available.",
+    "total_players": "§eTotal {count} owners §7(Page {page}/{total})",
+    "player_button": "{name}\n§7Shops: {count}",
+    "player_recycle_button": "{name}\n§7Recycle Shops: {count}",
+    "button_search": "§e Search Owners",
+    "button_back_list": "§7Back to Owner List",
+    "search_title": "Search Owner",
+    "recycle_search_title": "Search Recycle Owner",
+    "search_keyword": "Owner Name",
+    "search_hint": "Enter owner name keyword",
+    "search_result": "Search: {keyword}",
+    "player_shops_title": "{name}'s Shops",
+    "player_recycle_shops_title": "{name}'s Recycle Shops"
+  },
   "item_display": {
     "durability": "§aDurability: {current} / {max}",
     "aux_value": "§eAux Value: {value}",
@@ -443,7 +461,9 @@
     "test_description": "Run automated tests (developer tool)",
     "items_description": "View public shop items list",
     "recycleitems_description": "View public recycle shop items list",
-    "ranking_description": "View sales ranking"
+    "ranking_description": "View sales ranking",
+    "players_description": "Browse shops by owner",
+    "recycleplayers_description": "Browse recycle shops by owner"
   },
   "sales_ranking": {
     "title": "Sales Ranking",

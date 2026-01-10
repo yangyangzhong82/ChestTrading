@@ -189,6 +189,25 @@ static void showShopListFormImpl(
         }
     }
 
+    // 获取销量数据并按销量排序（销量高的靠前）
+    auto                       salesRanking = ShopRepository::getInstance().getChestSalesRanking(1000);
+    std::map<std::string, int> salesMap; // key: "dimId|x|y|z", value: totalSalesCount
+    for (const auto& sale : salesRanking) {
+        std::string key = std::to_string(sale.dimId) + "|" + std::to_string(sale.pos.x) + "|"
+                        + std::to_string(sale.pos.y) + "|" + std::to_string(sale.pos.z);
+        salesMap[key] = sale.totalSalesCount;
+    }
+
+    std::sort(shops.begin(), shops.end(), [&salesMap](const ChestData& a, const ChestData& b) {
+        std::string keyA = std::to_string(a.dimId) + "|" + std::to_string(a.pos.x) + "|" + std::to_string(a.pos.y) + "|"
+                         + std::to_string(a.pos.z);
+        std::string keyB = std::to_string(b.dimId) + "|" + std::to_string(b.pos.x) + "|" + std::to_string(b.pos.y) + "|"
+                         + std::to_string(b.pos.z);
+        int salesA = salesMap.count(keyA) ? salesMap[keyA] : 0;
+        int salesB = salesMap.count(keyB) ? salesMap[keyB] : 0;
+        return salesA > salesB; // 降序排列
+    });
+
     int totalShops = static_cast<int>(shops.size());
     int totalPages = (totalShops + SHOPS_PER_PAGE - 1) / SHOPS_PER_PAGE;
     if (totalPages == 0) totalPages = 1;
@@ -223,7 +242,18 @@ static void showShopListFormImpl(
             contentText += "\n" + i18n.get("public_shop.filter_player_only");
         }
         fm.setContent(contentText);
+    }
 
+    // 搜索按钮置顶
+    bool isRecycle = (targetType == ChestType::RecycleShop);
+    fm.appendButton(
+        i18n.get("public_shop.button_search"),
+        "textures/ui/magnifyingGlass",
+        "path",
+        [isRecycle, officialFilter](Player& p) { showSearchForm(p, isRecycle, officialFilter); }
+    );
+
+    if (!shops.empty()) {
         int startIdx = currentPage * SHOPS_PER_PAGE;
         int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
 
@@ -260,14 +290,6 @@ static void showShopListFormImpl(
         }
     }
 
-    bool isRecycle = (targetType == ChestType::RecycleShop);
-    fm.appendButton(
-        i18n.get("public_shop.button_search"),
-        "textures/ui/magnifyingGlass",
-        "path",
-        [isRecycle, officialFilter](Player& p) { showSearchForm(p, isRecycle, officialFilter); }
-    );
-
     if (totalPages > 1) {
         if (currentPage > 0) {
             fm.appendButton(
@@ -291,7 +313,7 @@ static void showShopListFormImpl(
         }
     }
 
-    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player& p) {});
+    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
     fm.sendTo(player);
 }
 
@@ -496,7 +518,6 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
         showPublicShopListForm(p);
     });
 
-    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player& p) {});
     fm.sendTo(player);
 }
 
@@ -577,7 +598,333 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
         showPublicRecycleShopListForm(p);
     });
 
-    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player& p) {});
+    fm.sendTo(player);
+}
+
+// 店主列表的 i18n key 配置
+struct PlayerListI18nKeys {
+    const char* listTitle;
+    const char* noPlayers;
+    const char* totalPlayers;
+    const char* playerButton;
+    const char* searchTitle;
+    const char* searchKeyword;
+    const char* searchHint;
+};
+
+static const PlayerListI18nKeys PLAYER_LIST_I18N_KEYS = {
+    "player_list.list_title",
+    "player_list.no_players",
+    "player_list.total_players",
+    "player_list.player_button",
+    "player_list.search_title",
+    "player_list.search_keyword",
+    "player_list.search_hint"
+};
+
+static const PlayerListI18nKeys RECYCLE_PLAYER_LIST_I18N_KEYS = {
+    "player_list.recycle_list_title",
+    "player_list.no_recycle_players",
+    "player_list.total_players",
+    "player_list.player_recycle_button",
+    "player_list.recycle_search_title",
+    "player_list.search_keyword",
+    "player_list.search_hint"
+};
+
+static const int PLAYERS_PER_PAGE = 10;
+
+// 店主搜索表单
+static void showPlayerSearchForm(Player& player, bool isRecycle) {
+    auto&                i18n = I18nService::getInstance();
+    ll::form::CustomForm fm;
+
+    const auto& keys = isRecycle ? RECYCLE_PLAYER_LIST_I18N_KEYS : PLAYER_LIST_I18N_KEYS;
+    fm.setTitle(i18n.get(keys.searchTitle));
+    fm.appendInput("keyword", i18n.get(keys.searchKeyword), i18n.get(keys.searchHint));
+
+    fm.sendTo(player, [isRecycle](Player& p, ll::form::CustomFormResult const& result, ll::form::FormCancelReason) {
+        if (!result.has_value() || result->empty()) {
+            showPlayerListForm(p, 0, isRecycle, "");
+            return;
+        }
+
+        std::string keyword;
+        auto keywordIt = result->find("keyword");
+        if (keywordIt != result->end()) {
+            if (auto* ptr = std::get_if<std::string>(&keywordIt->second)) {
+                keyword = *ptr;
+            }
+        }
+
+        showPlayerListForm(p, 0, isRecycle, keyword);
+    });
+}
+
+// 显示店主列表
+void showPlayerListForm(Player& player, int currentPage, bool isRecycle, const std::string& searchKeyword) {
+    auto& i18n = I18nService::getInstance();
+    const auto& keys = isRecycle ? RECYCLE_PLAYER_LIST_I18N_KEYS : PLAYER_LIST_I18N_KEYS;
+
+    ll::form::SimpleForm fm;
+    fm.setTitle(i18n.get(keys.listTitle));
+
+    auto allChests = ChestService::getInstance().getAllPublicChests();
+
+    // 目标类型
+    ChestType targetType = isRecycle ? ChestType::RecycleShop : ChestType::Shop;
+
+    // 按店主统计商店数量
+    std::map<std::string, int> ownerShopCount;
+    for (const auto& chest : allChests) {
+        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
+            ownerShopCount[chest.ownerUuid]++;
+        }
+    }
+
+    if (ownerShopCount.empty()) {
+        fm.setContent(i18n.get(keys.noPlayers));
+        fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
+        fm.sendTo(player);
+        return;
+    }
+
+    // 获取所有店主的名字
+    std::vector<std::string> uuids;
+    for (const auto& [uuid, count] : ownerShopCount) {
+        uuids.push_back(uuid);
+    }
+    auto nameCache = CT::FormUtils::getPlayerNameCache(uuids);
+
+    // 构建店主列表并应用搜索过滤
+    struct PlayerInfo {
+        std::string uuid;
+        std::string name;
+        int         shopCount;
+    };
+    std::vector<PlayerInfo> players;
+
+    for (const auto& [uuid, count] : ownerShopCount) {
+        std::string name = nameCache[uuid];
+        if (name.empty()) name = i18n.get("public_shop.unknown_owner");
+
+        // 搜索过滤
+        if (!searchKeyword.empty() && !fuzzyMatch(name, searchKeyword)) {
+            continue;
+        }
+
+        players.push_back({uuid, name, count});
+    }
+
+    // 按商店数量排序（降序）
+    std::sort(players.begin(), players.end(), [](const PlayerInfo& a, const PlayerInfo& b) {
+        return a.shopCount > b.shopCount;
+    });
+
+    int totalPlayers = static_cast<int>(players.size());
+    int totalPages   = (totalPlayers + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
+    if (totalPages == 0) totalPages = 1;
+    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+
+    if (players.empty()) {
+        fm.setContent(i18n.get("public_shop.no_match"));
+    } else {
+        std::string contentText = i18n.get(
+            keys.totalPlayers,
+            {
+                {"count", std::to_string(totalPlayers)    },
+                {"page",  std::to_string(currentPage + 1) },
+                {"total", std::to_string(totalPages)      }
+            }
+        );
+        if (!searchKeyword.empty()) {
+            contentText += "\n§6" + i18n.get("player_list.search_result", {{"keyword", searchKeyword}});
+        }
+        fm.setContent(contentText);
+    }
+
+    // 搜索按钮置顶
+    fm.appendButton(
+        i18n.get("player_list.button_search"),
+        "textures/ui/magnifyingGlass",
+        "path",
+        [isRecycle](Player& p) { showPlayerSearchForm(p, isRecycle); }
+    );
+
+    if (!players.empty()) {
+        int startIdx = currentPage * PLAYERS_PER_PAGE;
+        int endIdx   = std::min(startIdx + PLAYERS_PER_PAGE, totalPlayers);
+
+        for (int i = startIdx; i < endIdx; ++i) {
+            const auto& info = players[i];
+            std::string buttonText = i18n.get(
+                keys.playerButton,
+                {
+                    {"name",  info.name                     },
+                    {"count", std::to_string(info.shopCount)}
+                }
+            );
+
+            fm.appendButton(buttonText, [uuid = info.uuid, isRecycle](Player& p) {
+                showPlayerShopsForm(p, uuid, 0, isRecycle);
+            });
+        }
+    }
+
+    // 分页按钮
+    if (totalPages > 1) {
+        if (currentPage > 0) {
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                "textures/ui/arrow_left",
+                "path",
+                [currentPage, isRecycle, searchKeyword](Player& p) {
+                    showPlayerListForm(p, currentPage - 1, isRecycle, searchKeyword);
+                }
+            );
+        }
+        if (currentPage < totalPages - 1) {
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                "textures/ui/arrow_right",
+                "path",
+                [currentPage, isRecycle, searchKeyword](Player& p) {
+                    showPlayerListForm(p, currentPage + 1, isRecycle, searchKeyword);
+                }
+            );
+        }
+    }
+
+    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
+    fm.sendTo(player);
+}
+
+// 显示指定玩家的商店列表
+void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int currentPage, bool isRecycle) {
+    auto& i18n = I18nService::getInstance();
+
+    ll::form::SimpleForm fm;
+
+    // 获取店主名称
+    auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid));
+    std::string ownerName = ownerInfo ? ownerInfo->name : i18n.get("public_shop.unknown_owner");
+
+    fm.setTitle(i18n.get(
+        isRecycle ? "player_list.player_recycle_shops_title" : "player_list.player_shops_title",
+        {{"name", ownerName}}
+    ));
+
+    auto allChests = ChestService::getInstance().getAllPublicChests();
+
+    ChestType targetType = isRecycle ? ChestType::RecycleShop : ChestType::Shop;
+
+    // 筛选该店主的商店
+    std::vector<ChestData> shops;
+    for (const auto& chest : allChests) {
+        if (matchesTargetType(chest.type, targetType) && chest.isPublic && chest.ownerUuid == ownerUuid) {
+            shops.push_back(chest);
+        }
+    }
+
+    // 获取销量数据并按销量排序
+    auto salesRanking = ShopRepository::getInstance().getChestSalesRanking(1000);
+    std::map<std::string, int> salesMap;
+    for (const auto& sale : salesRanking) {
+        std::string key = std::to_string(sale.dimId) + "|" + std::to_string(sale.pos.x) + "|"
+                        + std::to_string(sale.pos.y) + "|" + std::to_string(sale.pos.z);
+        salesMap[key] = sale.totalSalesCount;
+    }
+
+    std::sort(shops.begin(), shops.end(), [&salesMap](const ChestData& a, const ChestData& b) {
+        std::string keyA = std::to_string(a.dimId) + "|" + std::to_string(a.pos.x) + "|"
+                         + std::to_string(a.pos.y) + "|" + std::to_string(a.pos.z);
+        std::string keyB = std::to_string(b.dimId) + "|" + std::to_string(b.pos.x) + "|"
+                         + std::to_string(b.pos.y) + "|" + std::to_string(b.pos.z);
+        int salesA = salesMap.count(keyA) ? salesMap[keyA] : 0;
+        int salesB = salesMap.count(keyB) ? salesMap[keyB] : 0;
+        return salesA > salesB;
+    });
+
+    int totalShops = static_cast<int>(shops.size());
+    int totalPages = (totalShops + SHOPS_PER_PAGE - 1) / SHOPS_PER_PAGE;
+    if (totalPages == 0) totalPages = 1;
+    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+
+    const auto& i18nKeys = isRecycle ? RECYCLE_I18N_KEYS : SHOP_I18N_KEYS;
+
+    if (shops.empty()) {
+        fm.setContent(i18n.get(i18nKeys.noShops));
+    } else {
+        fm.setContent(i18n.get(
+            i18nKeys.totalShops,
+            {
+                {"count", std::to_string(totalShops)     },
+                {"page",  std::to_string(currentPage + 1)},
+                {"total", std::to_string(totalPages)     }
+            }
+        ));
+    }
+
+    if (!shops.empty()) {
+        int startIdx = currentPage * SHOPS_PER_PAGE;
+        int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
+
+        for (int i = startIdx; i < endIdx; ++i) {
+            const auto& shop = shops[i];
+
+            std::string shopDisplayName = shop.shopName.empty()
+                ? i18n.get(i18nKeys.ownerShop, {{"owner", ownerName}})
+                : shop.shopName;
+
+            std::string officialTag;
+            if (isOfficialShopType(shop.type)) {
+                officialTag = i18n.get("public_shop.official_tag") + " ";
+            }
+
+            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n§7"
+                                   + CT::FormUtils::dimIdToString(shop.dimId) + " §e[" + std::to_string(shop.pos.x)
+                                   + ", " + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]";
+
+            if (isRecycle) {
+                fm.appendButton(buttonText, [shop](Player& p) { showRecycleShopPreviewForm(p, shop); });
+            } else {
+                fm.appendButton(buttonText, [shop](Player& p) { showShopPreviewForm(p, shop); });
+            }
+        }
+    }
+
+    // 分页按钮
+    if (totalPages > 1) {
+        if (currentPage > 0) {
+            fm.appendButton(
+                i18n.get("public_shop.button_prev_page"),
+                "textures/ui/arrow_left",
+                "path",
+                [ownerUuid, currentPage, isRecycle](Player& p) {
+                    showPlayerShopsForm(p, ownerUuid, currentPage - 1, isRecycle);
+                }
+            );
+        }
+        if (currentPage < totalPages - 1) {
+            fm.appendButton(
+                i18n.get("public_shop.button_next_page"),
+                "textures/ui/arrow_right",
+                "path",
+                [ownerUuid, currentPage, isRecycle](Player& p) {
+                    showPlayerShopsForm(p, ownerUuid, currentPage + 1, isRecycle);
+                }
+            );
+        }
+    }
+
+    // 返回店主列表
+    fm.appendButton(
+        i18n.get("player_list.button_back_list"),
+        "textures/ui/arrow_left",
+        "path",
+        [isRecycle](Player& p) { showPlayerListForm(p, 0, isRecycle, ""); }
+    );
+
     fm.sendTo(player);
 }
 

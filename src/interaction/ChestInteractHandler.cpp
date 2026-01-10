@@ -10,7 +10,6 @@
 #include "logger.h"
 #include "mc/nbt/CompoundTagVariant.h"
 #include "mc/nbt/ListTag.h"
-#include "mc/world/level/block/BlockActorType.h"
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"

@@ -354,6 +354,24 @@
     "item_location": "§e位置: §7{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[官方商店]\n"
   },
+  "player_list": {
+    "list_title": "店主列表",
+    "recycle_list_title": "回收店主列表",
+    "no_players": "§7当前没有公开商店的店主。",
+    "no_recycle_players": "§7当前没有公开回收商店的店主。",
+    "total_players": "§e共 {count} 位店主 §7(第 {page}/{total} 页)",
+    "player_button": "{name}\n§7商店数量: {count}",
+    "player_recycle_button": "{name}\n§7回收商店数量: {count}",
+    "button_search": "§e 搜索店主",
+    "button_back_list": "§7返回店主列表",
+    "search_title": "搜索店主",
+    "recycle_search_title": "搜索回收店主",
+    "search_keyword": "店主名称",
+    "search_hint": "输入店主名称关键词",
+    "search_result": "搜索: {keyword}",
+    "player_shops_title": "{name} 的商店",
+    "player_recycle_shops_title": "{name} 的回收商店"
+  },
   "item_display": {
     "durability": "§a耐久: {current} / {max}",
     "aux_value": "§e特殊值: {value}",
@@ -443,7 +461,9 @@
     "test_description": "运行自动化测试（开发者工具）",
     "items_description": "查看公开商店物品列表",
     "recycleitems_description": "查看公开回收商店物品列表",
-    "ranking_description": "查看销量榜单"
+    "ranking_description": "查看销量榜单",
+    "players_description": "按玩家浏览商店",
+    "recycleplayers_description": "按玩家浏览回收商店"
   },
   "sales_ranking": {
     "title": "销量榜单",

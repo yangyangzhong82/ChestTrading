@@ -106,9 +106,7 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
             std::string officialTag = item.isOfficial ? i18n.get("public_shop.official_tag") + " " : "";
 
             std::string buttonText = officialTag + "§b" + std::string(itemPtr->getName()) + "§r §6["
-                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName + " §e["
-                                   + CT::FormUtils::dimIdToString(item.dimId) + " " + std::to_string(item.pos.x) + ","
-                                   + std::to_string(item.pos.y) + "," + std::to_string(item.pos.z) + "]";
+                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName;
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
 
@@ -252,9 +250,7 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
             std::string officialTag = item.isOfficial ? i18n.get("public_shop.official_tag") + " " : "";
 
             std::string buttonText = officialTag + "§b" + std::string(itemPtr->getName()) + "§r §6["
-                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName + " §e["
-                                   + CT::FormUtils::dimIdToString(item.dimId) + " " + std::to_string(item.pos.x) + ","
-                                   + std::to_string(item.pos.y) + "," + std::to_string(item.pos.z) + "]";
+                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName;
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
 

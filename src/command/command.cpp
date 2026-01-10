@@ -167,6 +167,37 @@ void registerCommand() {
         }
     );
 
+    // 注册 /players 命令 - 按玩家浏览商店
+    auto& playersCmd =
+        registrar.getOrCreateCommand("players", i18n.get("command.players_description"), CommandPermissionLevel::Any);
+    playersCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showPlayerListForm(*player);
+        }
+    );
+
+    // 注册 /recycleplayers 命令 - 按玩家浏览回收商店
+    auto& recyclePlayersCmd = registrar.getOrCreateCommand(
+        "recycleplayers",
+        i18n.get("command.recycleplayers_description"),
+        CommandPermissionLevel::Any
+    );
+    recyclePlayersCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showPlayerListForm(*player, 0, true);
+        }
+    );
+
     // 注册 /packchest 命令 - 打包箱子模式
     auto& packCmd = registrar.getOrCreateCommand(
         "packchest",
