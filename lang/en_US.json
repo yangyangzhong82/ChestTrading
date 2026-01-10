@@ -25,7 +25,14 @@
     "type_admin_recycle": "Admin Recycle Shop",
     "type_unknown": "Unknown Type",
     "name_locked": "'s Locked Chest",
-    "name_public": "'s Public Chest"
+    "name_public": "'s Public Chest",
+    "pack_not_owner": "§cYou are not the owner of this chest, cannot pack.",
+    "pack_entity_fail": "§cFailed to get chest data.",
+    "pack_empty": "§cChest is empty or cannot be read.",
+    "pack_config_fail": "§cFailed to pack chest config.",
+    "pack_item_fail": "§cFailed to create item.",
+    "pack_inventory_full": "§cInventory full, cannot pack chest.",
+    "pack_success": "§aChest packed into item!"
   },
   "shop": {
     "insufficient_money": "§cInsufficient coins! Need §6{price}§c coins.",

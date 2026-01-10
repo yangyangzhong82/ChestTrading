@@ -25,7 +25,14 @@
     "type_admin_recycle": "官方回收商店",
     "type_unknown": "未知类型",
     "name_locked": "的上锁箱子",
-    "name_public": "的公共箱子"
+    "name_public": "的公共箱子",
+    "pack_not_owner": "§c你不是这个箱子的主人，无法打包。",
+    "pack_entity_fail": "§c无法获取箱子数据。",
+    "pack_empty": "§c箱子为空或无法读取。",
+    "pack_config_fail": "§c打包箱子配置失败。",
+    "pack_item_fail": "§c创建物品失败。",
+    "pack_inventory_full": "§c背包已满，无法打包箱子。",
+    "pack_success": "§a箱子已打包成物品！"
   },
   "shop": {
     "insufficient_money": "§c你的金币不足！需要 §6{price}§c 金币。",

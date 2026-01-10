@@ -403,11 +403,16 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 );
             } else {
                 int         itemId   = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
-                std::string priceStr = "§7未定价";
+                std::string priceStr = txt.getMessage("form.label_not_priced");
                 if (itemId > 0) {
                     auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
                     if (itemOpt) {
-                        priceStr = "§a[已定价: " + CT::MoneyFormat::format(itemOpt->price) + "]";
+                        priceStr = txt.getMessage(
+                            "form.label_priced",
+                            {
+                                {"price", CT::MoneyFormat::format(itemOpt->price)}
+                        }
+                        );
                     }
                 }
                 aggregatedItems[itemNbtStr] = std::make_tuple(itemInSlot, (int)itemInSlot.mCount, priceStr);
@@ -627,7 +632,7 @@ void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSourc
         std::string content = txt.getMessage("shop.records_title");
         for (const auto& record : records) {
             auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(record.itemNbt);
-            std::string itemName = itemPtr ? itemPtr->getName() : "未知物品";
+            std::string itemName = itemPtr ? itemPtr->getName() : txt.getMessage("shop.unknown_item");
 
             std::string buyerName = record.buyerUuid;
             auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(record.buyerUuid));

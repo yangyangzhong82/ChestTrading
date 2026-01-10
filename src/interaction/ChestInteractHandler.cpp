@@ -89,23 +89,24 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     auto  mainPos      = chestService.getMainChestPos(originalPos, region);
 
     // 若是特殊箱子（有配置），仅允许主人打包
-    auto chestInfo = chestService.getChestInfo(mainPos, dimId, region);
+    auto& txt       = TextService::getInstance();
+    auto  chestInfo = chestService.getChestInfo(mainPos, dimId, region);
     if (chestInfo.has_value()) {
         if (chestInfo->ownerUuid != playerUuid) {
-            player.sendMessage("§c你不是这个箱子的主人，无法打包。");
+            player.sendMessage(txt.getMessage("chest.pack_not_owner"));
             return true;
         }
     }
 
     auto* blockActor = region.getBlockEntity(originalPos);
     if (!blockActor) {
-        player.sendMessage("§c无法获取箱子数据。");
+        player.sendMessage(txt.getMessage("chest.pack_entity_fail"));
         return true;
     }
 
     auto chestNbt = NbtUtils::getBlockEntityNbt(blockActor);
     if (!chestNbt || !chestNbt->contains("Items")) {
-        player.sendMessage("§c箱子为空或无法读取。");
+        player.sendMessage(txt.getMessage("chest.pack_empty"));
         return true;
     }
 
@@ -122,7 +123,7 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     if (chestInfo.has_value()) {
         int64_t packedId = ChestRepository::getInstance().packChest(mainPos, dimId);
         if (packedId < 0) {
-            player.sendMessage("§c打包箱子配置失败。");
+            player.sendMessage(txt.getMessage("chest.pack_config_fail"));
             return true;
         }
 
@@ -135,12 +136,12 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     auto chestItem = NbtUtils::createItemFromNbt(itemNbt);
     if (!chestItem) {
-        player.sendMessage("§c创建物品失败。");
+        player.sendMessage(txt.getMessage("chest.pack_item_fail"));
         return true;
     }
 
     if (!player.addAndRefresh(*chestItem)) {
-        player.sendMessage("§c背包已满，无法打包箱子。");
+        player.sendMessage(txt.getMessage("chest.pack_inventory_full"));
         return true;
     }
 
@@ -149,7 +150,7 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     region.removeBlock(originalPos, BlockChangeContext{});
 
-    player.sendMessage("§a箱子已打包成物品！");
+    player.sendMessage(txt.getMessage("chest.pack_success"));
     return true;
 }
 
