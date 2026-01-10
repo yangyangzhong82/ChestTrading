@@ -19,7 +19,7 @@ namespace CT {
 
 
 LL_AUTO_TYPE_INSTANCE_HOOK(
-    hook3,
+    EnderDragonCheckWallsHook,
     ll::memory::HookPriority::Normal,
     EnderDragon,
     &EnderDragon::_checkWalls,
@@ -59,7 +59,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     return origin(bb);
 }
 LL_AUTO_TYPE_INSTANCE_HOOK(
-    hook4,
+    ChestPairPreventHook,
     ll::memory::HookPriority::Normal,
     ChestBlockActor,
     &ChestBlockActor::_tryToPairWith,

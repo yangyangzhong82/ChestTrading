@@ -1,4 +1,4 @@
-#include "shareForm.h"
+#include "ShareForm.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
@@ -58,22 +58,22 @@ void showShareForm(
     int                currentPage
 ) {
     ll::form::SimpleForm fm;
-    auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage("form.share_title"));
+    auto&                textService = TextService::getInstance();
+    fm.setTitle(textService.getMessage("form.share_title"));
 
     auto&                    chestService  = ChestService::getInstance();
     std::vector<std::string> sharedPlayers = chestService.getSharedPlayers(pos, dimId, region);
     std::string              ownerName     = getPlayerNameFromUuid(ownerUuid);
 
-    std::string content = txt.getMessage(
+    std::string content = textService.getMessage(
                               "form.share_owner",
                               {
                                   {"owner", ownerName}
     }
                           )
-                        + "\n\n" + txt.getMessage("form.share_list") + "\n";
+                        + "\n\n" + textService.getMessage("form.share_list") + "\n";
     if (sharedPlayers.empty()) {
-        content += txt.getMessage("form.share_none") + "\n";
+        content += textService.getMessage("form.share_none") + "\n";
     } else {
         for (const std::string& sharedPlayerUuid : sharedPlayers) {
             content += "- " + getPlayerNameFromUuid(sharedPlayerUuid) + "\n";
@@ -81,24 +81,27 @@ void showShareForm(
     }
     fm.setContent(content);
 
-    fm.appendButton(txt.getMessage("form.button_add_online"), [pos, dimId, ownerUuid, currentPage](Player& p) {
+    fm.appendButton(textService.getMessage("form.button_add_online"), [pos, dimId, ownerUuid, currentPage](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddShareForm(p, pos, dimId, ownerUuid, region, currentPage);
     });
 
-    fm.appendButton(txt.getMessage("form.button_add_offline"), [pos, dimId, ownerUuid](Player& p) {
+    fm.appendButton(textService.getMessage("form.button_add_offline"), [pos, dimId, ownerUuid](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showAddOfflineShareForm(p, pos, dimId, ownerUuid, region);
     });
 
     if (!sharedPlayers.empty()) {
-        fm.appendButton(txt.getMessage("form.button_remove_share"), [pos, dimId, ownerUuid, currentPage](Player& p) {
-            auto& region = p.getDimensionBlockSource();
-            showRemoveShareForm(p, pos, dimId, ownerUuid, region, currentPage);
-        });
+        fm.appendButton(
+            textService.getMessage("form.button_remove_share"),
+            [pos, dimId, ownerUuid, currentPage](Player& p) {
+                auto& region = p.getDimensionBlockSource();
+                showRemoveShareForm(p, pos, dimId, ownerUuid, region, currentPage);
+            }
+        );
     }
 
-    fm.appendButton(txt.getMessage("form.button_cancel"), [](Player& p) {
+    fm.appendButton(textService.getMessage("form.button_cancel"), [](Player& p) {
         logger.info("玩家 {} 取消了箱子分享管理。", p.getUuid().asString());
     });
 
@@ -113,9 +116,9 @@ void showAddOfflineShareForm(
     BlockSource&       region
 ) {
     ll::form::CustomForm fm;
-    auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage("form.share_add_offline_title"));
-    fm.appendInput(OFFLINE_PLAYER_INPUT_KEY, txt.getMessage("form.input_offline_player"), "");
+    auto&                textService = TextService::getInstance();
+    fm.setTitle(textService.getMessage("form.share_add_offline_title"));
+    fm.appendInput(OFFLINE_PLAYER_INPUT_KEY, textService.getMessage("form.input_offline_player"), "");
 
     fm.sendTo(
         player,
@@ -136,9 +139,9 @@ void showAddOfflineShareForm(
                         if (playerInfo) {
                             std::string offlinePlayerUuid = playerInfo->uuid.asString();
                             auto&       svc               = ChestService::getInstance();
-                            auto&       txt               = TextService::getInstance();
+                            auto&       textService       = TextService::getInstance();
                             if (svc.addSharedPlayer(ownerUuid, offlinePlayerUuid, pos, dimId, region)) {
-                                p.sendMessage(txt.getMessage(
+                                p.sendMessage(textService.getMessage(
                                     "share.add_success",
                                     {
                                         {"player", offlinePlayerName}
@@ -146,7 +149,7 @@ void showAddOfflineShareForm(
                                 ));
                                 logger.info("玩家 {} 成功将箱子分享给离线玩家 {}.", ownerUuid, offlinePlayerName);
                             } else {
-                                p.sendMessage(txt.getMessage("share.add_fail"));
+                                p.sendMessage(textService.getMessage("share.add_fail"));
                                 logger.error("玩家 {} 分享给离线玩家 {} 失败。", ownerUuid, offlinePlayerName);
                             }
                         } else {
@@ -178,8 +181,8 @@ void showAddShareForm(
     int                currentPage
 ) {
     ll::form::CustomForm fm;
-    auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage(
+    auto&                textService = TextService::getInstance();
+    fm.setTitle(textService.getMessage(
         "form.share_add_online_title",
         {
             {"page", std::to_string(currentPage + 1)}
@@ -206,19 +209,19 @@ void showAddShareForm(
     std::vector<std::string> currentPageUuids;
 
     if (totalPages > 1) {
-        fm.appendLabel(txt.getMessage("form.page_selection"));
-        fm.appendSlider("page_slider", txt.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
-        fm.appendLabel(txt.getMessage("form.player_selection_tip"));
+        fm.appendLabel(textService.getMessage("form.page_selection"));
+        fm.appendSlider("page_slider", textService.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
+        fm.appendLabel(textService.getMessage("form.player_selection_tip"));
     }
 
     if (totalPlayers > 0) {
-        fm.appendLabel(txt.getMessage("form.select_online_player"));
+        fm.appendLabel(textService.getMessage("form.select_online_player"));
         for (int i = startIndex; i < endIndex; ++i) {
             fm.appendToggle(onlinePlayers[i].first, onlinePlayers[i].second, false);
             currentPageUuids.push_back(onlinePlayers[i].first);
         }
     } else {
-        fm.appendLabel(txt.getMessage("form.no_online_players"));
+        fm.appendLabel(textService.getMessage("form.no_online_players"));
     }
 
     fm.sendTo(
@@ -251,15 +254,15 @@ void showAddShareForm(
             }
 
             // 处理在线玩家开关结果
-            auto& svc = ChestService::getInstance();
-            auto& txt = TextService::getInstance();
+            auto& svc         = ChestService::getInstance();
+            auto& textService = TextService::getInstance();
             for (const std::string& onlinePlayerUuid : currentPageUuids) {
                 if (res->count(onlinePlayerUuid)) {
                     const auto& toggleResult = res->at(onlinePlayerUuid);
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string onlinePlayerName = getPlayerNameFromUuid(onlinePlayerUuid);
                         if (svc.addSharedPlayer(ownerUuid, onlinePlayerUuid, pos, dimId, region)) {
-                            p.sendMessage(txt.getMessage(
+                            p.sendMessage(textService.getMessage(
                                 "share.add_success",
                                 {
                                     {"player", onlinePlayerName}
@@ -267,7 +270,7 @@ void showAddShareForm(
                             ));
                             logger.debug("玩家 {} 成功分享给玩家 {}.", ownerUuid, onlinePlayerName);
                         } else {
-                            p.sendMessage(txt.getMessage("share.add_fail"));
+                            p.sendMessage(textService.getMessage("share.add_fail"));
                             logger.error("玩家 {} 分享给玩家 {} 失败。", ownerUuid, onlinePlayerName);
                         }
                     }
@@ -289,8 +292,8 @@ void showRemoveShareForm(
     int                currentPage
 ) {
     ll::form::CustomForm removeForm; // 改为 CustomForm
-    auto&                txt = TextService::getInstance();
-    removeForm.setTitle(txt.getMessage(
+    auto&                textService = TextService::getInstance();
+    removeForm.setTitle(textService.getMessage(
         "form.remove_share_title",
         {
             {"page", std::to_string(currentPage + 1)}
@@ -309,15 +312,16 @@ void showRemoveShareForm(
     std::vector<std::string> currentPageSharedUuids;
 
     if (totalPages > 1) {
-        removeForm.appendLabel(txt.getMessage("form.page_selection"));
-        removeForm.appendSlider("page_slider", txt.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
-        removeForm.appendLabel(txt.getMessage("form.player_selection_tip"));
+        removeForm.appendLabel(textService.getMessage("form.page_selection"));
+        removeForm
+            .appendSlider("page_slider", textService.getMessage("form.select_page"), 1, totalPages, 1, currentPage + 1);
+        removeForm.appendLabel(textService.getMessage("form.player_selection_tip"));
     }
 
     if (sharedPlayers.empty()) {
-        removeForm.appendLabel(txt.getMessage("form.no_shared_players"));
+        removeForm.appendLabel(textService.getMessage("form.no_shared_players"));
     } else {
-        removeForm.appendLabel(txt.getMessage("form.select_remove_player"));
+        removeForm.appendLabel(textService.getMessage("form.select_remove_player"));
         for (int i = startIndex; i < endIndex; ++i) {
             std::string sharedPlayerUuid = sharedPlayers[i];
             std::string sharedPlayerName = getPlayerNameFromUuid(sharedPlayerUuid);
@@ -356,15 +360,15 @@ void showRemoveShareForm(
             }
 
             // 处理开关结果
-            auto& svc = ChestService::getInstance();
-            auto& txt = TextService::getInstance();
+            auto& svc         = ChestService::getInstance();
+            auto& textService = TextService::getInstance();
             for (const std::string& sharedPlayerUuid : currentPageSharedUuids) {
                 if (res->count(sharedPlayerUuid)) {
                     const auto& toggleResult = res->at(sharedPlayerUuid);
                     if (std::holds_alternative<uint64>(toggleResult) && std::get<uint64>(toggleResult) == 1) {
                         std::string sharedPlayerName = getPlayerNameFromUuid(sharedPlayerUuid);
                         if (svc.removeSharedPlayer(sharedPlayerUuid, pos, dimId, region)) {
-                            p.sendMessage(txt.getMessage(
+                            p.sendMessage(textService.getMessage(
                                 "share.remove_success",
                                 {
                                     {"player", sharedPlayerName}
@@ -372,7 +376,7 @@ void showRemoveShareForm(
                             ));
                             logger.info("玩家 {} 成功移除分享玩家 {}.", ownerUuid, sharedPlayerName);
                         } else {
-                            p.sendMessage(txt.getMessage("share.remove_fail"));
+                            p.sendMessage(textService.getMessage("share.remove_fail"));
                             logger.error("玩家 {} 移除分享玩家 {} 失败。", ownerUuid, sharedPlayerUuid);
                         }
                     }

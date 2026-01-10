@@ -171,9 +171,9 @@ void showChestLockForm(
 
         auto createChestHandler =
             [](Player& p, BlockPos pos, int dimId, const std::string& playerUuid, ChestType type, double cost) {
-                auto& region = p.getDimensionBlockSource();
-                auto& svc    = ChestService::getInstance();
-                auto& txt    = TextService::getInstance();
+                auto& region      = p.getDimensionBlockSource();
+                auto& svc         = ChestService::getInstance();
+                auto& textService = TextService::getInstance();
 
                 std::string errorMsg;
                 if (!svc.canPlayerCreateChest(playerUuid, type, errorMsg)) {
@@ -184,7 +184,7 @@ void showChestLockForm(
                 bool isAdminType = (type == ChestType::AdminShop || type == ChestType::AdminRecycle);
                 if (!isAdminType && cost > 0) {
                     if (!Economy::hasMoney(p, cost)) {
-                        p.sendMessage(txt.getMessage(
+                        p.sendMessage(textService.getMessage(
                             "economy.insufficient",
                             {
                                 {"price", MoneyFormat::format(cost)}
@@ -193,27 +193,27 @@ void showChestLockForm(
                         return;
                     }
                     if (!Economy::reduceMoney(p, cost)) {
-                        p.sendMessage(txt.getMessage("economy.deduct_fail"));
+                        p.sendMessage(textService.getMessage("economy.deduct_fail"));
                         return;
                     }
                 }
                 auto result = svc.createChest(playerUuid, pos, dimId, type, region);
                 if (result.success) {
-                    p.sendMessage(txt.getMessage(
+                    p.sendMessage(textService.getMessage(
                         "chest.create_success",
                         {
-                            {"type",  txt.getChestTypeName(type)},
-                            {"price", MoneyFormat::format(cost) }
+                            {"type",  textService.getChestTypeName(type)},
+                            {"price", MoneyFormat::format(cost)         }
                     }
                     ));
                 } else {
                     if (!isAdminType && cost > 0) {
                         Economy::addMoney(p, cost);
                     }
-                    p.sendMessage(txt.getMessage(
+                    p.sendMessage(textService.getMessage(
                         "chest.create_fail",
                         {
-                            {"type", txt.getChestTypeName(type)}
+                            {"type", textService.getChestTypeName(type)}
                     }
                     ));
                 }
@@ -315,20 +315,24 @@ void showChestLockForm(
 
 void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType) {
     ll::form::CustomForm fm;
-    auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage("form.chest_settings_title"));
+    auto&                textService = TextService::getInstance();
+    fm.setTitle(textService.getMessage("form.chest_settings_title"));
 
     auto& chestService = ChestService::getInstance();
     auto  config       = chestService.getChestConfig(pos, dimId, region);
 
-    fm.appendToggle("enable_floating_text", txt.getMessage("form.toggle_floating_text"), config.enableFloatingText);
+    fm.appendToggle(
+        "enable_floating_text",
+        textService.getMessage("form.toggle_floating_text"),
+        config.enableFloatingText
+    );
 
     bool isShopType =
         (chestType == ChestType::Shop || chestType == ChestType::RecycleShop || chestType == ChestType::AdminShop
          || chestType == ChestType::AdminRecycle);
     if (isShopType) {
-        fm.appendToggle("enable_fake_item", txt.getMessage("form.toggle_fake_item"), config.enableFakeItem);
-        fm.appendToggle("is_public", txt.getMessage("form.toggle_public"), config.isPublic);
+        fm.appendToggle("enable_fake_item", textService.getMessage("form.toggle_fake_item"), config.enableFakeItem);
+        fm.appendToggle("is_public", textService.getMessage("form.toggle_public"), config.isPublic);
     }
 
     fm.sendTo(
@@ -337,12 +341,12 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
          dimId,
          chestType,
          isShopType](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
-            auto& region = p.getDimensionBlockSource();
-            auto& svc    = ChestService::getInstance();
-            auto& txt    = TextService::getInstance();
+            auto& region      = p.getDimensionBlockSource();
+            auto& svc         = ChestService::getInstance();
+            auto& textService = TextService::getInstance();
 
             if (!result.has_value()) {
-                p.sendMessage(txt.getMessage("action.cancelled"));
+                p.sendMessage(textService.getMessage("action.cancelled"));
                 auto info = svc.getChestInfo(pos, dimId, region);
                 showChestLockForm(
                     p,
@@ -375,9 +379,9 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
             }
 
             if (svc.updateChestConfig(pos, dimId, region, newConfig)) {
-                p.sendMessage(txt.getMessage("chest.config_saved"));
+                p.sendMessage(textService.getMessage("chest.config_saved"));
             } else {
-                p.sendMessage(txt.getMessage("chest.config_fail"));
+                p.sendMessage(textService.getMessage("chest.config_fail"));
             }
 
             auto info = svc.getChestInfo(pos, dimId, region);
