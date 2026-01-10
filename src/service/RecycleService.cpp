@@ -187,7 +187,10 @@ RecycleResult RecycleService::executeFullRecycle(
     // 辅助lambda：退还店主金钱
     auto refundOwner = [&]() {
         if (ownerMoneyDeducted) {
-            Economy::addMoneyByUuid(ownerUuid, totalPrice);
+            if (!Economy::addMoneyByUuid(ownerUuid, totalPrice)) {
+                logger.error("退还店主金钱失败: ownerUuid={}, amount={}", ownerUuid, totalPrice);
+            }
+            ownerMoneyDeducted = false; // 防止重复退款
         }
     };
 
