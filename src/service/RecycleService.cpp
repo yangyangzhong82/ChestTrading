@@ -348,24 +348,17 @@ RecycleResult RecycleService::executeFullRecycle(
                 // 转移失败，精确回滚：只移除本次新增的部分
                 for (int i = 0; i < chest->getContainerSize(); ++i) {
                     const auto& chestItem = chest->getItem(i);
-                    if (!chestItem.isNull()) {
-                        auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
-                        if (chestItemNbt) {
-                            auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                            if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
-                                int initialCount = chestInitialCounts.count(i) ? chestInitialCounts[i] : 0;
-                                int currentCount = chestItem.mCount;
-                                int addedCount   = currentCount - initialCount;
-                                if (addedCount > 0) {
-                                    ItemStack returnItem = chestItem;
-                                    returnItem.setStackSize(addedCount);
-                                    chest->removeItem(i, addedCount);
-                                    if (!recycler.add(returnItem)) {
-                                        recycler.drop(returnItem, true);
-                                    }
-                                }
-                            }
-                        }
+                    if (chestItem.isNull()) continue;
+                    auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
+                    if (!chestItemNbt) continue;
+                    auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                    if (NbtUtils::toSNBT(*cleanedNbt) != commissionNbtStr) continue;
+                    int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
+                    if (addedCount > 0) {
+                        ItemStack returnItem = chestItem;
+                        returnItem.setStackSize(addedCount);
+                        chest->removeItem(i, addedCount);
+                        if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
                     }
                 }
                 refundOwner();
