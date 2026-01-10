@@ -1,9 +1,7 @@
-
 #include "Sqlite3Wrapper.h"
 #include "SchemaMigration.h"
 #include "logger.h"
 #include <algorithm>
-#include <string_view>
 #include <vector>
 
 #include "Config/ConfigManager.h"
@@ -66,7 +64,6 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 
     // 初始化线程池
     if (!mThreadPool) {
-        // 使用配置的线程池大小
         mThreadPool = std::make_unique<ThreadPool>(CT::ConfigManager::getInstance().get().databaseThreadPoolSize);
         CT::logger.info(
             "数据库线程池已初始化，线程数: {}",
@@ -75,7 +72,7 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
     }
 
     // 初始化缓存超时时间
-    setCacheTimeout(CT::ConfigManager::getInstance().get().databaseCacheTimeoutSec);
+    mQueryCache.setTimeout(CT::ConfigManager::getInstance().get().databaseCacheTimeoutSec);
 
     return true;
 }
@@ -98,7 +95,7 @@ void Sqlite3Wrapper::close() {
         sqlite3_close(db);
         db = nullptr;
     }
-    clearCache();
+    mQueryCache.clear();
 
     mClosing = false;
 }
@@ -166,7 +163,7 @@ bool Transaction::commit() {
     mDb.mCurrentTransaction = nullptr;
     // 只清除受影响表的缓存
     for (const auto& table : mAffectedTables) {
-        mDb.clearCacheForTable(table);
+        mDb.mQueryCache.clearForTable(table);
     }
     return true;
 }
@@ -182,32 +179,11 @@ void Transaction::rollback() {
 
     mActive                 = false;
     mDb.mCurrentTransaction = nullptr;
-    // 回滚不需要清除缓存，因为数据没有变化
 }
 
 void Transaction::markTableAffected(const std::string& tableName) {
     if (!tableName.empty()) {
         mAffectedTables.insert(tableName);
-    }
-}
-
-void Sqlite3Wrapper::clearCache() {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    mQueryCache.clear();
-}
-
-void Sqlite3Wrapper::clearCacheForTable(const std::string& tableName) {
-    if (tableName.empty()) {
-        clearCache();
-        return;
-    }
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    for (auto it = mQueryCache.begin(); it != mQueryCache.end();) {
-        if (it->second.sql.find(tableName) != std::string::npos) {
-            it = mQueryCache.erase(it);
-        } else {
-            ++it;
-        }
     }
 }
 
@@ -239,15 +215,6 @@ std::string Sqlite3Wrapper::extractTableName(const std::string& sql) {
     return "";
 }
 
-void Sqlite3Wrapper::setCacheTimeout(int seconds) { mCacheTimeoutSeconds = seconds; }
-
-void Sqlite3Wrapper::enableCache(bool enable) {
-    mCacheEnabled = enable;
-    if (!enable) {
-        clearCache();
-    }
-}
-
 bool Sqlite3Wrapper::isColumnExists(const std::string& tableName, const std::string& columnName) {
     if (!db) return false;
 
@@ -260,77 +227,6 @@ bool Sqlite3Wrapper::isColumnExists(const std::string& tableName, const std::str
         }
     }
     return false;
-}
-
-size_t Sqlite3Wrapper::generateCacheKey(const std::string& sql, const std::vector<Value>& params) {
-    size_t hash = std::hash<std::string>{}(sql);
-    for (const auto& param : params) {
-        size_t h = std::visit(
-            [](auto&& arg) -> size_t {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, int>) {
-                    return std::hash<int>{}(arg);
-                } else if constexpr (std::is_same_v<T, long long>) {
-                    return std::hash<long long>{}(arg);
-                } else if constexpr (std::is_same_v<T, double>) {
-                    return std::hash<double>{}(arg);
-                } else if constexpr (std::is_same_v<T, std::string>) {
-                    return std::hash<std::string>{}(arg);
-                } else if constexpr (std::is_same_v<T, const char*>) {
-                    return std::hash<std::string_view>{}(arg);
-                }
-                return 0;
-            },
-            param
-        );
-        hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    return hash;
-}
-
-bool Sqlite3Wrapper::getCachedResult(
-    size_t                                 key,
-    const std::string&                     sql,
-    std::vector<std::vector<std::string>>& result
-) {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-
-    auto it = mQueryCache.find(key);
-    if (it == mQueryCache.end()) {
-        return false;
-    }
-
-    // 验证 SQL 是否匹配，防止哈希冲突
-    if (it->second.sql != sql) {
-        return false;
-    }
-
-    auto now     = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - it->second.timestamp).count();
-
-    if (elapsed > mCacheTimeoutSeconds) {
-        mQueryCache.erase(it);
-        return false;
-    }
-
-    result = it->second.result;
-    return true;
-}
-
-void Sqlite3Wrapper::setCachedResult(
-    size_t                                       key,
-    const std::string&                           sql,
-    const std::vector<std::vector<std::string>>& result
-) {
-    std::lock_guard<std::mutex> lock(mCacheMutex);
-    mQueryCache[key] = {sql, result, std::chrono::steady_clock::now()};
-}
-
-bool Sqlite3Wrapper::shouldSkipCache(const std::string& sql) {
-    std::string lowerSql = sql;
-    std::transform(lowerSql.begin(), lowerSql.end(), lowerSql.begin(), [](unsigned char c) { return std::tolower(c); });
-    return lowerSql.find("chests") != std::string::npos || lowerSql.find("shared_chests") != std::string::npos
-        || lowerSql.find("recycle_shop_items") != std::string::npos || lowerSql.find("shop_items") != std::string::npos;
 }
 
 // === 异步操作实现 ===

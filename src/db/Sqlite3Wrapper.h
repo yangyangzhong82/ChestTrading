@@ -1,19 +1,17 @@
 #pragma once
 
+#include "QueryCache.h"
 #include "ThreadPool.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include "logger.h"
 #include <atomic>
-#include <chrono>
 #include <future>
 #include <memory>
 #include <mutex>
 #include <sqlite3.h>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
-#include <variant>
 #include <vector>
 
 
@@ -87,10 +85,10 @@ public:
     bool executeBatch(const std::vector<std::string>& sqlStatements, const std::vector<std::vector<Value>>& paramsList);
 
     // 缓存控制
-    void clearCache();
-    void clearCacheForTable(const std::string& tableName);
-    void setCacheTimeout(int seconds);
-    void enableCache(bool enable);
+    void clearCache() { mQueryCache.clear(); }
+    void clearCacheForTable(const std::string& tableName) { mQueryCache.clearForTable(tableName); }
+    void setCacheTimeout(int seconds) { mQueryCache.setTimeout(seconds); }
+    void enableCache(bool enable) { mQueryCache.setEnabled(enable); }
 
     // 检查列是否存在
     bool isColumnExists(const std::string& tableName, const std::string& columnName);
@@ -119,7 +117,6 @@ public:
     void waitForAllAsyncTasks();
 
     // 在线程池中等待 future 完成，然后在主线程执行回调
-    // 用于替代 std::thread([]{future.get(); callback();}).detach() 模式
     template <typename T, typename Callback>
     void thenOnMainThread(std::future<T> fut, Callback&& callback);
 
@@ -159,16 +156,8 @@ private:
     // 预处理语句缓存
     std::unordered_map<std::string, sqlite3_stmt*> mStmtCache;
 
-    // 查询缓存相关
-    struct CacheEntry {
-        std::string                           sql; // 用于哈希冲突验证
-        std::vector<std::vector<std::string>> result;
-        std::chrono::steady_clock::time_point timestamp;
-    };
-    std::unordered_map<size_t, CacheEntry> mQueryCache;
-    std::mutex                             mCacheMutex;
-    int                                    mCacheTimeoutSeconds = 60; // 默认缓存60秒
-    bool                                   mCacheEnabled        = true;
+    // 查询缓存
+    QueryCache mQueryCache;
 
     // 统计信息
     mutable DbStats mStats;
@@ -191,55 +180,12 @@ private:
     // 清理预处理语句缓存
     void clearStmtCache();
 
-    // 生成缓存键（高效版本）
-    template <typename... Args>
-    size_t generateCacheKeyFast(const std::string& sql, Args&&... args);
-
-    // 生成缓存键
-    size_t generateCacheKey(const std::string& sql, const std::vector<Value>& params);
-
-    // 从缓存获取结果
-    bool getCachedResult(size_t key, const std::string& sql, std::vector<std::vector<std::string>>& result);
-
-    // 存储结果到缓存
-    void setCachedResult(size_t key, const std::string& sql, const std::vector<std::vector<std::string>>& result);
-
-    // 判断查询是否应跳过缓存
-    bool shouldSkipCache(const std::string& sql);
-
     // 从 SQL 语句中提取表名
-    std::string extractTableName(const std::string& sql);
-
-    // 执行准备好的语句
-    template <typename... Args>
-    bool executeStatement(sqlite3_stmt* stmt, Args&&... args);
-
-    // 查询准备好的语句
-    template <typename... Args>
-    std::vector<std::vector<std::string>> queryStatement(sqlite3_stmt* stmt, Args&&... args);
+    static std::string extractTableName(const std::string& sql);
 };
 
 
 // --- 模板函数的实现需要放在头文件中 ---
-
-// 高效缓存键生成辅助 - 使用哈希代替字符串拼接
-namespace detail {
-inline void   hashCombine(size_t& seed, size_t h) { seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2); }
-inline size_t hashValue(int v) { return std::hash<int>{}(v); }
-inline size_t hashValue(long long v) { return std::hash<long long>{}(v); }
-inline size_t hashValue(double v) { return std::hash<double>{}(v); }
-inline size_t hashValue(const std::string& v) { return std::hash<std::string>{}(v); }
-inline size_t hashValue(const char* v) { return std::hash<std::string_view>{}(v); }
-} // namespace detail
-
-template <typename... Args>
-size_t Sqlite3Wrapper::generateCacheKeyFast(const std::string& sql, Args&&... args) {
-    size_t hash = std::hash<std::string>{}(sql);
-    if constexpr (sizeof...(args) > 0) {
-        (detail::hashCombine(hash, detail::hashValue(args)), ...);
-    }
-    return hash;
-}
 
 template <typename... Args>
 bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
@@ -265,11 +211,9 @@ bool Sqlite3Wrapper::execute(const std::string& sql, Args&&... args) {
     if (result) {
         std::string tableName = extractTableName(sql);
         if (mCurrentTransaction) {
-            // 事务中：记录受影响的表，提交时统一清理
             mCurrentTransaction->markTableAffected(tableName);
         } else {
-            // 非事务：立即清理缓存
-            clearCacheForTable(tableName);
+            mQueryCache.clearForTable(tableName);
         }
     }
 
@@ -298,11 +242,9 @@ int Sqlite3Wrapper::executeAndGetChanges(const std::string& sql, Args&&... args)
     if (success) {
         std::string tableName = extractTableName(sql);
         if (mCurrentTransaction) {
-            // 事务中：记录受影响的表，提交时统一清理
             mCurrentTransaction->markTableAffected(tableName);
         } else {
-            // 非事务：立即清理缓存
-            clearCacheForTable(tableName);
+            mQueryCache.clearForTable(tableName);
         }
     }
 
@@ -313,12 +255,12 @@ template <typename... Args>
 std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& sql, Args&&... args) {
     std::vector<std::vector<std::string>> results;
 
-    const bool skipCache = shouldSkipCache(sql);
+    const bool skipCache = QueryCache::shouldSkip(sql);
     size_t     cacheKey  = 0;
 
-    if (mCacheEnabled && !skipCache) {
-        cacheKey = generateCacheKeyFast(sql, args...);
-        if (getCachedResult(cacheKey, sql, results)) {
+    if (!skipCache) {
+        cacheKey = QueryCache::generateKeyFast(sql, args...);
+        if (mQueryCache.get(cacheKey, sql, results)) {
             mStats.cacheHits++;
             return results;
         }
@@ -349,8 +291,8 @@ std::vector<std::vector<std::string>> Sqlite3Wrapper::query(const std::string& s
     sqlite3_reset(stmt);
     sqlite3_clear_bindings(stmt);
 
-    if (mCacheEnabled && !skipCache) {
-        setCachedResult(cacheKey, sql, results);
+    if (!skipCache) {
+        mQueryCache.set(cacheKey, sql, results);
     }
 
     return results;
