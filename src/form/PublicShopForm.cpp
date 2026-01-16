@@ -282,9 +282,13 @@ static void showShopListFormImpl(
                 officialTag = i18n.get("public_shop.official_tag") + " ";
             }
 
-            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n§7"
-                                   + CT::FormUtils::dimIdToString(shop.dimId) + " §e[" + std::to_string(shop.pos.x)
-                                   + ", " + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]";
+            // 获取销量
+            std::string salesKey = std::to_string(shop.dimId) + "|" + std::to_string(shop.pos.x) + "|"
+                                 + std::to_string(shop.pos.y) + "|" + std::to_string(shop.pos.z);
+            int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
+
+            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
+                                   + i18n.get("public_shop.sales_count", {{"count", std::to_string(sales)}});
 
             fm.appendButton(buttonText, [shop, previewCallback](Player& p) { previewCallback(p, shop); });
         }
@@ -881,9 +885,13 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
                 officialTag = i18n.get("public_shop.official_tag") + " ";
             }
 
-            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n§7"
-                                   + CT::FormUtils::dimIdToString(shop.dimId) + " §e[" + std::to_string(shop.pos.x)
-                                   + ", " + std::to_string(shop.pos.y) + ", " + std::to_string(shop.pos.z) + "]";
+            // 获取销量
+            std::string salesKey = std::to_string(shop.dimId) + "|" + std::to_string(shop.pos.x) + "|"
+                                 + std::to_string(shop.pos.y) + "|" + std::to_string(shop.pos.z);
+            int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
+
+            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
+                                   + i18n.get("public_shop.sales_count", {{"count", std::to_string(sales)}});
 
             if (isRecycle) {
                 fm.appendButton(buttonText, [shop](Player& p) { showRecycleShopPreviewForm(p, shop); });
