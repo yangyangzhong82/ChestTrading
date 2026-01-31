@@ -22,7 +22,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-
+BlockChangeContext::BlockChangeContext() : mContextSource(std::monostate{}) {}
 namespace CT {
 namespace {
 

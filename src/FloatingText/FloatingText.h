@@ -53,7 +53,7 @@ struct ChestFloatingText {
     size_t                                   currentFakeItemIndex = 0; // 假物品独立索引
 
     // 假物品相关
-    std::vector<ItemStack>               items;             // 存储物品
+    std::vector<std::string>             itemNbts;          // 存储物品NBT字符串
     std::map<std::string, ActorUniqueID> playerFakeItemIds; // 玩家UUID -> 假物品ID
 
     // 构造函数

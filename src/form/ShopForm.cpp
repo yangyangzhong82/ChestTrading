@@ -55,7 +55,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
                 continue;
             }
             ItemStack item = *itemPtr;
-            item.mCount    = 1;
+            item.set(1);
 
             int         totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
             std::string buttonText =

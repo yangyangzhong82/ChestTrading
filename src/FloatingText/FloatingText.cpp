@@ -1,4 +1,4 @@
-#include "FloatingText/FloatingText.h"
+﻿#include "FloatingText/FloatingText.h"
 #include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/NetworkPacket.h"
@@ -363,7 +363,7 @@ void FloatingTextManager::loadAllChests() {
                                     );
                                 }
                                 ft.itemNames.push_back(itemName);
-                                ft.items.push_back(*itemPtr); // 存储ItemStack用于假物品显示
+                                ft.itemNbts.push_back(itemNbt); // 存储ItemStack用于假物品显示
                                 logger.debug(
                                     "为箱子 ({}, {}, {}) in dim {} 加载物品: {}",
                                     pos.x,
@@ -481,7 +481,7 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                          ft.currentItemIndex,
                          ft.currentFakeItemIndex,
                          ft.itemNames.size(),
-                         ft.items.size(),
+                         ft.itemNbts.size(),
                          ft.type}
                     );
                 }
@@ -530,9 +530,9 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                         ft.debugText->setText(ft.text);
                         ft.debugText->update();
                     }
-                } else if (!updateText && !ft.items.empty()) {
+                } else if (!updateText && !ft.itemNbts.empty()) {
                     // 边界检查
-                    if (info.currentFakeItemIndex >= ft.items.size()) continue;
+                    if (info.currentFakeItemIndex >= ft.itemNbts.size()) continue;
 
                     ft.currentFakeItemIndex = info.currentFakeItemIndex;
                 }
@@ -591,7 +591,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
             }
 
             ft.itemNames.clear();                            // 清空旧的物品名称列表
-            ft.items.clear();                                // 清空旧的物品列表
+            ft.itemNbts.clear();                                // 清空旧的物品列表
             ft.isDynamic                             = true; // 确保标记为动态悬浮字
             Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
             std::vector<std::vector<std::string>> itemResults;
@@ -636,7 +636,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                                 );
                             }
                             ft.itemNames.push_back(itemName);
-                            ft.items.push_back(*itemPtr); // 存储ItemStack用于假物品显示
+                            ft.itemNbts.push_back(itemRow[0]);
                             logger.debug("updateShopFloatingText: Added item name: {} to list.", itemName);
                         } else {
                             logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemRow[0]);
@@ -702,12 +702,12 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 // 发送假物品给玩家
 void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText& ft) {
     // 检查全局配置和单箱子配置
-    if (ft.items.empty() || !ft.isDynamic || !CT::ConfigManager::getInstance().get().floatingText.enableFakeItem
+    if (ft.itemNbts.empty() || !ft.isDynamic || !CT::ConfigManager::getInstance().get().floatingText.enableFakeItem
         || !ft.enableFakeItem)
         return;
 
     // 边界检查
-    if (ft.currentFakeItemIndex >= ft.items.size()) {
+    if (ft.currentFakeItemIndex >= ft.itemNbts.size()) {
         ft.currentFakeItemIndex = 0;
     }
 
@@ -723,8 +723,20 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         static_cast<float>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
     );
 
-    auto& currentItem                = ft.items[ft.currentFakeItemIndex];
-    auto  id                         = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), currentItem);
+    const auto& currentNbt = ft.itemNbts[ft.currentFakeItemIndex];
+    auto        nbt        = CT::NbtUtils::parseSNBT(currentNbt);
+    if (!nbt) {
+        logger.warn("sendFakeItemToPlayer: failed to parse item nbt: {}", currentNbt);
+        return;
+    }
+    nbt->at("Count") = ByteTag(1);
+    auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
+    if (!itemPtr || itemPtr->isNull()) {
+        logger.warn("sendFakeItemToPlayer: failed to create item from nbt: {}", currentNbt);
+        return;
+    }
+
+    auto id = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), *itemPtr);
     ft.playerFakeItemIds[playerUuid] = id;
 }
 
@@ -789,7 +801,7 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
     {
         std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
         for (const auto& [key, ft] : mFloatingTexts) {
-            if (ft.isDynamic && !ft.items.empty()) {
+            if (ft.isDynamic && !ft.itemNbts.empty()) {
                 fakeItemsByDim[ft.dimId].emplace_back(key);
             }
         }
@@ -804,14 +816,14 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
         if (dimIt == fakeItemsByDim.end()) return true;
 
         // 获取读锁，批量处理该维度的所有假物品
-        std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex);
+        std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex);
         for (const auto& key : dimIt->second) {
             auto it = mFloatingTexts.find(key);
             if (it == mFloatingTexts.end()) continue; // 可能在锁释放期间被删除
 
             auto& ft = it->second;
             // 再次检查条件（可能在锁释放期间被修改）
-            if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
+            if (ft.isDynamic && !ft.itemNbts.empty() && ft.dimId == playerDimId) {
                 sendFakeItemToPlayer(player, ft);
             }
         }
@@ -847,7 +859,7 @@ void registerPlayerConnectionListener() {
                         auto&                               manager = FloatingTextManager::getInstance();
                         std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                         for (const auto& [key, ft] : manager.mFloatingTexts) {
-                            if (ft.isDynamic && !ft.items.empty() && ft.dimId == playerDimId) {
+                            if (ft.isDynamic && !ft.itemNbts.empty() && ft.dimId == playerDimId) {
                                 keysToProcess.push_back(key);
                             }
                         }
@@ -856,7 +868,7 @@ void registerPlayerConnectionListener() {
                     // 批量处理假物品发送
                     if (!keysToProcess.empty()) {
                         auto&                               manager = FloatingTextManager::getInstance();
-                        std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
+                        std::unique_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                         for (const auto& key : keysToProcess) {
                             auto it = manager.mFloatingTexts.find(key);
                             if (it != manager.mFloatingTexts.end()) {
@@ -913,7 +925,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         // 批量移除旧维度的假物品
         if (!keysToRemove.empty()) {
             auto&                               manager = FloatingTextManager::getInstance();
-            std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
+            std::unique_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
             for (const auto& key : keysToRemove) {
                 auto it = manager.mFloatingTexts.find(key);
                 if (it != manager.mFloatingTexts.end()) {
@@ -945,7 +957,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                 auto&                               manager = FloatingTextManager::getInstance();
                 std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                 for (const auto& [key, ft] : manager.mFloatingTexts) {
-                    if (ft.isDynamic && !ft.items.empty() && ft.dimId == static_cast<int>(toDim)) {
+                    if (ft.isDynamic && !ft.itemNbts.empty() && ft.dimId == static_cast<int>(toDim)) {
                         keysToAdd.push_back(key);
                     }
                 }
@@ -954,7 +966,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             // 批量发送新维度的假物品
             if (!keysToAdd.empty()) {
                 auto&                               manager = FloatingTextManager::getInstance();
-                std::shared_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
+                std::unique_lock<std::shared_mutex> lock(manager.mFloatingTextsMutex);
                 for (const auto& key : keysToAdd) {
                     auto it = manager.mFloatingTexts.find(key);
                     if (it != manager.mFloatingTexts.end()) {
@@ -1029,3 +1041,4 @@ void FloatingTextManager::cleanupOfflinePlayerFakeItems() {
 }
 
 } // namespace CT
+

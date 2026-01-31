@@ -65,7 +65,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 continue;
             }
             ItemStack item = *itemPtr;
-            item.mCount    = 1;
+            item.set(1);
 
             std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"
                                    + txt.getMessage(
@@ -1109,22 +1109,14 @@ void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& r
             }
 
             // 尝试创建物品
-            ItemStack item(fullItemId, 1, 0, nullptr);
+            ItemStack item;
+            item.reinit(fullItemId, 1, 0);
 
             if (item.isNull()) {
                 p.sendMessage(txt.getMessage("input.invalid_item_id"));
                 showAddItemByIdForm(p, pos, dimId, region);
                 return;
             }
-
-            if (item.isNull()) {
-                p.sendMessage(txt.getMessage("input.invalid_item_id"));
-                showAddItemByIdForm(p, pos, dimId, region);
-                return;
-            }
-
-            // 设置数量为1
-            item.mCount = 1;
 
             // 跳转到设置价格表单
             showSetRecycleItemPriceForm(p, item, pos, dimId, region);

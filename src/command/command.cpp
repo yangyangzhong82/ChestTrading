@@ -42,7 +42,7 @@ using ll::command::CommandHandle;
 using ll::command::CommandRegistrar;
 
 void registerCommand() {
-    auto& registrar = CommandRegistrar::getInstance();
+    auto& registrar = CommandRegistrar::getInstance(false);
     auto& i18n      = I18nService::getInstance();
 
 

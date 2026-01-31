@@ -338,7 +338,7 @@ PurchaseResult ShopService::purchaseItem(
         while (remainingToGive > 0) {
             int       giveCount  = std::min(remainingToGive, maxStackSize);
             ItemStack itemToGive = *itemPtr;
-            itemToGive.mCount    = giveCount;
+            itemToGive.set(giveCount);
             if (!buyer.add(itemToGive)) {
                 buyer.drop(itemToGive, true);
             }

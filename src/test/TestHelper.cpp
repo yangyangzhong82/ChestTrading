@@ -67,8 +67,10 @@ std::string TestHelper::getTestSummary(int passed, int failed, int skipped) {
 }
 
 bool TestHelper::giveTestItems(Player& player) {
-    auto diamondSword = ItemStack("minecraft:diamond_sword", 5);
-    auto apple        = ItemStack("minecraft:apple", 64);
+    ItemStack diamondSword;
+    diamondSword.reinit("minecraft:diamond_sword", 5, 0);
+    ItemStack apple;
+    apple.reinit("minecraft:apple", 64, 0);
 
     if (!player.add(diamondSword) || !player.add(apple)) {
         return false;
@@ -286,7 +288,8 @@ std::string TestHelper::testShopPurchase(Player& player, bool autoCleanup) {
         return report.str() + formatTestResult("获取箱子容器", false);
     }
 
-    auto item = ItemStack("minecraft:diamond", 10);
+    ItemStack item;
+    item.reinit("minecraft:diamond", 10, 0);
     chest->setItem(0, item);
 
     report << formatTestResult("填充测试物品", true, "钻石 x10") << "\n";
@@ -359,8 +362,9 @@ std::string TestHelper::testShopInventorySync(Player& player) {
     auto&    region   = player.getDimensionBlockSource();
 
     // 测试：设置价格后手动修改箱子库存
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:iron_ingot", 20);
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:iron_ingot", 20, 0);
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -370,7 +374,8 @@ std::string TestHelper::testShopInventorySync(Player& player) {
     report << formatTestResult("设置初始价格", priceResult.success, "铁锭 x20, 50金币/个") << "\n";
 
     // 手动从箱子移除 5 个
-    auto updatedItem = ItemStack("minecraft:iron_ingot", 15);
+    ItemStack updatedItem;
+    updatedItem.reinit("minecraft:iron_ingot", 15, 0);
     chest->setItem(0, updatedItem);
 
     // 查询库存（应该读取箱子实际数量）
@@ -397,8 +402,9 @@ std::string TestHelper::testShopPriceUpdate(Player& player) {
     int      dimId    = static_cast<int>(player.getDimensionId());
     auto&    region   = player.getDimensionBlockSource();
 
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:gold_ingot", 10);
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:gold_ingot", 10, 0);
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -444,8 +450,9 @@ std::string TestHelper::testShopInsufficientMoney(Player& player) {
     int      dimId    = static_cast<int>(player.getDimensionId());
     auto&    region   = player.getDimensionBlockSource();
 
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:emerald", 10);
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:emerald", 10, 0);
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -492,8 +499,9 @@ std::string TestHelper::testShopInsufficientStock(Player& player) {
     int      dimId    = static_cast<int>(player.getDimensionId());
     auto&    region   = player.getDimensionBlockSource();
 
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:diamond", 3); // 只放 3 个
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:diamond", 3, 0); // 只放 3 个
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -542,8 +550,9 @@ std::string TestHelper::testShopTaxRate(Player& player) {
     int      dimId    = static_cast<int>(player.getDimensionId());
     auto&    region   = player.getDimensionBlockSource();
 
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:diamond", 10);
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:diamond", 10, 0);
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -603,8 +612,9 @@ std::string TestHelper::testShopBoundaryConditions(Player& player) {
     int      dimId    = static_cast<int>(player.getDimensionId());
     auto&    region   = player.getDimensionBlockSource();
 
-    auto* chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
-    auto  item  = ItemStack("minecraft:diamond", 10);
+    auto*     chest = static_cast<ChestBlockActor*>(region.getBlockEntity(chestPos));
+    ItemStack item;
+    item.reinit("minecraft:diamond", 10, 0);
     chest->setItem(0, item);
 
     auto  itemNbt     = NbtUtils::getItemNbt(item);
@@ -662,7 +672,8 @@ std::string TestHelper::testRecycle(Player& player, bool autoCleanup) {
     ) << "\n";
 
     // 2. 设置回收委托（回收钻石剑）
-    auto item    = ItemStack("minecraft:diamond_sword", 1);
+    ItemStack item;
+    item.reinit("minecraft:diamond_sword", 1, 0);
     auto itemNbt = NbtUtils::getItemNbt(item);
     if (!itemNbt) {
         if (autoCleanup) cleanupTestChest(player, chestPos);
@@ -680,7 +691,8 @@ std::string TestHelper::testRecycle(Player& player, bool autoCleanup) {
     report << formatTestResult("设置回收委托", true, "钻石剑, 150金币/个") << "\n";
 
     // 3. 给玩家钻石剑
-    auto testSword = ItemStack("minecraft:diamond_sword", 5);
+    ItemStack testSword;
+    testSword.reinit("minecraft:diamond_sword", 5, 0);
     player.add(testSword);
     report << formatTestResult("给予测试物品", true, "钻石剑 x5") << "\n";
 
@@ -744,7 +756,8 @@ std::string TestHelper::testRecycleFilters(Player& player) {
     auto&    region   = player.getDimensionBlockSource();
 
     // 测试1：设置最低耐久度要求
-    auto item    = ItemStack("minecraft:diamond_pickaxe", 1);
+    ItemStack item;
+    item.reinit("minecraft:diamond_pickaxe", 1, 0);
     auto itemNbt = NbtUtils::getItemNbt(item);
     if (!itemNbt) {
         cleanupTestChest(player, chestPos);
@@ -799,7 +812,8 @@ std::string TestHelper::testRecycleRollback(Player& player) {
     auto&    region   = player.getDimensionBlockSource();
 
     // 设置回收委托
-    auto item    = ItemStack("minecraft:diamond", 1);
+    ItemStack item;
+    item.reinit("minecraft:diamond", 1, 0);
     auto itemNbt = NbtUtils::getItemNbt(item);
     if (!itemNbt) {
         cleanupTestChest(player, chestPos);
@@ -820,7 +834,8 @@ std::string TestHelper::testRecycleRollback(Player& player) {
     report << "§7店主金币: " << ownerMoney << " (不足以支付回收款)\n";
 
     // 给玩家钻石
-    auto testDiamond = ItemStack("minecraft:diamond", 5);
+    ItemStack testDiamond;
+    testDiamond.reinit("minecraft:diamond", 5, 0);
     player.add(testDiamond);
 
     // 记录回收前的状态
@@ -861,7 +876,8 @@ std::string TestHelper::testRecycleOwnerInsufficientMoney(Player& player) {
     auto&    region   = player.getDimensionBlockSource();
 
     // 设置高价回收委托
-    auto item    = ItemStack("minecraft:netherite_ingot", 1);
+    ItemStack item;
+    item.reinit("minecraft:netherite_ingot", 1, 0);
     auto itemNbt = NbtUtils::getItemNbt(item);
     if (!itemNbt) {
         cleanupTestChest(player, chestPos);
@@ -882,7 +898,8 @@ std::string TestHelper::testRecycleOwnerInsufficientMoney(Player& player) {
     report << "§7店主金币: " << ownerMoney << "\n";
 
     // 给玩家下界合金锭
-    auto testIngot = ItemStack("minecraft:netherite_ingot", 2);
+    ItemStack testIngot;
+    testIngot.reinit("minecraft:netherite_ingot", 2, 0);
     player.add(testIngot);
 
     // 尝试回收

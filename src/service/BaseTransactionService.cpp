@@ -42,7 +42,7 @@ bool BaseTransactionService::addItemsToChest(ChestBlockActor* chest, const std::
     if (!itemPtr) return false;
 
     ItemStack item = *itemPtr;
-    item.mCount    = count;
+    item.set(count);
     chest->addItem(item);
     return true;
 }
