@@ -255,6 +255,7 @@
 | `/shop` | 查看公开商店列表 | 所有人 |
 | `/recycle` | 查看公开回收商店列表 | 所有人 |
 | `/packchest` | 打包箱子为物品 | 所有人 |
+| `/ctlimitreset <shop\|recycle\|all> <x> <y> <z>` | 手动重置指定箱子限购窗口 | `chest.admin` |
 | `/cttest [shop\|recycle\|all]` | 运行自动化测试（开发者工具） | `chest.admin` |
 
 > **提示**：除命令外，大部分功能通过右键箱子的表单界面操作。

@@ -105,13 +105,22 @@ int PlayerLimitRepository::getTradeCountInWindow(
     auto results = db.query(
         "SELECT COALESCE(SUM(" + countCol + "), 0) FROM " + table
             + " WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND " + col
-            + " = ? AND timestamp >= datetime('now', '-' || ? || ' seconds');",
+            + " = ? AND timestamp >= datetime('now', '-' || ? || ' seconds') "
+              "AND timestamp >= COALESCE(("
+              "SELECT datetime(last_reset_time, 'unixepoch') FROM player_limit_resets "
+              "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND is_shop = ?"
+              "), '1970-01-01 00:00:00');",
         dimId,
         pos.x,
         pos.y,
         pos.z,
         playerUuid,
-        windowSeconds
+        windowSeconds,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        isShop ? 1 : 0
     );
 
     if (!results.empty() && !results[0].empty()) {
@@ -123,6 +132,22 @@ int PlayerLimitRepository::getTradeCountInWindow(
         }
     }
     return 0;
+}
+
+bool PlayerLimitRepository::upsertLimitResetPoint(BlockPos pos, int dimId, bool isShop, int64_t resetTime) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    return db.execute(
+        "INSERT INTO player_limit_resets (dim_id, pos_x, pos_y, pos_z, is_shop, last_reset_time) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, is_shop) DO UPDATE SET "
+        "last_reset_time = excluded.last_reset_time;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        isShop ? 1 : 0,
+        resetTime
+    );
 }
 
 } // namespace CT

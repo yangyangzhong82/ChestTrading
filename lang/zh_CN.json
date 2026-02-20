@@ -464,7 +464,18 @@
     "recycleitems_description": "查看公开回收商店物品列表",
     "ranking_description": "查看销量榜单",
     "players_description": "按玩家浏览商店",
-    "recycleplayers_description": "按玩家浏览回收商店"
+    "recycleplayers_description": "按玩家浏览回收商店",
+    "limit_reset_description": "手动重置箱子限购窗口",
+    "limit_reset_usage": "§e用法:\n§a/ctlimitreset shop <x> <y> <z> §7- 重置指定商店箱子的购买限购\n§a/ctlimitreset recycle <x> <y> <z> §7- 重置指定回收箱子的回收限购\n§a/ctlimitreset all <x> <y> <z> §7- 同时重置购买与回收限购",
+    "limit_reset_chest_not_found": "§c坐标 {x},{y},{z} 处没有已配置的 ChestTrading 箱子。",
+    "limit_reset_not_shop": "§c目标箱子不是商店箱子，无法重置购买限购。",
+    "limit_reset_not_recycle": "§c目标箱子不是回收商店箱子，无法重置回收限购。",
+    "limit_reset_not_trade_chest": "§c目标箱子不是商店/回收商店箱子，无法重置限购。",
+    "limit_reset_failed": "§c重置限购失败，请查看日志。",
+    "limit_reset_success": "§a已重置{type}限购：维度 {dim} 坐标 [{x}, {y}, {z}]。",
+    "limit_type_shop": "购买",
+    "limit_type_recycle": "回收",
+    "limit_type_all": "全部"
   },
   "sales_ranking": {
     "title": "销量榜单",

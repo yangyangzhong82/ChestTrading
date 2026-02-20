@@ -16,6 +16,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV6,
         migrateToV7,
         migrateToV8,
+        migrateToV9,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -243,6 +244,28 @@ bool SchemaMigration::migrateToV8(Sqlite3Wrapper& db) {
         "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE);",
 
         "CREATE INDEX IF NOT EXISTS idx_packed_chests_player ON packed_chests(player_uuid);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV9(Sqlite3Wrapper& db) {
+    // 限购重置时间点：支持管理员手动重置限购窗口，而不删除历史记录
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS player_limit_resets ("
+        "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
+        "is_shop INTEGER NOT NULL, last_reset_time INTEGER NOT NULL, "
+        "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, is_shop), "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);",
+
+        // 优化限购统计查询: 位置 + 玩家 + 时间
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_buyer_time "
+        "ON purchase_records(dim_id, pos_x, pos_y, pos_z, buyer_uuid, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_recycler_time "
+        "ON recycle_records(dim_id, pos_x, pos_y, pos_z, recycler_uuid, timestamp DESC);"
     };
 
     for (const char* sql : sqls) {

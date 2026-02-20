@@ -5,6 +5,7 @@
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
 #include "form/SalesRankingForm.h"
+#include "service/ChestService.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -13,6 +14,7 @@
 #include "mc/server/commands/PlayerCommandOrigin.h"
 #include "mc/world/actor/player/Player.h"
 #include "service/I18nService.h"
+#include "service/PlayerLimitService.h"
 #include "test/TestHelper.h"
 #include <mutex>
 #include <set>
@@ -221,6 +223,156 @@ void registerCommand() {
             }
         }
     );
+
+    // 注册 /ctlimitreset 命令 - 手动重置箱子限购窗口
+    auto& limitResetCmd = registrar.getOrCreateCommand(
+        "ctlimitreset",
+        i18n.get("command.limit_reset_description"),
+        CommandPermissionLevel::Any
+    );
+
+    struct LimitResetPosParam {
+        int x;
+        int y;
+        int z;
+    };
+
+    auto executeLimitReset = [&i18n](
+                                 CommandOrigin const&         origin,
+                                 CommandOutput&               output,
+                                 LimitResetPosParam const&    param,
+                                 bool                         resetShop,
+                                 bool                         resetRecycle
+                             ) {
+        auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+        if (!player) {
+            output.error(i18n.get("command.player_only"));
+            return;
+        }
+
+        if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+            output.error(i18n.get("command.no_permission"));
+            return;
+        }
+
+        auto& chestService = ChestService::getInstance();
+        auto& region       = player->getDimensionBlockSource();
+        int   dimId        = static_cast<int>(player->getDimensionId());
+        auto  mainPos      = chestService.getMainChestPos(BlockPos{param.x, param.y, param.z}, region);
+        auto  chestInfo    = chestService.getChestInfo(mainPos, dimId, region);
+        if (!chestInfo) {
+            output.error(i18n.get(
+                "command.limit_reset_chest_not_found",
+                {
+                    {"x", std::to_string(mainPos.x)},
+                    {"y", std::to_string(mainPos.y)},
+                    {"z", std::to_string(mainPos.z)}
+            }
+            ));
+            return;
+        }
+
+        bool isShopChest =
+            chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::AdminShop;
+        bool isRecycleChest =
+            chestInfo->type == ChestType::RecycleShop || chestInfo->type == ChestType::AdminRecycle;
+
+        if (resetShop && !resetRecycle && !isShopChest) {
+            output.error(i18n.get("command.limit_reset_not_shop"));
+            return;
+        }
+        if (resetRecycle && !resetShop && !isRecycleChest) {
+            output.error(i18n.get("command.limit_reset_not_recycle"));
+            return;
+        }
+        if (resetShop && resetRecycle && !isShopChest && !isRecycleChest) {
+            output.error(i18n.get("command.limit_reset_not_trade_chest"));
+            return;
+        }
+
+        auto& limitService = PlayerLimitService::getInstance();
+        bool  ok           = true;
+        if (resetShop) {
+            ok = limitService.resetLimitWindow(mainPos, dimId, true) && ok;
+        }
+        if (resetRecycle) {
+            ok = limitService.resetLimitWindow(mainPos, dimId, false) && ok;
+        }
+        if (!ok) {
+            output.error(i18n.get("command.limit_reset_failed"));
+            return;
+        }
+
+        std::string resetType = i18n.get("command.limit_type_all");
+        if (resetShop && !resetRecycle) {
+            resetType = i18n.get("command.limit_type_shop");
+        } else if (!resetShop && resetRecycle) {
+            resetType = i18n.get("command.limit_type_recycle");
+        }
+
+        output.success(i18n.get(
+            "command.limit_reset_success",
+            {
+                {"type", resetType                },
+                {"x",    std::to_string(mainPos.x)},
+                {"y",    std::to_string(mainPos.y)},
+                {"z",    std::to_string(mainPos.z)},
+                {"dim",  std::to_string(dimId)    }
+        }
+        ));
+    };
+
+    limitResetCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            if (!BA::permission::PermissionManager::getInstance()
+                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+            output.success(i18n.get("command.limit_reset_usage"));
+        }
+    );
+
+    limitResetCmd.overload<LimitResetPosParam>()
+        .text("shop")
+        .required("x")
+        .required("y")
+        .required("z")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&      origin,
+                     CommandOutput&            output,
+                     LimitResetPosParam const& param,
+                     class Command const&
+                 ) { executeLimitReset(origin, output, param, true, false); });
+
+    limitResetCmd.overload<LimitResetPosParam>()
+        .text("recycle")
+        .required("x")
+        .required("y")
+        .required("z")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&      origin,
+                     CommandOutput&            output,
+                     LimitResetPosParam const& param,
+                     class Command const&
+                 ) { executeLimitReset(origin, output, param, false, true); });
+
+    limitResetCmd.overload<LimitResetPosParam>()
+        .text("all")
+        .required("x")
+        .required("y")
+        .required("z")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&      origin,
+                     CommandOutput&            output,
+                     LimitResetPosParam const& param,
+                     class Command const&
+                 ) { executeLimitReset(origin, output, param, true, true); });
 
     // 注册 /cttest 命令 - 自动化测试（开发者工具）
     auto& testCmd =

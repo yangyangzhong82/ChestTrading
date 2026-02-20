@@ -36,6 +36,9 @@ public:
     // 获取玩家剩余可交易数量
     int getRemainingQuota(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop);
 
+    // 手动重置限购计数窗口（不删除历史记录）
+    bool resetLimitWindow(BlockPos pos, int dimId, bool isShop);
+
 private:
     PlayerLimitService() = default;
 };

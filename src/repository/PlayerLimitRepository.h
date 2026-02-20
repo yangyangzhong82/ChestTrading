@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mc/world/level/BlockPos.h"
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,6 +44,7 @@ public:
 
     // === 交易记录查询 ===
     int getTradeCountInWindow(BlockPos pos, int dimId, const std::string& playerUuid, int windowSeconds, bool isShop);
+    bool upsertLimitResetPoint(BlockPos pos, int dimId, bool isShop, int64_t resetTime);
 
 private:
     PlayerLimitRepository() = default;

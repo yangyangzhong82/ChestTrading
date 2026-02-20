@@ -464,7 +464,18 @@
     "recycleitems_description": "View public recycle shop items list",
     "ranking_description": "View sales ranking",
     "players_description": "Browse shops by owner",
-    "recycleplayers_description": "Browse recycle shops by owner"
+    "recycleplayers_description": "Browse recycle shops by owner",
+    "limit_reset_description": "Manually reset chest limit windows",
+    "limit_reset_usage": "§eUsage:\n§a/ctlimitreset shop <x> <y> <z> §7- Reset purchase limit for the target shop chest\n§a/ctlimitreset recycle <x> <y> <z> §7- Reset recycle limit for the target recycle chest\n§a/ctlimitreset all <x> <y> <z> §7- Reset both purchase and recycle limits",
+    "limit_reset_chest_not_found": "§cNo configured ChestTrading chest at {x},{y},{z}.",
+    "limit_reset_not_shop": "§cTarget chest is not a shop chest; purchase limit cannot be reset.",
+    "limit_reset_not_recycle": "§cTarget chest is not a recycle shop chest; recycle limit cannot be reset.",
+    "limit_reset_not_trade_chest": "§cTarget chest is neither a shop nor recycle shop chest.",
+    "limit_reset_failed": "§cFailed to reset limit window. Check logs for details.",
+    "limit_reset_success": "§aReset {type} limit at dim {dim}, position [{x}, {y}, {z}].",
+    "limit_type_shop": "purchase",
+    "limit_type_recycle": "recycle",
+    "limit_type_all": "all"
   },
   "sales_ranking": {
     "title": "Sales Ranking",

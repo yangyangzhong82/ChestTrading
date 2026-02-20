@@ -2,6 +2,7 @@
 #include "TextService.h"
 #include "logger.h"
 #include "repository/PlayerLimitRepository.h"
+#include <ctime>
 
 namespace CT {
 
@@ -96,6 +97,15 @@ int PlayerLimitService::getRemainingQuota(BlockPos pos, int dimId, const std::st
 
     int tradedCount = repo.getTradeCountInWindow(pos, dimId, playerUuid, globalLimit->limitSeconds, isShop);
     return std::max(0, globalLimit->limitCount - tradedCount);
+}
+
+bool PlayerLimitService::resetLimitWindow(BlockPos pos, int dimId, bool isShop) {
+    int64_t nowTs  = static_cast<int64_t>(std::time(nullptr));
+    bool    result = PlayerLimitRepository::getInstance().upsertLimitResetPoint(pos, dimId, isShop, nowTs);
+    if (!result) {
+        logger.error("手动重置限购窗口失败: dimId={}, pos=({}, {}, {}), isShop={}", dimId, pos.x, pos.y, pos.z, isShop);
+    }
+    return result;
 }
 
 } // namespace CT
