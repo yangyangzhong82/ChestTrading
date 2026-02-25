@@ -32,6 +32,37 @@
 
 namespace CT {
 
+namespace {
+
+struct DynamicRecyclePriceView {
+    double unitPrice;
+    bool   canTrade;
+    int    remainingQuantity; // -1 means unlimited
+};
+
+DynamicRecyclePriceView getDynamicRecyclePriceView(
+    BlockPos      pos,
+    int           dimId,
+    int           itemId,
+    double        fallbackUnitPrice,
+    BlockSource&  region
+) {
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
+    auto     chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
+    if (!chestInfo || chestInfo->type != ChestType::AdminRecycle) {
+        return {fallbackUnitPrice, true, -1};
+    }
+
+    auto dpInfo = DynamicPricingService::getInstance().getPriceInfo(mainPos, dimId, itemId, false);
+    if (!dpInfo) {
+        return {fallbackUnitPrice, true, -1};
+    }
+
+    return {dpInfo->currentPrice, dpInfo->canTrade, dpInfo->remainingQuantity};
+}
+
+} // namespace
+
 
 void showRecycleForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     showRecycleItemListForm(player, pos, dimId, region);
@@ -66,12 +97,14 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             }
             ItemStack item = *itemPtr;
             item.set(1);
+            auto   priceView        = getDynamicRecyclePriceView(pos, dimId, commission.itemId, commission.price, region);
+            double displayUnitPrice = priceView.unitPrice;
 
             std::string buttonText = std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r"
                                    + txt.getMessage(
                                        "form.recycle_price_label",
                                        {
-                                           {"price", CT::MoneyFormat::format(commission.price)}
+                                           {"price", CT::MoneyFormat::format(displayUnitPrice)}
             }
                                    );
 
@@ -117,7 +150,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             }
             std::string texturePath      = CT::ItemTextureManager::getInstance().getTexture(itemName);
             std::string commissionNbtStr = commission.itemNbt;
-            double      price            = commission.price;
+            double      price            = displayUnitPrice;
 
             if (!texturePath.empty()) {
                 fm.appendButton(
@@ -175,8 +208,8 @@ void showRecycleConfirmForm(
     BlockPos           pos,
     int                dimId,
     BlockSource&       region,
-    int                actualSlotIndex, // This will be -1 when called from the commission list
-    double             unitPrice,       // 修改为 double
+    int                actualSlotIndex,
+    double             unitPrice,
     const std::string& commissionNbtStr
 ) {
     ll::form::CustomForm fm;
@@ -196,6 +229,14 @@ void showRecycleConfirmForm(
         return;
     }
 
+    auto priceView = getDynamicRecyclePriceView(pos, dimId, itemId, unitPrice, region);
+    if (!priceView.canTrade) {
+        player.sendMessage(txt.getMessage("dynamic_pricing.recycle_stopped"));
+        showRecycleForm(player, pos, dimId, region);
+        return;
+    }
+    double displayUnitPrice = priceView.unitPrice;
+
     int            minDurability    = commission->minDurability;
     int            requiredAuxValue = commission->requiredAuxValue;
     nlohmann::json requiredEnchants;
@@ -206,7 +247,6 @@ void showRecycleConfirmForm(
             logger.error("Failed to parse required_enchants JSON in showRecycleConfirmForm: {}", e.what());
         }
     }
-
 
     for (int i = 0; i < player.getInventory().getContainerSize(); ++i) {
         const auto& itemInSlot = player.getInventory().getItem(i);
@@ -220,43 +260,42 @@ void showRecycleConfirmForm(
         logger.trace("Comparing inventory item: Cleaned NBT: {}", itemNbtStr);
         logger.trace("Comparing with commission: Commission NBT: {}", commissionNbtStr);
 
-        if (itemNbtStr == commissionNbtStr) {
-            // 检查特殊值（如箭的类型）
-            if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
-                continue;
-            }
-            // 检查耐久度
-            if (itemInSlot.isDamageableItem()) {
-                int maxDamage         = itemInSlot.getItem()->getMaxDamage();
-                int currentDamage     = itemInSlot.getDamageValue();
-                int currentDurability = maxDamage - currentDamage;
-                if (currentDurability < minDurability) continue;
-            }
-            // 检查附魔
-            if (!requiredEnchants.empty() && requiredEnchants.is_array()) {
-                bool         allEnchantsMatch = true;
-                ItemEnchants itemEnchants     = itemInSlot.constructItemEnchantsFromUserData();
-                auto         allItemEnchants  = itemEnchants.getAllEnchants();
+        if (itemNbtStr != commissionNbtStr) continue;
 
-                for (const auto& reqEnchant : requiredEnchants) {
-                    bool currentEnchantFound = false;
-                    int  reqId               = reqEnchant["id"];
-                    int  reqLevel            = reqEnchant["level"];
-                    for (const auto& itemEnchant : allItemEnchants) {
-                        if ((int)itemEnchant.mEnchantType == reqId && itemEnchant.mLevel >= reqLevel) {
-                            currentEnchantFound = true;
-                            break;
-                        }
-                    }
-                    if (!currentEnchantFound) {
-                        allEnchantsMatch = false;
+        if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
+            continue;
+        }
+
+        if (itemInSlot.isDamageableItem()) {
+            int maxDamage         = itemInSlot.getItem()->getMaxDamage();
+            int currentDamage     = itemInSlot.getDamageValue();
+            int currentDurability = maxDamage - currentDamage;
+            if (currentDurability < minDurability) continue;
+        }
+
+        if (!requiredEnchants.empty() && requiredEnchants.is_array()) {
+            bool         allEnchantsMatch = true;
+            ItemEnchants itemEnchants     = itemInSlot.constructItemEnchantsFromUserData();
+            auto         allItemEnchants  = itemEnchants.getAllEnchants();
+            for (const auto& reqEnchant : requiredEnchants) {
+                bool found    = false;
+                int  reqId    = reqEnchant["id"];
+                int  reqLevel = reqEnchant["level"];
+                for (const auto& itemEnchant : allItemEnchants) {
+                    if ((int)itemEnchant.mEnchantType == reqId && itemEnchant.mLevel >= reqLevel) {
+                        found = true;
                         break;
                     }
                 }
-                if (!allEnchantsMatch) continue;
+                if (!found) {
+                    allEnchantsMatch = false;
+                    break;
+                }
             }
-            totalPlayerCount += itemInSlot.mCount;
+            if (!allEnchantsMatch) continue;
         }
+
+        totalPlayerCount += itemInSlot.mCount;
     }
 
     fm.appendLabel(txt.getMessage(
@@ -274,12 +313,10 @@ void showRecycleConfirmForm(
     fm.appendLabel(txt.getMessage(
         "form.label_unit_price",
         {
-            {"price", CT::MoneyFormat::format(unitPrice)}
+            {"price", CT::MoneyFormat::format(displayUnitPrice)}
     }
     ));
 
-
-    // 显示耐久度
     if (item.isDamageableItem()) {
         int maxDamage = item.getItem()->getMaxDamage();
         fm.appendLabel(txt.getMessage(
@@ -291,7 +328,6 @@ void showRecycleConfirmForm(
         ));
     }
 
-    // 显示特殊值
     short auxValue = item.getAuxValue();
     if (auxValue != 0) {
         fm.appendLabel(txt.getMessage(
@@ -302,7 +338,6 @@ void showRecycleConfirmForm(
         ));
     }
 
-    // 获取并显示附魔信息
     if (item.isEnchanted()) {
         ItemEnchants enchants    = item.constructItemEnchantsFromUserData();
         auto         enchantList = enchants.getAllEnchants();
@@ -320,23 +355,22 @@ void showRecycleConfirmForm(
 
     fm.sendTo(
         player,
-        [item, pos, dimId, actualSlotIndex, unitPrice, commissionNbtStr, totalPlayerCount](
+        [item, pos, dimId, actualSlotIndex, itemId, displayUnitPrice, commissionNbtStr, totalPlayerCount](
             Player&                           p,
             const ll::form::CustomFormResult& result,
-            ll::form::FormCancelReason        reason
+            ll::form::FormCancelReason
         ) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
             if (!result.has_value()) {
                 p.sendMessage(txt.getMessage("action.cancelled"));
-                showRecycleForm(p, pos, dimId, region); // 返回回收商店主界面
+                showRecycleForm(p, pos, dimId, region);
                 return;
             }
 
             int recycleCount = 1;
             try {
                 recycleCount = std::stoi(std::get<std::string>(result.value().at("recycle_count")));
-
                 if (recycleCount <= 0 || recycleCount > totalPlayerCount) {
                     p.sendMessage(txt.getMessage(
                         "input.invalid_recycle_count",
@@ -351,12 +385,12 @@ void showRecycleConfirmForm(
                         dimId,
                         region,
                         actualSlotIndex,
-                        unitPrice,
+                        displayUnitPrice,
                         commissionNbtStr
-                    ); // 重新显示确认表单
+                    );
                     return;
                 }
-            } catch (const std::exception& e) {
+            } catch (const std::exception&) {
                 p.sendMessage(txt.getMessage("input.invalid_number"));
                 showRecycleConfirmForm(
                     p,
@@ -365,16 +399,40 @@ void showRecycleConfirmForm(
                     dimId,
                     region,
                     actualSlotIndex,
-                    unitPrice,
+                    displayUnitPrice,
                     commissionNbtStr
-                ); // 重新显示确认表单
+                );
                 return;
             }
 
-            // 1. 计算回收价格
-            double recyclePrice = getRecyclePrice(unitPrice, recycleCount); // 调用更新后的函数，使用 double
+            auto currentPriceView = getDynamicRecyclePriceView(pos, dimId, itemId, displayUnitPrice, region);
+            if (!currentPriceView.canTrade) {
+                p.sendMessage(txt.getMessage("dynamic_pricing.recycle_stopped"));
+                showRecycleForm(p, pos, dimId, region);
+                return;
+            }
+            if (currentPriceView.remainingQuantity != -1 && recycleCount > currentPriceView.remainingQuantity) {
+                p.sendMessage(txt.getMessage(
+                    "dynamic_pricing.recycle_exceed_limit",
+                    {
+                        {"remaining", std::to_string(currentPriceView.remainingQuantity)}
+                }
+                ));
+                showRecycleConfirmForm(
+                    p,
+                    item,
+                    pos,
+                    dimId,
+                    region,
+                    actualSlotIndex,
+                    currentPriceView.unitPrice,
+                    commissionNbtStr
+                );
+                return;
+            }
 
-            // 跳转到最终确认表单
+            double recyclePrice = getRecyclePrice(currentPriceView.unitPrice, recycleCount);
+
             showRecycleFinalConfirmForm(
                 p,
                 item,
@@ -384,12 +442,11 @@ void showRecycleConfirmForm(
                 recycleCount,
                 recyclePrice,
                 commissionNbtStr,
-                unitPrice
+                currentPriceView.unitPrice
             );
         }
     );
 }
-
 void showRecycleFinalConfirmForm(
     Player&            player,
     const ItemStack&   item,
@@ -434,7 +491,7 @@ void showRecycleFinalConfirmForm(
 
     fm.appendButton(
         txt.getMessage("form.button_confirm_recycle"),
-        [item, pos, dimId, recycleCount, recyclePrice, commissionNbtStr, unitPrice](Player& p) {
+        [item, pos, dimId, recycleCount, commissionNbtStr, unitPrice](Player& p) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
 
@@ -459,7 +516,7 @@ void showRecycleFinalConfirmForm(
                 {
                     {"item",  std::string(item.getName())          },
                     {"count", std::to_string(recycleCount)         },
-                    {"price", CT::MoneyFormat::format(recyclePrice)}
+                    {"price", CT::MoneyFormat::format(result.totalEarned)}
             }
             ));
             showRecycleForm(p, pos, dimId, region);
@@ -677,12 +734,13 @@ void showCommissionDetailsForm(
         player.sendMessage(txt.getMessage("recycle.load_records_fail"));
         return;
     }
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     logger.debug(
         "showCommissionDetailsForm: 开始异步查询回收记录 pos({},{},{}) dim {} itemId {}",
-        pos.x,
-        pos.y,
-        pos.z,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z,
         dimId,
         itemId
     );
@@ -692,9 +750,9 @@ void showCommissionDetailsForm(
         "SELECT recycler_uuid, recycle_count, total_price, timestamp FROM recycle_records WHERE dim_id = ? AND pos_x "
         "= ? AND pos_y = ? AND pos_z = ? AND item_id = ? ORDER BY timestamp DESC",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z,
         itemId
     );
 
@@ -703,9 +761,9 @@ void showCommissionDetailsForm(
         "SELECT price, max_recycle_count, current_recycled_count FROM recycle_shop_items WHERE dim_id = ? AND pos_x = "
         "? AND pos_y = ? AND pos_z = ? AND item_id = ?",
         dimId,
-        pos.x,
-        pos.y,
-        pos.z,
+        mainPos.x,
+        mainPos.y,
+        mainPos.z,
         itemId
     );
 
@@ -713,7 +771,7 @@ void showCommissionDetailsForm(
     db.thenOnMainThread(
         std::move(recordsFuture),
         std::move(commissionFuture),
-        [playerUuid, pos, dimId, itemName, commissionNbtStr](
+        [playerUuid, mainPos, dimId, itemName, commissionNbtStr](
             std::vector<std::vector<std::string>> records,
             std::vector<std::vector<std::string>> commissionInfo
         ) {
@@ -737,11 +795,18 @@ void showCommissionDetailsForm(
                 double price                = std::stod(commissionInfo[0][0]);
                 int    maxRecycleCount      = std::stoi(commissionInfo[0][1]);
                 int    currentRecycledCount = std::stoi(commissionInfo[0][2]);
+                auto&  region               = player->getDimensionBlockSource();
+                int    itemId               = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
+                double displayPrice         = price;
+                if (itemId > 0) {
+                    auto priceView = getDynamicRecyclePriceView(mainPos, dimId, itemId, price, region);
+                    displayPrice   = priceView.unitPrice;
+                }
 
                 content += txt.getMessage(
                     "form.current_recycle_price",
                     {
-                        {"price", CT::MoneyFormat::format(price)}
+                        {"price", CT::MoneyFormat::format(displayPrice)}
                 }
                 );
                 if (maxRecycleCount > 0) {
@@ -795,26 +860,26 @@ void showCommissionDetailsForm(
             }
             fm.setContent(content);
 
-            fm.appendButton(txt.getMessage("form.button_edit_commission"), [pos, dimId, commissionNbtStr](Player& p) {
+            fm.appendButton(txt.getMessage("form.button_edit_commission"), [mainPos, dimId, commissionNbtStr](Player& p) {
                 auto& region = p.getDimensionBlockSource();
-                showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
+                showEditCommissionForm(p, mainPos, dimId, region, commissionNbtStr);
             });
 
             // 官方回收商店显示动态价格设置按钮
             auto& region    = player->getDimensionBlockSource();
-            auto  chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            auto  chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
             if (chestInfo && chestInfo->type == ChestType::AdminRecycle) {
                 int itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
                 if (itemId > 0) {
-                    fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [pos, dimId, itemId](Player& p) {
-                        showDynamicPricingForm(p, pos, dimId, itemId, false);
+                    fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [mainPos, dimId, itemId](Player& p) {
+                        showDynamicPricingForm(p, mainPos, dimId, itemId, false);
                     });
                 }
             }
 
-            fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
+            fm.appendButton(txt.getMessage("form.button_back"), [mainPos, dimId](Player& p) {
                 auto& region = p.getDimensionBlockSource();
-                showViewRecycleCommissionsForm(p, pos, dimId, region);
+                showViewRecycleCommissionsForm(p, mainPos, dimId, region);
             });
 
             fm.sendTo(*player);
@@ -826,9 +891,10 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
     ll::form::SimpleForm fm;
     auto&                txt = TextService::getInstance();
     fm.setTitle(txt.getMessage("form.recycle_view_title"));
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     // 使用同步查询，与 showRecycleItemListForm 保持一致
-    auto commissions = RecycleService::getInstance().getCommissions(pos, dimId);
+    auto commissions = RecycleService::getInstance().getCommissions(mainPos, dimId);
 
     logger.debug("showViewRecycleCommissionsForm: 查询完成，委托数: {}", commissions.size());
 
@@ -850,24 +916,27 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                          + std::to_string(commission.maxRecycleCount) + "]§r";
             }
 
+            auto   priceView        = getDynamicRecyclePriceView(mainPos, dimId, commission.itemId, commission.price, region);
+            double displayUnitPrice = priceView.unitPrice;
+
             std::string buttonText = std::string(item.getName()) + " §e" + progress
                                    + txt.getMessage(
                                        "form.price_tag",
                                        {
-                                           {"price", CT::MoneyFormat::format(commission.price)}
+                                           {"price", CT::MoneyFormat::format(displayUnitPrice)}
             }
                                    );
             std::string itemNbtStr = commission.itemNbt;
-            fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
+            fm.appendButton(buttonText, [mainPos, dimId, itemNbtStr](Player& p) {
                 auto& region = p.getDimensionBlockSource();
-                showCommissionDetailsForm(p, pos, dimId, region, itemNbtStr);
+                showCommissionDetailsForm(p, mainPos, dimId, region, itemNbtStr);
             });
         }
     }
 
-    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), [mainPos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showRecycleShopManageForm(p, pos, dimId, region);
+        showRecycleShopManageForm(p, mainPos, dimId, region);
     });
 
     fm.sendTo(player);

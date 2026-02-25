@@ -140,9 +140,10 @@ RecycleResult RecycleService::executeFullRecycle(
 ) {
     auto& txt      = TextService::getInstance();
     auto& shopRepo = ShopRepository::getInstance();
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     // 1. 获取箱子信息
-    auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+    auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
     if (!chestInfo) {
         return {false, txt.getMessage("recycle.not_recycle_shop"), 0, 0.0};
     }
@@ -152,7 +153,7 @@ RecycleResult RecycleService::executeFullRecycle(
     // 官方回收商店检查动态价格
     double actualUnitPrice = unitPrice;
     if (isAdminRecycle) {
-        auto dpInfo = DynamicPricingService::getInstance().getPriceInfo(pos, dimId, itemId, false);
+        auto dpInfo = DynamicPricingService::getInstance().getPriceInfo(mainPos, dimId, itemId, false);
         if (dpInfo) {
             // 检查是否可以交易
             if (!dpInfo->canTrade) {
@@ -196,14 +197,14 @@ RecycleResult RecycleService::executeFullRecycle(
     };
 
     // 3. 获取箱子实体
-    auto* chest = getChestActor(region, pos);
+    auto* chest = getChestActor(region, mainPos);
     if (!chest) {
         refundOwner();
         return {false, txt.getMessage("recycle.chest_entity_fail"), 0, 0.0};
     }
 
     // 4. 获取委托信息
-    auto commission = shopRepo.findRecycleItem(pos, dimId, itemId);
+    auto commission = shopRepo.findRecycleItem(mainPos, dimId, itemId);
     if (!commission) {
         refundOwner();
         return {false, txt.getMessage("recycle.no_commission"), 0, 0.0};
@@ -234,7 +235,7 @@ RecycleResult RecycleService::executeFullRecycle(
 
     // 5.5 检查玩家限购
     auto limitCheck =
-        PlayerLimitService::getInstance().checkLimit(pos, dimId, recycler.getUuid().asString(), quantity, false);
+        PlayerLimitService::getInstance().checkLimit(mainPos, dimId, recycler.getUuid().asString(), quantity, false);
     if (!limitCheck.allowed) {
         refundOwner();
         return {false, limitCheck.message, 0, 0.0};
@@ -425,7 +426,7 @@ RecycleResult RecycleService::executeFullRecycle(
     rollbackGuard.addRollback([&]() { Economy::reduceMoney(recycler, recyclerGain); });
 
     // 11. 更新数据库（事务）
-    if (!executeDbUpdate(recycler, pos, dimId, itemId, quantity, totalPrice)) {
+    if (!executeDbUpdate(recycler, mainPos, dimId, itemId, quantity, totalPrice)) {
         return {false, txt.getMessage("recycle.db_fail"), 0, 0.0};
         // rollbackGuard 析构时会自动回滚金钱和物品
     }
@@ -435,7 +436,7 @@ RecycleResult RecycleService::executeFullRecycle(
 
     // 官方回收商店记录动态价格交易量
     if (isAdminRecycle) {
-        DynamicPricingService::getInstance().recordTrade(pos, dimId, itemId, false, quantity);
+        DynamicPricingService::getInstance().recordTrade(mainPos, dimId, itemId, false, quantity);
     }
 
     recycler.refreshInventory();
