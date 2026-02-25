@@ -17,6 +17,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV7,
         migrateToV8,
         migrateToV9,
+        migrateToV10,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -266,6 +267,57 @@ bool SchemaMigration::migrateToV9(Sqlite3Wrapper& db) {
         "ON purchase_records(dim_id, pos_x, pos_y, pos_z, buyer_uuid, timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_recycler_time "
         "ON recycle_records(dim_id, pos_x, pos_y, pos_z, recycler_uuid, timestamp DESC);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV10(Sqlite3Wrapper& db) {
+    // 限购升级到“按商品”维度：player_limits/player_limit_resets 增加 item_id
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS player_limits_v10 ("
+        "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
+        "player_uuid TEXT NOT NULL DEFAULT '', item_id INTEGER NOT NULL DEFAULT 0, "
+        "limit_count INTEGER NOT NULL, limit_seconds INTEGER NOT NULL, is_shop INTEGER NOT NULL, "
+        "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, player_uuid, is_shop, item_id), "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);",
+
+        "INSERT INTO player_limits_v10 "
+        "(dim_id, pos_x, pos_y, pos_z, player_uuid, item_id, limit_count, limit_seconds, is_shop) "
+        "SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, 0, limit_count, limit_seconds, is_shop "
+        "FROM player_limits;",
+
+        "DROP TABLE player_limits;",
+        "ALTER TABLE player_limits_v10 RENAME TO player_limits;",
+        "CREATE INDEX IF NOT EXISTS idx_player_limits_pos "
+        "ON player_limits(dim_id, pos_x, pos_y, pos_z, is_shop, item_id);",
+        "CREATE INDEX IF NOT EXISTS idx_player_limits_player "
+        "ON player_limits(player_uuid, is_shop, item_id);",
+
+        "CREATE TABLE IF NOT EXISTS player_limit_resets_v10 ("
+        "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
+        "is_shop INTEGER NOT NULL, item_id INTEGER NOT NULL DEFAULT 0, last_reset_time INTEGER NOT NULL, "
+        "PRIMARY KEY (dim_id, pos_x, pos_y, pos_z, is_shop, item_id), "
+        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z) REFERENCES chests(dim_id, pos_x, pos_y, pos_z) ON DELETE CASCADE);",
+
+        "INSERT INTO player_limit_resets_v10 "
+        "(dim_id, pos_x, pos_y, pos_z, is_shop, item_id, last_reset_time) "
+        "SELECT dim_id, pos_x, pos_y, pos_z, is_shop, 0, last_reset_time "
+        "FROM player_limit_resets;",
+
+        "DROP TABLE player_limit_resets;",
+        "ALTER TABLE player_limit_resets_v10 RENAME TO player_limit_resets;",
+        "CREATE INDEX IF NOT EXISTS idx_player_limit_resets_pos "
+        "ON player_limit_resets(dim_id, pos_x, pos_y, pos_z, is_shop, item_id);",
+
+        // 优化“按商品+玩家+时间窗口”限购统计
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_item_buyer_time "
+        "ON purchase_records(dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_item_recycler_time "
+        "ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, timestamp DESC);"
     };
 
     for (const char* sql : sqls) {

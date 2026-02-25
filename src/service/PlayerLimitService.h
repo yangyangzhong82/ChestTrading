@@ -21,23 +21,33 @@ public:
     PlayerLimitService& operator=(const PlayerLimitService&) = delete;
 
     // 检查玩家是否可以交易指定数量
-    LimitCheckResult checkLimit(BlockPos pos, int dimId, const std::string& playerUuid, int quantity, bool isShop);
+    LimitCheckResult
+    checkLimit(BlockPos pos, int dimId, const std::string& playerUuid, int quantity, bool isShop, int itemId);
 
     // 设置全局限购配置（playerUuid应为空字符串）
     bool
-    setLimit(BlockPos pos, int dimId, const std::string& playerUuid, int limitCount, int limitSeconds, bool isShop);
+    setLimit(
+        BlockPos           pos,
+        int                dimId,
+        const std::string& playerUuid,
+        int                limitCount,
+        int                limitSeconds,
+        bool               isShop,
+        int                itemId = 0
+    );
 
     // 移除全局限购配置
-    bool removeLimit(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop);
+    bool removeLimit(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop, int itemId = 0);
 
     // 获取全局限购配置
-    std::optional<PlayerLimitConfig> getLimit(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop);
+    std::optional<PlayerLimitConfig>
+    getLimit(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop, int itemId = 0);
 
     // 获取玩家剩余可交易数量
-    int getRemainingQuota(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop);
+    int getRemainingQuota(BlockPos pos, int dimId, const std::string& playerUuid, bool isShop, int itemId = -1);
 
     // 手动重置限购计数窗口（不删除历史记录）
-    bool resetLimitWindow(BlockPos pos, int dimId, bool isShop);
+    bool resetLimitWindow(BlockPos pos, int dimId, bool isShop, int itemId = 0);
 
 private:
     PlayerLimitService() = default;

@@ -227,8 +227,14 @@ PurchaseResult ShopService::purchaseItem(
     }
 
     // 检查限购
-    auto limitCheck =
-        PlayerLimitService::getInstance().checkLimit(mainPos, dimId, buyer.getUuid().asString(), quantity, true);
+    auto limitCheck = PlayerLimitService::getInstance().checkLimit(
+        mainPos,
+        dimId,
+        buyer.getUuid().asString(),
+        quantity,
+        true,
+        itemId
+    );
     if (!limitCheck.allowed) {
         return {false, limitCheck.message};
     }

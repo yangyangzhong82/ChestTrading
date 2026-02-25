@@ -234,8 +234,14 @@ RecycleResult RecycleService::executeFullRecycle(
     }
 
     // 5.5 检查玩家限购
-    auto limitCheck =
-        PlayerLimitService::getInstance().checkLimit(mainPos, dimId, recycler.getUuid().asString(), quantity, false);
+    auto limitCheck = PlayerLimitService::getInstance().checkLimit(
+        mainPos,
+        dimId,
+        recycler.getUuid().asString(),
+        quantity,
+        false,
+        itemId
+    );
     if (!limitCheck.allowed) {
         refundOwner();
         return {false, limitCheck.message, 0, 0.0};

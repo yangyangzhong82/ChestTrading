@@ -22,4 +22,5 @@ private:
     static bool migrateToV7(Sqlite3Wrapper& db);
     static bool migrateToV8(Sqlite3Wrapper& db);
     static bool migrateToV9(Sqlite3Wrapper& db);
+    static bool migrateToV10(Sqlite3Wrapper& db);
 };

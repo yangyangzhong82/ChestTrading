@@ -3,6 +3,7 @@
 #include "FormUtils.h"
 #include "LLMoney.h"
 #include "LockForm.h"
+#include "PlayerLimitForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -864,6 +865,17 @@ void showCommissionDetailsForm(
                 auto& region = p.getDimensionBlockSource();
                 showEditCommissionForm(p, mainPos, dimId, region, commissionNbtStr);
             });
+
+            int limitItemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
+            if (limitItemId > 0) {
+                fm.appendButton(
+                    txt.getMessage("form.button_item_limit"),
+                    [mainPos, dimId, limitItemId, itemName](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showPlayerItemLimitForm(p, mainPos, dimId, region, false, limitItemId, itemName);
+                    }
+                );
+            }
 
             // 官方回收商店显示动态价格设置按钮
             auto& region    = player->getDimensionBlockSource();

@@ -236,13 +236,21 @@ void registerCommand() {
         int y;
         int z;
     };
+    struct LimitResetItemParam {
+        int x;
+        int y;
+        int z;
+        int item_id;
+    };
 
     auto executeLimitReset = [&i18n](
                                  CommandOrigin const&         origin,
                                  CommandOutput&               output,
                                  LimitResetPosParam const&    param,
                                  bool                         resetShop,
-                                 bool                         resetRecycle
+                                 bool                         resetRecycle,
+                                 int                          itemId,
+                                 bool                         specificItem
                              ) {
         auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
         if (!player) {
@@ -252,6 +260,11 @@ void registerCommand() {
 
         if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
             output.error(i18n.get("command.no_permission"));
+            return;
+        }
+
+        if (specificItem && itemId <= 0) {
+            output.error(i18n.get("command.limit_reset_invalid_item"));
             return;
         }
 
@@ -293,10 +306,10 @@ void registerCommand() {
         auto& limitService = PlayerLimitService::getInstance();
         bool  ok           = true;
         if (resetShop) {
-            ok = limitService.resetLimitWindow(mainPos, dimId, true) && ok;
+            ok = limitService.resetLimitWindow(mainPos, dimId, true, specificItem ? itemId : 0) && ok;
         }
         if (resetRecycle) {
-            ok = limitService.resetLimitWindow(mainPos, dimId, false) && ok;
+            ok = limitService.resetLimitWindow(mainPos, dimId, false, specificItem ? itemId : 0) && ok;
         }
         if (!ok) {
             output.error(i18n.get("command.limit_reset_failed"));
@@ -310,16 +323,30 @@ void registerCommand() {
             resetType = i18n.get("command.limit_type_recycle");
         }
 
-        output.success(i18n.get(
-            "command.limit_reset_success",
-            {
-                {"type", resetType                },
-                {"x",    std::to_string(mainPos.x)},
-                {"y",    std::to_string(mainPos.y)},
-                {"z",    std::to_string(mainPos.z)},
-                {"dim",  std::to_string(dimId)    }
+        if (specificItem) {
+            output.success(i18n.get(
+                "command.limit_reset_success_item",
+                {
+                    {"type",    resetType                },
+                    {"item_id", std::to_string(itemId)   },
+                    {"x",       std::to_string(mainPos.x)},
+                    {"y",       std::to_string(mainPos.y)},
+                    {"z",       std::to_string(mainPos.z)},
+                    {"dim",     std::to_string(dimId)    }
+                }
+            ));
+        } else {
+            output.success(i18n.get(
+                "command.limit_reset_success",
+                {
+                    {"type", resetType                },
+                    {"x",    std::to_string(mainPos.x)},
+                    {"y",    std::to_string(mainPos.y)},
+                    {"z",    std::to_string(mainPos.z)},
+                    {"dim",  std::to_string(dimId)    }
+                }
+            ));
         }
-        ));
     };
 
     limitResetCmd.overload<ll::command::EmptyParam>().execute(
@@ -348,7 +375,7 @@ void registerCommand() {
                      CommandOutput&            output,
                      LimitResetPosParam const& param,
                      class Command const&
-                 ) { executeLimitReset(origin, output, param, true, false); });
+                 ) { executeLimitReset(origin, output, param, true, false, 0, false); });
 
     limitResetCmd.overload<LimitResetPosParam>()
         .text("recycle")
@@ -360,7 +387,7 @@ void registerCommand() {
                      CommandOutput&            output,
                      LimitResetPosParam const& param,
                      class Command const&
-                 ) { executeLimitReset(origin, output, param, false, true); });
+                 ) { executeLimitReset(origin, output, param, false, true, 0, false); });
 
     limitResetCmd.overload<LimitResetPosParam>()
         .text("all")
@@ -372,7 +399,76 @@ void registerCommand() {
                      CommandOutput&            output,
                      LimitResetPosParam const& param,
                      class Command const&
-                 ) { executeLimitReset(origin, output, param, true, true); });
+                 ) { executeLimitReset(origin, output, param, true, true, 0, false); });
+
+    limitResetCmd.overload<LimitResetItemParam>()
+        .text("shop")
+        .required("x")
+        .required("y")
+        .required("z")
+        .required("item_id")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&       origin,
+                     CommandOutput&             output,
+                     LimitResetItemParam const& param,
+                     class Command const&
+                 ) {
+                     executeLimitReset(
+                         origin,
+                         output,
+                         LimitResetPosParam{param.x, param.y, param.z},
+                         true,
+                         false,
+                         param.item_id,
+                         true
+                     );
+                 });
+
+    limitResetCmd.overload<LimitResetItemParam>()
+        .text("recycle")
+        .required("x")
+        .required("y")
+        .required("z")
+        .required("item_id")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&       origin,
+                     CommandOutput&             output,
+                     LimitResetItemParam const& param,
+                     class Command const&
+                 ) {
+                     executeLimitReset(
+                         origin,
+                         output,
+                         LimitResetPosParam{param.x, param.y, param.z},
+                         false,
+                         true,
+                         param.item_id,
+                         true
+                     );
+                 });
+
+    limitResetCmd.overload<LimitResetItemParam>()
+        .text("all")
+        .required("x")
+        .required("y")
+        .required("z")
+        .required("item_id")
+        .execute([&executeLimitReset](
+                     CommandOrigin const&       origin,
+                     CommandOutput&             output,
+                     LimitResetItemParam const& param,
+                     class Command const&
+                 ) {
+                     executeLimitReset(
+                         origin,
+                         output,
+                         LimitResetPosParam{param.x, param.y, param.z},
+                         true,
+                         true,
+                         param.item_id,
+                         true
+                     );
+                 });
 
     // 注册 /cttest 命令 - 自动化测试（开发者工具）
     auto& testCmd =

@@ -3,6 +3,7 @@
 #include "DynamicPricingForm.h"
 #include "FormUtils.h"
 #include "LockForm.h"
+#include "PlayerLimitForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -309,6 +310,11 @@ void showShopItemManageForm(
     fm.appendButton(txt.getMessage("form.button_set_price"), [item, pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showShopItemPriceForm(p, item, pos, dimId, region);
+    });
+
+    fm.appendButton(txt.getMessage("form.button_item_limit"), [pos, dimId, itemId, itemName = std::string(item.getName())](Player& p) {
+        auto& region = p.getDimensionBlockSource();
+        showPlayerItemLimitForm(p, pos, dimId, region, true, itemId, itemName);
     });
 
     // 官方商店显示动态价格设置按钮
