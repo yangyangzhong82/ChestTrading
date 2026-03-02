@@ -60,8 +60,8 @@
     "no_records": "§7该商店暂无购买记录。",
     "records_title": "§a最近的购买记录:\n",
     "unknown_item": "未知物品",
-    "no_purchase_history": "§7你还没有任何购买记录。",
-    "purchase_history_hint": "§7点击商品可直接传送到对应的商店（可能会收取传送费）。"
+    "no_purchase_history": "§f你还没有任何购买记录。",
+    "purchase_history_hint": "§f点击商品可直接传送到对应的商店（可能会收取传送费）。"
   },
   "recycle": {
     "success": "§a成功回收 {item} x{count}，获得 §6{price}§a 金币。",
@@ -265,7 +265,7 @@
     "select_remove_player": "选择要移除的分享玩家：",
     "remaining_stock": "剩余库存: §b{stock}§r",
     "purchase_record_format": "§f{timestamp} - {player} 购买了 {item} x{count}，花费 {price} 金币\n",
-    "history_item_button": "{item}\n§7累计购买: {stock} | 总计花费: {price}",
+    "history_item_button": "{item}\n§f累计购买: {stock} | 总计花费: {price}",
     "label_page_select": "--- 分页选择 ---",
     "label_player_select": "--- 玩家选择 (请在选择页码后提交表单) ---",
     "label_select_online": "选择要分享的在线玩家：",
@@ -342,10 +342,10 @@
     "recycle_search_title": "搜索回收物品",
     "search_keyword": "物品名称",
     "search_hint": "输入物品名称关键词",
-    "no_items": "§7当前没有公开商店的物品。",
-    "no_recycle_items": "§7当前没有公开回收商店的物品。",
-    "no_match": "§7没有找到匹配的物品。",
-    "total_items": "§e共 {count} 个物品 §7(第 {page}/{total} 页)",
+    "no_items": "§f当前没有公开商店的物品。",
+    "no_recycle_items": "§f当前没有公开回收商店的物品。",
+    "no_match": "§f没有找到匹配的物品。",
+    "total_items": "§e共 {count} 个物品 §f(第 {page}/{total} 页)",
     "search_result": "\n§6搜索: {keyword}",
     "item_detail_title": "商品详情",
     "recycle_detail_title": "回收委托详情",
@@ -353,7 +353,7 @@
     "item_price": "§e售价: §6{price}\n",
     "recycle_price": "§e回收价: §6{price}\n",
     "item_shop": "§e商店: §f{shop}\n",
-    "item_location": "§e位置: §7{dim} [{x}, {y}, {z}]\n",
+    "item_location": "§e位置: §f{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[官方商店]\n"
   },
   "player_list": {

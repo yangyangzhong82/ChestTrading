@@ -60,8 +60,8 @@
     "no_records": "§7No purchase records for this shop.",
     "records_title": "§aRecent purchase records:\n",
     "unknown_item": "Unknown Item",
-    "no_purchase_history": "§7You don't have any purchase records yet.",
-    "purchase_history_hint": "§7Click an item to teleport to the corresponding shop (teleport fee may apply)."
+    "no_purchase_history": "§fYou don't have any purchase records yet.",
+    "purchase_history_hint": "§fClick an item to teleport to the corresponding shop (teleport fee may apply)."
   },
   "recycle": {
     "success": "§aSuccessfully recycled {item} x{count}, earned §6{price}§a coins.",
@@ -265,7 +265,7 @@
     "select_remove_player": "Select shared players to remove:",
     "remaining_stock": "Remaining Stock: §b{stock}§r",
     "purchase_record_format": "§f{timestamp} - {player} bought {item} x{count} for {price} coins\n",
-    "history_item_button": "{item}\n§7Purchased: {stock} | Total Cost: {price}",
+    "history_item_button": "{item}\n§fPurchased: {stock} | Total Cost: {price}",
     "label_page_select": "--- Page Selection ---",
     "label_player_select": "--- Player Selection (Submit form after selecting page) ---",
     "label_select_online": "Select online players to share with:",
@@ -342,10 +342,10 @@
     "recycle_search_title": "Search Recycle Items",
     "search_keyword": "Item Name",
     "search_hint": "Enter item name keyword",
-    "no_items": "§7No items in public shops.",
-    "no_recycle_items": "§7No items in public recycle shops.",
-    "no_match": "§7No matching items found.",
-    "total_items": "§eTotal {count} items §7(Page {page}/{total})",
+    "no_items": "§fNo items in public shops.",
+    "no_recycle_items": "§fNo items in public recycle shops.",
+    "no_match": "§fNo matching items found.",
+    "total_items": "§eTotal {count} items §f(Page {page}/{total})",
     "search_result": "\n§6Search: {keyword}",
     "item_detail_title": "Item Details",
     "recycle_detail_title": "Recycle Commission Details",
@@ -353,7 +353,7 @@
     "item_price": "§ePrice: §6{price}\n",
     "recycle_price": "§eRecycle Price: §6{price}\n",
     "item_shop": "§eShop: §f{shop}\n",
-    "item_location": "§eLocation: §7{dim} [{x}, {y}, {z}]\n",
+    "item_location": "§eLocation: §f{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[Official Shop]\n"
   },
   "player_list": {

@@ -1,5 +1,6 @@
 #include "PublicItemsForm.h"
 #include "FormUtils.h"
+#include "ShopForm.h"
 #include "Utils/MoneyFormat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
@@ -57,6 +58,15 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
     int totalPages = (totalItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
     if (totalPages == 0) totalPages = 1;
     currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
+        showSearchForm(p);
+    });
+    fm.appendButton(
+        i18n.get("form.button_purchase_history"),
+        "textures/ui/book_edit_default",
+        "path",
+        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
+    );
 
     if (filteredItems.empty()) {
         fm.setContent(searchKeyword.empty() ? i18n.get("public_items.no_items") : i18n.get("public_items.no_match"));
@@ -106,7 +116,7 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
             std::string officialTag = item.isOfficial ? i18n.get("public_shop.official_tag") + " " : "";
 
             std::string buttonText = officialTag + "§b" + std::string(itemPtr->getName()) + "§r §6["
-                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName;
+                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§f" + shopDisplayName;
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
 
@@ -119,11 +129,6 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
             }
         }
     }
-
-    // 搜索按钮
-    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
-        showSearchForm(p);
-    });
 
     // 分页按钮
     if (totalPages > 1) {
@@ -200,6 +205,15 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
     int totalPages = (totalItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
     if (totalPages == 0) totalPages = 1;
     currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
+        showRecycleSearchForm(p);
+    });
+    fm.appendButton(
+        i18n.get("form.button_purchase_history"),
+        "textures/ui/book_edit_default",
+        "path",
+        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
+    );
 
     if (filteredItems.empty()) {
         fm.setContent(
@@ -250,7 +264,7 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
             std::string officialTag = item.isOfficial ? i18n.get("public_shop.official_tag") + " " : "";
 
             std::string buttonText = officialTag + "§b" + std::string(itemPtr->getName()) + "§r §6["
-                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§7" + shopDisplayName;
+                                   + CT::MoneyFormat::format(item.price) + "]§r" + "\n§f" + shopDisplayName;
 
             std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
 
@@ -263,10 +277,6 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
             }
         }
     }
-
-    fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
-        showRecycleSearchForm(p);
-    });
 
     if (totalPages > 1) {
         if (currentPage > 0) {

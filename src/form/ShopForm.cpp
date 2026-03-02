@@ -82,11 +82,14 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         }
     }
 
-    fm.appendButton(txt.getMessage("form.button_purchase_history"), [pos, dimId](Player& p) {
-        showPlayerPurchaseHistoryForm(p);
-    });
+    fm.appendButton(
+        txt.getMessage("form.button_purchase_history"),
+        "textures/ui/book_edit_default",
+        "path",
+        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
+    );
 
-    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), "textures/ui/arrow_left", "path", [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
         showChestLockForm(
@@ -185,7 +188,7 @@ void showPlayerPurchaseHistoryForm(Player& player) {
         }
     }
 
-    fm.appendButton(txt.getMessage("form.button_back"), [](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {
         // 返回时不做任何操作，关闭表单即可
     });
 
