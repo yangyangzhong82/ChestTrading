@@ -500,18 +500,24 @@ std::string getBundleItems(const CompoundTag& bundleNbt) {
     return getContainerItemsInternal(bundleNbt, "storage_item_component_content", true);
 }
 
+std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt, bool isDamageableItem);
 
 std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt) {
+    // 兼容旧调用点：若没有现成的 ItemStack 信息，只能从 NBT 构造一次来判断是否可损坏。
+    // 这个分支可能比较重，因此在高频路径上建议使用重载 cleanNbtForComparison(itemNbt, itemStack.isDamageableItem())。
+    auto tempItem     = createItemFromNbt(itemNbt);
+    bool isDamageable = tempItem && tempItem->isDamageableItem();
+    return cleanNbtForComparison(itemNbt, isDamageable);
+}
+
+std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt, bool isDamageableItem) {
     auto cleanedNbt = itemNbt.clone();
     if (cleanedNbt->contains("Count")) {
         cleanedNbt->erase("Count");
     }
-    // 只有可损坏物品才移除Damage标签，对于箭等物品Damage是特殊值需要保留
-    if (cleanedNbt->contains("Damage")) {
-        auto tempItem = createItemFromNbt(itemNbt);
-        if (tempItem && tempItem->isDamageableItem()) {
-            cleanedNbt->erase("Damage");
-        }
+    // 只有可损坏物品才移除 Damage 标签；对于箭/药水等非耐久物品，Damage 往往是变体/特殊值，需要保留。
+    if (isDamageableItem && cleanedNbt->contains("Damage")) {
+        cleanedNbt->erase("Damage");
     }
     return cleanedNbt;
 }

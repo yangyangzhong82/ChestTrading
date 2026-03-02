@@ -155,6 +155,15 @@ std::unique_ptr<CompoundTag> getBlockEntityNbt(BlockActor* blockEntity);
   */
  std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt);
 
+ /**
+  * @brief 清理物品NBT（可指定物品是否可损坏），避免为判断 Damage 是否应移除而重复构造 ItemStack。
+  *
+  * @param itemNbt 原始的物品CompoundTag。
+  * @param isDamageableItem 该物品是否为可损坏物品（ItemStack::isDamageableItem()）。
+  * @return 清理后的CompoundTag的深拷贝。
+  */
+ std::unique_ptr<CompoundTag> cleanNbtForComparison(const CompoundTag& itemNbt, bool isDamageableItem);
+
  std::string enchantToString(const Enchant::Type type);
 
  } // namespace CT::NbtUtils

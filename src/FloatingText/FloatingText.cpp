@@ -568,120 +568,93 @@ void FloatingTextManager::stopDynamicTextUpdateLoop() {
 
 // 更新商店/回收商店的悬浮字物品列表
 void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestType type) {
-    bool shouldUpdateFakeItems = false;
+    if (type != ChestType::Shop && type != ChestType::RecycleShop && type != ChestType::AdminShop
+        && type != ChestType::AdminRecycle) {
+        logger.warn("updateShopFloatingText: 尝试更新非商店/回收商店类型的悬浮字物品列表，操作无效。");
+        return;
+    }
 
+    logger.debug(
+        "updateShopFloatingText: Updating floating text for chest ({}, {}, {}) in dim {}. Type: {}.",
+        pos.x,
+        pos.y,
+        pos.z,
+        dimId,
+        static_cast<int>(type)
+    );
+
+    // 锁外执行 DB 查询和 NBT 解析，避免长时间占用写锁导致卡顿。
+    std::vector<std::string> newItemNames;
+    std::vector<std::string> newItemNbts;
+
+    {
+        Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
+        std::vector<std::vector<std::string>> itemResults;
+
+        if (type == ChestType::Shop || type == ChestType::AdminShop) {
+            itemResults = db.query(
+                "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
+                "si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z
+            );
+        } else { // RecycleShop or AdminRecycle
+            itemResults = db.query(
+                "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id "
+                "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
+                dimId,
+                pos.x,
+                pos.y,
+                pos.z
+            );
+        }
+
+        newItemNames.reserve(itemResults.size());
+        newItemNbts.reserve(itemResults.size());
+
+        for (const auto& itemRow : itemResults) {
+            if (itemRow.empty()) continue;
+
+            auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]);
+            if (!nbt) {
+                logger.warn("updateShopFloatingText: 无法从 NBT 字符串解析物品: {}", itemRow[0]);
+                continue;
+            }
+
+            nbt->at("Count") = ByteTag(1);
+            auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
+            if (!itemPtr || itemPtr->isNull()) {
+                logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemRow[0]);
+                continue;
+            }
+
+            std::string itemName = itemPtr->getName();
+            if (itemName.empty()) {
+                itemName = itemPtr->getTypeName();
+                logger.warn("updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: {}", itemName);
+            }
+
+            newItemNames.push_back(std::move(itemName));
+            newItemNbts.push_back(itemRow[0]);
+        }
+    }
+
+    // 生成新的悬浮字文本（锁外）
+    std::string newText;
+    if (!newItemNames.empty()) {
+        newText = TextService::getInstance().generateDynamicShopText(type, newItemNames[0]);
+    } else {
+        newText = TextService::getInstance().generateEmptyShopText(type);
+    }
+
+    bool shouldUpdateFakeItems = false;
     {
         std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
         auto                                key = std::make_pair(dimId, pos);
-        if (mFloatingTexts.count(key)) {
-            auto& ft = mFloatingTexts.at(key);
-            logger.debug(
-                "updateShopFloatingText: Updating floating text for chest ({}, {}, {}) in dim {}. Type: {}.",
-                pos.x,
-                pos.y,
-                pos.z,
-                dimId,
-                static_cast<int>(type)
-            );
-
-            if (type != ChestType::Shop && type != ChestType::RecycleShop && type != ChestType::AdminShop
-                && type != ChestType::AdminRecycle) {
-                logger.warn("updateShopFloatingText: 尝试更新非商店/回收商店类型的悬浮字物品列表，操作无效。");
-                return;
-            }
-
-            ft.itemNames.clear();                            // 清空旧的物品名称列表
-            ft.itemNbts.clear();                                // 清空旧的物品列表
-            ft.isDynamic                             = true; // 确保标记为动态悬浮字
-            Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
-            std::vector<std::vector<std::string>> itemResults;
-
-            if (type == ChestType::Shop || type == ChestType::AdminShop) {
-                itemResults = db.query(
-                    "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
-                    "si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z
-                );
-            } else { // RecycleShop or AdminRecycle
-                itemResults = db.query(
-                    "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = "
-                    "id.item_id "
-                    "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
-                    dimId,
-                    pos.x,
-                    pos.y,
-                    pos.z
-                );
-            }
-            logger.debug("updateShopFloatingText: Database query for items returned {} results.", itemResults.size());
-
-            for (const auto& itemRow : itemResults) {
-                if (!itemRow.empty()) {
-                    logger.debug("updateShopFloatingText: Processing item NBT string: {}", itemRow[0]);
-                    auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]);
-                    if (nbt) {
-                        nbt->at("Count") = ByteTag(1);
-                        auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
-                        if (itemPtr && !itemPtr->isNull()) {
-                            std::string itemName = itemPtr->getName();
-                            if (itemName.empty()) {
-                                itemName = itemPtr->getTypeName();
-                                logger.warn(
-                                    "updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: "
-                                    "{}",
-                                    itemName
-                                );
-                            }
-                            ft.itemNames.push_back(itemName);
-                            ft.itemNbts.push_back(itemRow[0]);
-                            logger.debug("updateShopFloatingText: Added item name: {} to list.", itemName);
-                        } else {
-                            logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemRow[0]);
-                        }
-                    } else {
-                        logger.warn("updateShopFloatingText: 无法从 NBT 字符串解析物品: {}", itemRow[0]);
-                    }
-                }
-            }
-            logger.debug(
-                "updateShopFloatingText: ft.itemNames contains {} items after database query.",
-                ft.itemNames.size()
-            );
-
-            // 更新悬浮字文本
-            if (!ft.itemNames.empty()) {
-                ft.currentItemIndex = 0; // 重置索引
-                ft.text             = TextService::getInstance().generateDynamicShopText(type, ft.itemNames[0]);
-                logger.debug(
-                    "updateShopFloatingText: 箱子 ({}, {}, {}) in dim {} 的动态悬浮字已更新为: {}",
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    dimId,
-                    ft.text
-                );
-            } else {
-                ft.text = TextService::getInstance().generateEmptyShopText(type);
-                logger.debug(
-                    "updateShopFloatingText: 箱子 ({}, {}, {}) in dim {} 的动态悬浮字已更新为: {}",
-                    pos.x,
-                    pos.y,
-                    pos.z,
-                    dimId,
-                    ft.text
-                );
-            }
-
-            if (ft.debugText) {
-                ft.debugText->setText(ft.text);
-                ft.debugText->update(); // 立即更新所有客户端
-            }
-
-            shouldUpdateFakeItems = true;
-        } else {
+        auto                                it  = mFloatingTexts.find(key);
+        if (it == mFloatingTexts.end()) {
             logger.warn(
                 "updateShopFloatingText: 尝试更新不存在的悬浮字 ({}, {}, {}) in dim {}。",
                 pos.x,
@@ -689,7 +662,23 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 pos.z,
                 dimId
             );
+            return;
         }
+
+        auto& ft         = it->second;
+        ft.itemNames     = std::move(newItemNames);
+        ft.itemNbts      = std::move(newItemNbts);
+        ft.isDynamic     = true;
+        ft.currentItemIndex     = 0;
+        ft.currentFakeItemIndex = 0;
+        ft.text          = std::move(newText);
+
+        if (ft.debugText) {
+            ft.debugText->setText(ft.text);
+            ft.debugText->update(); // 立即更新所有客户端
+        }
+
+        shouldUpdateFakeItems = true;
     } // 写锁在此释放
 
     // 在写锁释放后更新假物品，避免死锁

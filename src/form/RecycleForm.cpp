@@ -30,6 +30,7 @@
 #include "service/RecycleService.h"
 #include "service/TextService.h"
 
+#include <optional>
 
 namespace CT {
 
@@ -205,6 +206,14 @@ void showRecycleConfirmForm(
     auto&                txt = TextService::getInstance();
     fm.setTitle(txt.getMessage("form.recycle_confirm_title"));
 
+    // 预计算 commission 的二进制 NBT key，避免在背包扫描中反复 toSNBT()。
+    // 若 commissionNbtStr 解析失败，则回退到原来的字符串比较逻辑。
+    std::optional<std::string> commissionBinKey;
+    if (auto commissionTag = CT::NbtUtils::parseSNBT(commissionNbtStr)) {
+        auto cleaned = CT::NbtUtils::cleanNbtForComparison(*commissionTag, item.isDamageableItem());
+        commissionBinKey = CT::NbtUtils::toBinaryNBT(*cleaned);
+    }
+
     int totalPlayerCount = 0;
     int itemId           = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     if (itemId < 0) {
@@ -241,15 +250,20 @@ void showRecycleConfirmForm(
         const auto& itemInSlot = player.getInventory().getItem(i);
         if (itemInSlot.isNull()) continue;
 
+        // 快速剪枝：类型不一致直接跳过，避免无谓的 NBT 序列化。
+        if (itemInSlot.getTypeName() != item.getTypeName()) continue;
+
         auto itemNbt = CT::NbtUtils::getItemNbt(itemInSlot);
         if (!itemNbt) continue;
-        auto        cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt);
-        std::string itemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
+        auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt, itemInSlot.isDamageableItem());
 
-        logger.trace("Comparing inventory item: Cleaned NBT: {}", itemNbtStr);
-        logger.trace("Comparing with commission: Commission NBT: {}", commissionNbtStr);
-
-        if (itemNbtStr != commissionNbtStr) continue;
+        bool matches = false;
+        if (commissionBinKey) {
+            matches = (CT::NbtUtils::toBinaryNBT(*cleanedNbt) == *commissionBinKey);
+        } else {
+            matches = (CT::NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr);
+        }
+        if (!matches) continue;
 
         if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
             continue;
@@ -1134,7 +1148,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     return;
                 }
 
-                auto        cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt);
+                auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt, item.isDamageableItem());
                 std::string itemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
 
                 logger.info("Setting recycle commission for item '{}'.", item.getName());

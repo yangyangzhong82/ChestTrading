@@ -244,6 +244,11 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
     auto chestInfo = findByPosition(pos, dimId);
     if (!chestInfo) return -1;
 
+    Transaction txn(db);
+    if (!txn.isActive()) {
+        return -1;
+    }
+
     int64_t packedTime =
         std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
@@ -273,7 +278,7 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
     int64_t packedId = std::stoll(result[0][0]);
 
     // 复制商店商品
-    db.execute(
+    if (!db.execute(
         "INSERT INTO packed_shop_items (packed_id, item_id, price, db_count, slot) "
         "SELECT ?, item_id, price, db_count, slot FROM shop_items "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
@@ -282,10 +287,12 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
         pos.x,
         pos.y,
         pos.z
-    );
+    )) {
+        return -1;
+    }
 
     // 复制回收商店商品
-    db.execute(
+    if (!db.execute(
         "INSERT INTO packed_recycle_items (packed_id, item_id, price, min_durability, required_enchants, "
         "max_recycle_count, current_recycled_count, required_aux_value) "
         "SELECT ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
@@ -296,10 +303,12 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
         pos.x,
         pos.y,
         pos.z
-    );
+    )) {
+        return -1;
+    }
 
     // 复制分享玩家
-    db.execute(
+    if (!db.execute(
         "INSERT INTO packed_shared_chests (packed_id, player_uuid, owner_uuid) "
         "SELECT ?, player_uuid, owner_uuid FROM shared_chests "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
@@ -308,10 +317,19 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
         pos.x,
         pos.y,
         pos.z
-    );
+    )) {
+        return -1;
+    }
 
     // 删除原箱子数据（级联删除会清理关联表）
-    remove(pos, dimId);
+    if (!remove(pos, dimId)) {
+        return -1;
+    }
+
+    if (!txn.commit()) {
+        txn.rollback();
+        return -1;
+    }
 
     return packedId;
 }
@@ -326,6 +344,11 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
         packedId
     );
     if (result.empty()) return false;
+
+    Transaction txn(db);
+    if (!txn.isActive()) {
+        return false;
+    }
 
     // 恢复箱子主表
     if (!db.execute(
@@ -346,7 +369,7 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     }
 
     // 恢复商店商品
-    db.execute(
+    if (!db.execute(
         "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, db_count, slot) "
         "SELECT ?, ?, ?, ?, item_id, price, db_count, slot FROM packed_shop_items WHERE packed_id = ?;",
         newDimId,
@@ -354,10 +377,12 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
         newPos.y,
         newPos.z,
         packedId
-    );
+    )) {
+        return false;
+    }
 
     // 恢复回收商店商品
-    db.execute(
+    if (!db.execute(
         "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, min_durability, "
         "required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
         "SELECT ?, ?, ?, ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
@@ -367,10 +392,12 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
         newPos.y,
         newPos.z,
         packedId
-    );
+    )) {
+        return false;
+    }
 
     // 恢复分享玩家
-    db.execute(
+    if (!db.execute(
         "INSERT INTO shared_chests (player_uuid, owner_uuid, dim_id, pos_x, pos_y, pos_z) "
         "SELECT player_uuid, owner_uuid, ?, ?, ?, ? FROM packed_shared_chests WHERE packed_id = ?;",
         newDimId,
@@ -378,10 +405,19 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
         newPos.y,
         newPos.z,
         packedId
-    );
+    )) {
+        return false;
+    }
 
     // 删除打包数据
-    db.execute("DELETE FROM packed_chests WHERE packed_id = ?;", packedId);
+    if (!db.execute("DELETE FROM packed_chests WHERE packed_id = ?;", packedId)) {
+        return false;
+    }
+
+    if (!txn.commit()) {
+        txn.rollback();
+        return false;
+    }
 
     return true;
 }

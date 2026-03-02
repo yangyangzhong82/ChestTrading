@@ -17,10 +17,12 @@
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "mc/nbt/ByteTag.h"
 #include "nlohmann/json.hpp"
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include <algorithm>
+#include <optional>
 
 namespace CT {
 
@@ -221,6 +223,24 @@ RecycleResult RecycleService::executeFullRecycle(
         } catch (...) {}
     }
 
+    // 预解析委托物品的二进制 NBT key，避免后续多处遍历时反复 toSNBT()。
+    // 若委托 NBT 解析失败，则回退到字符串比较。
+    std::optional<std::string> commissionBinKey;
+    if (auto commissionTag = NbtUtils::parseSNBT(commissionNbtStr)) {
+        // 从委托 NBT 构造一次 ItemStack，判断是否可损坏，从而决定是否移除 Damage。
+        bool damageable = false;
+        {
+            auto temp = commissionTag->clone();
+            if (temp && !temp->contains("Count")) {
+                (*temp)["Count"] = ByteTag(1);
+            }
+            auto tempItem = temp ? NbtUtils::createItemFromNbt(*temp) : nullptr;
+            damageable = tempItem && tempItem->isDamageableItem();
+        }
+        auto cleaned = NbtUtils::cleanNbtForComparison(*commissionTag, damageable);
+        commissionBinKey = NbtUtils::toBinaryNBT(*cleaned);
+    }
+
     // 5. 检查回收数量限制（官方回收商店可设置无限回收，maxRecycleCount=0表示无限）
     if (maxRecycleCount > 0 && (currentRecycledCount + quantity) > maxRecycleCount) {
         refundOwner();
@@ -258,9 +278,16 @@ RecycleResult RecycleService::executeFullRecycle(
 
         auto itemNbt = NbtUtils::getItemNbt(itemInSlot);
         if (!itemNbt) continue;
-        auto cleanedNbt = NbtUtils::cleanNbtForComparison(*itemNbt);
+        auto cleanedNbt = NbtUtils::cleanNbtForComparison(*itemNbt, itemInSlot.isDamageableItem());
 
-        if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+        bool matches = false;
+        if (commissionBinKey) {
+            matches = (NbtUtils::toBinaryNBT(*cleanedNbt) == *commissionBinKey);
+        } else {
+            matches = (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr);
+        }
+
+        if (matches) {
             // 检查特殊值（如箭的类型）
             if (requiredAuxValue >= 0 && itemInSlot.getAuxValue() != requiredAuxValue) {
                 continue;
@@ -317,8 +344,14 @@ RecycleResult RecycleService::executeFullRecycle(
             } else {
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (chestItemNbt) {
-                    auto cleanedChestNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                    if (NbtUtils::toSNBT(*cleanedChestNbt) == commissionNbtStr) {
+                    auto cleanedChestNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItem.isDamageableItem());
+                    bool matches = false;
+                    if (commissionBinKey) {
+                        matches = (NbtUtils::toBinaryNBT(*cleanedChestNbt) == *commissionBinKey);
+                    } else {
+                        matches = (NbtUtils::toSNBT(*cleanedChestNbt) == commissionNbtStr);
+                    }
+                    if (matches) {
                         chestAvailableSpace += (64 - chestItem.mCount);
                     }
                 }
@@ -335,8 +368,14 @@ RecycleResult RecycleService::executeFullRecycle(
             if (!chestItem.isNull()) {
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (chestItemNbt) {
-                    auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                    if (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr) {
+                    auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItem.isDamageableItem());
+                    bool matches = false;
+                    if (commissionBinKey) {
+                        matches = (NbtUtils::toBinaryNBT(*cleanedNbt) == *commissionBinKey);
+                    } else {
+                        matches = (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr);
+                    }
+                    if (matches) {
                         chestInitialCounts[i] = chestItem.mCount;
                     }
                 }
@@ -372,8 +411,14 @@ RecycleResult RecycleService::executeFullRecycle(
                     if (chestItem.isNull()) continue;
                     auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                     if (!chestItemNbt) continue;
-                    auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                    if (NbtUtils::toSNBT(*cleanedNbt) != commissionNbtStr) continue;
+                    auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItem.isDamageableItem());
+                    bool matches = false;
+                    if (commissionBinKey) {
+                        matches = (NbtUtils::toBinaryNBT(*cleanedNbt) == *commissionBinKey);
+                    } else {
+                        matches = (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr);
+                    }
+                    if (!matches) continue;
                     int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                     if (addedCount > 0) {
                         ItemStack returnItem = chestItem;
@@ -400,8 +445,14 @@ RecycleResult RecycleService::executeFullRecycle(
                 if (chestItem.isNull()) continue;
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (!chestItemNbt) continue;
-                auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt);
-                if (NbtUtils::toSNBT(*cleanedNbt) != commissionNbtStr) continue;
+                auto cleanedNbt = NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItem.isDamageableItem());
+                bool matches = false;
+                if (commissionBinKey) {
+                    matches = (NbtUtils::toBinaryNBT(*cleanedNbt) == *commissionBinKey);
+                } else {
+                    matches = (NbtUtils::toSNBT(*cleanedNbt) == commissionNbtStr);
+                }
+                if (!matches) continue;
                 int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                 if (addedCount > 0) {
                     ItemStack returnItem = chestItem;
