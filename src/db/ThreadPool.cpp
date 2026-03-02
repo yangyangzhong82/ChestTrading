@@ -70,7 +70,7 @@ ThreadPool::~ThreadPool() {
 }
 
 size_t ThreadPool::getPendingTaskCount() const {
-    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mQueueMutex));
+    std::lock_guard<std::mutex> lock(mQueueMutex);
     return mTasks.size() + mActiveTasks.load();
 }
 

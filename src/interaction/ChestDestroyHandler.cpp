@@ -1,6 +1,7 @@
 #include "interaction/ChestDestroyHandler.h"
 
 #include "Bedrock-Authority/permission/PermissionManager.h"
+#include "compat/PLandCompat.h"
 #include "logger.h"
 #include "mc/world/level/block/Block.h"
 #include "service/ChestService.h"
@@ -8,6 +9,10 @@
 namespace CT {
 
 void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
+    if (event.isCancelled()) {
+        return;
+    }
+
     auto& player = event.self();
     auto  dimId  = static_cast<int>(player.getDimensionId());
     auto  pos    = event.pos();
@@ -15,6 +20,12 @@ void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
     auto& block  = region.getBlock(pos);
 
     if (block.getTypeName() != "minecraft:chest") {
+        return;
+    }
+
+    if (!PLandCompat::getInstance().canDestroy(player, pos)) {
+        event.cancel();
+        player.sendMessage("§cYou don't have permission to destroy blocks in this land.");
         return;
     }
 

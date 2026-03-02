@@ -2,6 +2,7 @@
 
 #include "FloatingText/FloatingText.h"
 #include "Utils/NbtUtils.h"
+#include "compat/PLandCompat.h"
 #include "logger.h"
 #include "mc/nbt/CompoundTag.h"
 #include "mc/nbt/CompoundTagVariant.h"
@@ -22,12 +23,22 @@ std::mutex                               gPendingMutex;
 } // namespace
 
 void handlePlayerPlacingBlock(ll::event::PlayerPlacingBlockEvent& ev) {
+    if (ev.isCancelled()) {
+        return;
+    }
+
     auto& player = ev.self();
     auto& item   = player.getCarriedItem();
 
     logger.debug("handlePlayerPlacingBlock: item={}", item.getTypeName());
 
     if (item.getTypeName() != "minecraft:chest") {
+        return;
+    }
+
+    if (!PLandCompat::getInstance().canPlace(player, ev.pos())) {
+        ev.cancel();
+        player.sendMessage("§cYou don't have permission to place blocks in this land.");
         return;
     }
 

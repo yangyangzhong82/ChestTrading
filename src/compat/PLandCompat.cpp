@@ -1,0 +1,365 @@
+#include "compat/PLandCompat.h"
+
+#include "ll/api/mod/ModManagerRegistry.h"
+#include "ll/api/mod/NativeMod.h"
+#include "logger.h"
+#include "mc/platform/UUID.h"
+
+#include <Windows.h>
+
+#include <chrono>
+#include <memory>
+#include <mutex>
+
+namespace CT {
+
+namespace {
+
+using namespace std::chrono_literals;
+
+constexpr char const* kPLandModName = "PLand";
+
+struct PLandOpaque;
+struct LandRegistryOpaque;
+struct LandOpaque;
+
+struct RoleEntryLayout {
+    bool member;
+    bool guest;
+};
+
+struct EnvironmentPermsLayout {
+    bool allowFireSpread;
+    bool allowMonsterSpawn;
+    bool allowAnimalSpawn;
+    bool allowMobGrief;
+    bool allowExplode;
+    bool allowFarmDecay;
+    bool allowPistonPushOnBoundary;
+    bool allowRedstoneUpdate;
+    bool allowBlockFall;
+    bool allowWitherDestroy;
+    bool allowMossGrowth;
+    bool allowLiquidFlow;
+    bool allowDragonEggTeleport;
+    bool allowSculkBlockGrowth;
+    bool allowSculkSpread;
+    bool allowLightningBolt;
+    bool allowMinecartHopperPullItems;
+};
+
+struct RolePermsLayout {
+    RoleEntryLayout allowDestroy;
+    RoleEntryLayout allowPlace;
+    RoleEntryLayout useBucket;
+    RoleEntryLayout useAxe;
+    RoleEntryLayout useHoe;
+    RoleEntryLayout useShovel;
+    RoleEntryLayout placeBoat;
+    RoleEntryLayout placeMinecart;
+    RoleEntryLayout useButton;
+    RoleEntryLayout useDoor;
+    RoleEntryLayout useFenceGate;
+    RoleEntryLayout allowInteractEntity;
+    RoleEntryLayout useTrapdoor;
+    RoleEntryLayout editSign;
+    RoleEntryLayout useLever;
+    RoleEntryLayout useFurnaces;
+    RoleEntryLayout allowPlayerPickupItem;
+    RoleEntryLayout allowRideTrans;
+    RoleEntryLayout allowRideEntity;
+    RoleEntryLayout usePressurePlate;
+    RoleEntryLayout allowFishingRodAndHook;
+    RoleEntryLayout allowUseThrowable;
+    RoleEntryLayout useArmorStand;
+    RoleEntryLayout allowDropItem;
+    RoleEntryLayout useItemFrame;
+    RoleEntryLayout useFlintAndSteel;
+    RoleEntryLayout useBeacon;
+    RoleEntryLayout useBed;
+    RoleEntryLayout allowPvP;
+    RoleEntryLayout allowHostileDamage;
+    RoleEntryLayout allowFriendlyDamage;
+    RoleEntryLayout allowSpecialEntityDamage;
+    RoleEntryLayout useContainer;
+    RoleEntryLayout useWorkstation;
+    RoleEntryLayout useBell;
+    RoleEntryLayout useCampfire;
+    RoleEntryLayout useComposter;
+    RoleEntryLayout useDaylightDetector;
+    RoleEntryLayout useJukebox;
+    RoleEntryLayout useNoteBlock;
+    RoleEntryLayout useCake;
+    RoleEntryLayout useComparator;
+    RoleEntryLayout useRepeater;
+    RoleEntryLayout useLectern;
+    RoleEntryLayout useCauldron;
+    RoleEntryLayout useRespawnAnchor;
+    RoleEntryLayout useBoneMeal;
+    RoleEntryLayout useBeeNest;
+    RoleEntryLayout editFlowerPot;
+    RoleEntryLayout allowUseRangedWeapon;
+};
+
+struct LandPermTableLayout {
+    EnvironmentPermsLayout environment;
+    RolePermsLayout        role;
+};
+
+struct SymbolSet {
+    using GetInstanceFn    = PLandOpaque& (*)();
+    using GetRegistryFn    = LandRegistryOpaque& (*)(PLandOpaque const*);
+    // MSVC x64 for non-trivial return types uses a hidden return-buffer parameter.
+    using GetLandAtFn      = void (*)(std::shared_ptr<LandOpaque>*, LandRegistryOpaque const*, BlockPos const&, int);
+    using IsOperatorFn     = bool (*)(LandRegistryOpaque const*, mce::UUID const&);
+    using GetPermTypeFn    = int (*)(LandOpaque const*, mce::UUID const&);
+    using GetPermTableFn   = LandPermTableLayout const& (*)(LandOpaque const*);
+
+    GetInstanceFn  getInstance  = nullptr;
+    GetRegistryFn  getRegistry  = nullptr;
+    GetLandAtFn    getLandAt    = nullptr;
+    IsOperatorFn   isOperator   = nullptr;
+    GetPermTypeFn  getPermType  = nullptr;
+    GetPermTableFn getPermTable = nullptr;
+
+    [[nodiscard]] bool ready() const {
+        return getInstance && getRegistry && getLandAt && isOperator && getPermType && getPermTable;
+    }
+};
+
+struct ResolverState {
+    std::mutex                         mutex;
+    SymbolSet                          symbols;
+    HMODULE                            moduleHandle = nullptr;
+    bool                               available    = false;
+    bool                               loggedLoaded = false;
+    bool                               warnedSymbol = false;
+    std::chrono::steady_clock::time_point nextErrorLog{};
+    std::chrono::steady_clock::time_point nextRetry{};
+};
+
+ResolverState& state() {
+    static ResolverState s;
+    return s;
+}
+
+template <typename T>
+T resolveSymbol(HMODULE module, char const* symbol) {
+    return reinterpret_cast<T>(::GetProcAddress(module, symbol));
+}
+
+void resetSymbols(ResolverState& s) {
+    s.symbols      = {};
+    s.moduleHandle = nullptr;
+    s.available    = false;
+}
+
+bool resolveSymbolsLocked(ResolverState& s) {
+    auto now = std::chrono::steady_clock::now();
+    if (s.available && now < s.nextRetry) {
+        return true;
+    }
+    if (!s.available && now < s.nextRetry) {
+        return false;
+    }
+    s.nextRetry = now + 3s;
+
+    auto mod = ll::mod::ModManagerRegistry::getInstance().getMod(kPLandModName);
+    if (!mod || !mod->isEnabled()) {
+        resetSymbols(s);
+        return false;
+    }
+
+    auto& registry = ll::mod::ModManagerRegistry::getInstance();
+    if (registry.getModType(kPLandModName) != ll::mod::NativeModManagerName) {
+        resetSymbols(s);
+        return false;
+    }
+    auto nativeMod = std::static_pointer_cast<ll::mod::NativeMod>(mod);
+
+    auto module = reinterpret_cast<HMODULE>(nativeMod->getHandle());
+    if (!module) {
+        resetSymbols(s);
+        return false;
+    }
+
+    if (s.available && s.moduleHandle == module) {
+        return true;
+    }
+
+    SymbolSet symbols;
+    symbols.getInstance = resolveSymbol<SymbolSet::GetInstanceFn>(module, "?getInstance@PLand@land@@SAAEAV12@XZ");
+    symbols.getRegistry =
+        resolveSymbol<SymbolSet::GetRegistryFn>(module, "?getLandRegistry@PLand@land@@QEBAAEAVLandRegistry@2@XZ");
+    symbols.getLandAt = resolveSymbol<SymbolSet::GetLandAtFn>(
+        module,
+        "?getLandAt@LandRegistry@land@@QEBA?AV?$shared_ptr@VLand@land@@@std@@AEBVBlockPos@@H@Z"
+    );
+    symbols.isOperator =
+        resolveSymbol<SymbolSet::IsOperatorFn>(module, "?isOperator@LandRegistry@land@@QEBA_NAEBVUUID@mce@@@Z");
+    symbols.getPermType =
+        resolveSymbol<SymbolSet::GetPermTypeFn>(module, "?getPermType@Land@land@@QEBA?AW4LandPermType@2@AEBVUUID@mce@@@Z");
+    symbols.getPermTable =
+        resolveSymbol<SymbolSet::GetPermTableFn>(module, "?getPermTable@Land@land@@QEBAAEBULandPermTable@2@XZ");
+
+    if (!symbols.ready()) {
+        if (!s.warnedSymbol) {
+            logger.warn("PLand detected but required symbols are missing, integration is disabled.");
+            s.warnedSymbol = true;
+        }
+        resetSymbols(s);
+        return false;
+    }
+
+    s.symbols      = symbols;
+    s.moduleHandle = module;
+    s.available    = true;
+
+    if (!s.loggedLoaded) {
+        logger.info("PLand integration enabled via runtime symbols.");
+        s.loggedLoaded = true;
+    }
+
+    return true;
+}
+
+void reportRuntimeFailureThrottled(char const* message) {
+    auto& s = state();
+    std::lock_guard lock(s.mutex);
+    auto now = std::chrono::steady_clock::now();
+    if (now >= s.nextErrorLog) {
+        logger.warn("{}", message);
+        s.nextErrorLog = now + 30s;
+    }
+    resetSymbols(s);
+    s.nextRetry = now + 10s;
+}
+
+bool hasRolePermission(
+    SymbolSet const&    symbols,
+    LandRegistryOpaque& registry,
+    LandOpaque const*   land,
+    mce::UUID const&    uuid,
+    RoleEntryLayout     entry
+) {
+    if (symbols.isOperator(&registry, uuid)) {
+        return true;
+    }
+    int permType = symbols.getPermType(land, uuid);
+    // LandPermType: Operator=0, Owner=1, Member=2, Guest=3.
+    if (permType == 0 || permType == 1) {
+        return true;
+    }
+    if (permType == 2) {
+        return entry.member;
+    }
+    if (permType == 3) {
+        return entry.guest;
+    }
+    // Unknown enum value, keep safe fallback to guest policy.
+    if (entry.member) {
+        return true;
+    }
+    return entry.guest;
+}
+
+} // namespace
+
+PLandCompat& PLandCompat::getInstance() {
+    static PLandCompat instance;
+    return instance;
+}
+
+void PLandCompat::probe() {
+    auto& s = state();
+    std::lock_guard lock(s.mutex);
+    (void)resolveSymbolsLocked(s);
+}
+
+bool PLandCompat::canUseContainer(Player const& player, BlockPos const& pos) const {
+    return canPlayerDo(player, pos, Action::UseContainer);
+}
+
+bool PLandCompat::canPlace(Player const& player, BlockPos const& pos) const {
+    return canPlayerDo(player, pos, Action::Place);
+}
+
+bool PLandCompat::canDestroy(Player const& player, BlockPos const& pos) const {
+    return canPlayerDo(player, pos, Action::Destroy);
+}
+
+bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action action) const {
+    SymbolSet symbols;
+    {
+        auto& s = state();
+        std::lock_guard lock(s.mutex);
+        if (!resolveSymbolsLocked(s)) {
+            return true; // PLand not loaded or unavailable -> ignore integration.
+        }
+        symbols = s.symbols;
+    }
+
+    PLandOpaque*          landModPtr  = nullptr;
+    LandRegistryOpaque*   registryPtr = nullptr;
+    std::shared_ptr<LandOpaque> land;
+    mce::UUID const*      uuidPtr = nullptr;
+    LandPermTableLayout const* tablePtr = nullptr;
+
+    try {
+        landModPtr = std::addressof(symbols.getInstance());
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=getInstance, fallback to allow.");
+        return true;
+    }
+
+    try {
+        registryPtr = std::addressof(symbols.getRegistry(landModPtr));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=getLandRegistry, fallback to allow.");
+        return true;
+    }
+
+    try {
+        symbols.getLandAt(&land, registryPtr, pos, static_cast<int>(player.getDimensionId()));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=getLandAt, fallback to allow.");
+        return true;
+    }
+
+    if (!land) {
+        return true;
+    }
+
+    auto const* landPtr = land.get();
+    try {
+        uuidPtr = std::addressof(player.getUuid());
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=getPlayerUuid, fallback to allow.");
+        return true;
+    }
+
+    try {
+        tablePtr = std::addressof(symbols.getPermTable(landPtr));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=getPermTable, fallback to allow.");
+        return true;
+    }
+
+    try {
+        switch (action) {
+        case Action::UseContainer:
+            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.useContainer);
+        case Action::Place:
+            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.allowPlace);
+        case Action::Destroy:
+            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.allowDestroy);
+        default:
+            return true;
+        }
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand integration failed at step=evaluatePermission, fallback to allow.");
+        return true;
+    }
+}
+
+} // namespace CT

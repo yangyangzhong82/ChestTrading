@@ -4,6 +4,7 @@
 #include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "command/command.h"
+#include "compat/PLandCompat.h"
 #include "form/LockForm.h"
 #include "form/RecycleForm.h"
 #include "form/ShopForm.h"
@@ -87,6 +88,12 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     setPackChestMode(playerUuid, false);
 
     auto& txt = TextService::getInstance();
+
+    // Packing removes the original chest block, so destroy permission is required.
+    if (!PLandCompat::getInstance().canDestroy(player, originalPos)) {
+        player.sendMessage("§cYou don't have permission to pack chests in this land.");
+        return true;
+    }
 
     // 检查是否为大箱子，禁止打包大箱子
     auto* blockActor = region.getBlockEntity(originalPos);
@@ -233,6 +240,10 @@ bool handleOpenOrForms(
 } // namespace
 
 void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
+    if (ev.isCancelled()) {
+        return;
+    }
+
     auto block = ev.block();
     if (block->getTypeName() != "minecraft:chest") {
         return;
@@ -245,6 +256,12 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
 
     std::string playerUuid = player.getUuid().asString();
     auto&       region     = player.getDimensionBlockSource();
+
+    if (!PLandCompat::getInstance().canUseContainer(player, originalPos)) {
+        player.sendMessage("§cYou don't have permission to use containers in this land.");
+        ev.cancel();
+        return;
+    }
 
     if (shouldDebounce(playerUuid)) {
         ev.cancel();

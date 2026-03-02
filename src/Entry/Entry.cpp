@@ -4,6 +4,7 @@
 #include "FloatingText/FloatingText.h"
 #include "Utils/ItemTextureManager.h"
 #include "command/command.h"
+#include "compat/PLandCompat.h"
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/Event.h"
 #include "ll/api/mod/RegisterHelper.h"
@@ -44,6 +45,7 @@ bool Entry::enable() {
     CT::ItemTextureManager::getInstance().loadTextures(config.resourcePaths.itemTextureFiles);
 
     registerCommand();
+    PLandCompat::getInstance().probe();
 
     Sqlite3Wrapper& db = Sqlite3Wrapper::getInstance();
 
