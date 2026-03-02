@@ -82,13 +82,6 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
         }
     }
 
-    fm.appendButton(
-        txt.getMessage("form.button_purchase_history"),
-        "textures/ui/book_edit_default",
-        "path",
-        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
-    );
-
     fm.appendButton(txt.getMessage("form.button_back"), "textures/ui/arrow_left", "path", [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
@@ -105,7 +98,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
     fm.sendTo(player);
 }
 
-void showPlayerPurchaseHistoryForm(Player& player) {
+void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack) {
     ll::form::SimpleForm fm;
     auto&                txt        = TextService::getInstance();
     std::string          playerUuid = player.getUuid().asString();
@@ -142,7 +135,7 @@ void showPlayerPurchaseHistoryForm(Player& player) {
                 auto& txt    = TextService::getInstance();
                 auto& config = ConfigManager::getInstance().get();
 
-                // 检查传送冷却
+                // 妫€鏌ヤ紶閫佸喎鍗?
                 std::string uuid = p.getUuid().asString();
                 if (!TeleportService::getInstance().canTeleport(uuid)) {
                     int remaining = TeleportService::getInstance().getRemainingCooldown(uuid);
@@ -155,7 +148,7 @@ void showPlayerPurchaseHistoryForm(Player& player) {
                     return;
                 }
 
-                // 检查金钱
+                // 妫€鏌ラ噾閽?
                 double cost = config.teleportSettings.teleportCost;
                 if (cost > 0 && Economy::getMoney(p) < cost) {
                     p.sendMessage(txt.getMessage(
@@ -167,7 +160,7 @@ void showPlayerPurchaseHistoryForm(Player& player) {
                     return;
                 }
 
-                // 扣钱并传送
+                // 鎵ｉ挶骞朵紶閫?
                 if (cost > 0) Economy::reduceMoney(p, cost);
                 TeleportService::getInstance().recordTeleport(uuid);
 
@@ -188,9 +181,14 @@ void showPlayerPurchaseHistoryForm(Player& player) {
         }
     }
 
-    fm.appendButton(txt.getMessage("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {
-        // 返回时不做任何操作，关闭表单即可
-    });
+    fm.appendButton(
+        txt.getMessage("form.button_back"),
+        "textures/ui/arrow_left",
+        "path",
+        [onBack](Player& p) {
+            if (onBack) onBack(p);
+        }
+    );
 
     fm.sendTo(player);
 }
@@ -237,7 +235,7 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                 p.sendMessage(priceResult.message);
             } catch (const std::exception& e) {
                 p.sendMessage(txt.getMessage("input.invalid_number"));
-                logger.error("showShopItemPriceForm: 设置物品价格时发生错误: {}", e.what());
+                logger.error("showShopItemPriceForm: 璁剧疆鐗╁搧浠锋牸鏃跺彂鐢熼敊璇? {}", e.what());
             }
             auto& regionRef = p.getDimensionBlockSource();
             showShopChestManageForm(p, pos, dimId, regionRef);
@@ -370,7 +368,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
     if (!blockActor || blockActor->mType != BlockActorType::Chest) {
         player.sendMessage(txt.getMessage("chest.entity_fail"));
         logger.error(
-            "showShopChestManageForm: 无法获取箱子实体或类型不匹配在 ({}, {}, {}) in dim {}",
+            "showShopChestManageForm: 鏃犳硶鑾峰彇绠卞瓙瀹炰綋鎴栫被鍨嬩笉鍖归厤鍦?({}, {}, {}) in dim {}",
             pos.x,
             pos.y,
             pos.z,
@@ -396,7 +394,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
             );
             auto itemNbt = CT::NbtUtils::getItemNbt(itemInSlot);
             if (!itemNbt) {
-                logger.error("showShopChestManageForm: 无法获取槽位 {} 物品的NBT数据。", i);
+                logger.error("showShopChestManageForm: Failed to get NBT data for slot {}.", i);
                 continue;
             }
 
@@ -496,9 +494,9 @@ void showShopItemBuyForm(
     BlockPos           pos,
     int                dimId,
     int                slot,
-    double             unitPrice, // 修改为 double
+    double             unitPrice, // 淇敼涓?double
     BlockSource&       region,
-    const std::string& itemNbtStr // 添加 itemNbtStr 参数
+    const std::string& itemNbtStr // 娣诲姞 itemNbtStr 鍙傛暟
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();

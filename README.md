@@ -156,7 +156,53 @@
   "databaseCacheTimeoutSec": 60,      // 数据库缓存超时（秒）
   "interactionSettings": {
     "debounceIntervalMs": 500,        // 交互防抖间隔（毫秒）
-    "cleanupThresholdSec": 60         // 记录清理阈值（秒）
+    "cleanupThresholdSec": 60,        // 记录清理阈值（秒）
+    "manageToolItem": "minecraft:stick", // 触发箱子管理的物品ID（留空=禁用）
+    "requireSneakingForManage": false // 触发箱子管理时是否必须下蹲
+  }
+}
+```
+
+### 箱子管理触发设置
+
+`interactionSettings` 中可配置“用什么物品触发箱子管理”和“是否必须下蹲”：
+
+- `manageToolItem`：触发管理表单的物品 ID，默认 `minecraft:stick`
+- `requireSneakingForManage`：是否必须下蹲触发，默认 `false`
+
+注意：
+- `manageToolItem` 留空会禁用“物品触发管理”入口。
+- 开启 `requireSneakingForManage` 后，必须手持 `manageToolItem` 且下蹲再右键箱子，才会打开管理表单。
+
+示例 1：保持默认（木棍触发，不需要下蹲）
+
+```json
+{
+  "interactionSettings": {
+    "manageToolItem": "minecraft:stick",
+    "requireSneakingForManage": false
+  }
+}
+```
+
+示例 2：改为烈焰棒，且必须下蹲
+
+```json
+{
+  "interactionSettings": {
+    "manageToolItem": "minecraft:blaze_rod",
+    "requireSneakingForManage": true
+  }
+}
+```
+
+示例 3：禁用物品触发
+
+```json
+{
+  "interactionSettings": {
+    "manageToolItem": "",
+    "requireSneakingForManage": false
   }
 }
 ```
@@ -167,8 +213,9 @@
 
 ### 基础操作
 
-1. **对箱子右键** - 打开箱子管理菜单
-2. **选择箱子类型**：
+1. **手持管理触发物品（默认木棍）右键箱子** - 打开箱子管理菜单
+2. 如果配置了 `requireSneakingForManage: true`，需要**下蹲 + 手持触发物品**再右键
+3. **选择箱子类型**：
    - 上锁箱子：只有你和分享的玩家可以访问
    - 公共箱子：所有人都可以访问
    - 商店：出售物品
@@ -194,8 +241,10 @@
 #### 设置回收
 1. 右键点击箱子
 2. 选择"设置为回收商店"
-3. 右键箱子，添加回收委托
-4. 设置回收价格和过滤条件
+3. 使用管理触发方式打开箱子管理菜单
+4. 点击“添加回收委托”或“查看回收委托”
+   - “查看回收委托”列表中会显示物品图标
+5. 设置回收价格和过滤条件
 
 #### 出售物品
 1. 找到回收商店

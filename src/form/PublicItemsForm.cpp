@@ -65,7 +65,11 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
         i18n.get("form.button_purchase_history"),
         "textures/ui/book_edit_default",
         "path",
-        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
+        [currentPage, searchKeyword](Player& p) {
+            showPlayerPurchaseHistoryForm(p, [currentPage, searchKeyword](Player& playerToBack) {
+                showPublicItemsForm(playerToBack, currentPage, searchKeyword);
+            });
+        }
     );
 
     if (filteredItems.empty()) {
@@ -212,7 +216,11 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
         i18n.get("form.button_purchase_history"),
         "textures/ui/book_edit_default",
         "path",
-        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
+        [currentPage, searchKeyword](Player& p) {
+            showPlayerPurchaseHistoryForm(p, [currentPage, searchKeyword](Player& playerToBack) {
+                showPublicRecycleItemsForm(playerToBack, currentPage, searchKeyword);
+            });
+        }
     );
 
     if (filteredItems.empty()) {

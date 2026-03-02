@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "Config/JsonMacros.h"
 #include "ll/api/io/LogLevel.h"
@@ -57,8 +57,10 @@ struct ResourcePaths {
 };
 
 struct InteractionSettings {
-    int debounceIntervalMs  = 500; // 箱子交互防抖间隔（毫秒）
-    int cleanupThresholdSec = 60;  // 交互记录清理阈值（秒）
+    int         debounceIntervalMs      = 500;               // 箱子交互防抖间隔（毫秒）
+    int         cleanupThresholdSec     = 60;                // 交互记录清理阈值（秒）
+    std::string manageToolItem          = "minecraft:stick"; // 触发箱子管理的物品ID（留空=禁用物品触发）
+    bool        requireSneakingForManage = false;            // 触发箱子管理时是否必须下蹲
 };
 
 struct SalesRankingSettings {

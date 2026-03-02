@@ -22,5 +22,7 @@ void showRecycleConfirmForm(
     const std::string& commissionNbtStr = ""
 );
 void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 
 } // namespace CT

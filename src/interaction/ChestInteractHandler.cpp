@@ -267,7 +267,12 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
     bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin");
     bool isOwner = (ownerUuid == playerUuid) || isAdmin;
 
-    if (item.getTypeName() == "minecraft:stick") {
+    const auto& interactionSettings = ConfigManager::getInstance().get().interactionSettings;
+    bool        isManageTool        = !interactionSettings.manageToolItem.empty()
+                               && item.getTypeName() == interactionSettings.manageToolItem;
+    bool canTriggerManage = isManageTool
+                         && (!interactionSettings.requireSneakingForManage || player.isSneaking());
+    if (canTriggerManage) {
         handleStickManage(player, playerUuid, pos, dimId, isLocked, ownerUuid, chestType, region);
         ev.cancel();
         return;

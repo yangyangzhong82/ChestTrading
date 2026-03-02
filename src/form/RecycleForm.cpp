@@ -4,7 +4,6 @@
 #include "LLMoney.h"
 #include "LockForm.h"
 #include "PlayerLimitForm.h"
-#include "ShopForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -102,7 +101,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             auto   priceView        = getDynamicRecyclePriceView(pos, dimId, commission.itemId, commission.price, region);
             double displayUnitPrice = priceView.unitPrice;
 
-            std::string buttonText = std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r"
+            std::string buttonText = std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r\n"
                                    + txt.getMessage(
                                        "form.recycle_price_label",
                                        {
@@ -111,14 +110,6 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                                    );
 
             std::string itemInfo;
-            if (commission.requiredAuxValue >= 0) {
-                itemInfo += txt.getMessage(
-                    "form.recycle_require_aux",
-                    {
-                        {"value", std::to_string(commission.requiredAuxValue)}
-                }
-                );
-            }
             if (commission.minDurability > 0) {
                 itemInfo += txt.getMessage(
                     "form.recycle_require_durability",
@@ -168,13 +159,6 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             }
         }
     }
-
-    fm.appendButton(
-        txt.getMessage("form.button_purchase_history"),
-        "textures/ui/book_edit_default",
-        "path",
-        [](Player& p) { showPlayerPurchaseHistoryForm(p); }
-    );
 
     fm.appendButton(txt.getMessage("form.button_back"), "textures/ui/arrow_left", "path", [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
@@ -556,7 +540,16 @@ void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSo
         txt.getMessage("form.set_recycle_name_title"),
         [](Player& p, BlockPos pos, int dimId) {
             auto& region = p.getDimensionBlockSource();
-            showRecycleShopManageForm(p, pos, dimId, region);
+            auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            CT::showChestLockForm(
+                p,
+                pos,
+                dimId,
+                info.has_value(),
+                info ? info->ownerUuid : "",
+                info ? info->type : ChestType::Invalid,
+                region
+            );
         }
     );
 }
@@ -942,17 +935,34 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
                                            {"price", CT::MoneyFormat::format(displayUnitPrice)}
             }
                                    );
-            std::string itemNbtStr = commission.itemNbt;
-            fm.appendButton(buttonText, [mainPos, dimId, itemNbtStr](Player& p) {
-                auto& region = p.getDimensionBlockSource();
-                showCommissionDetailsForm(p, mainPos, dimId, region, itemNbtStr);
-            });
+            std::string itemNbtStr  = commission.itemNbt;
+            std::string texturePath = CT::FormUtils::getItemTexturePath(item);
+            if (!texturePath.empty()) {
+                fm.appendButton(buttonText, texturePath, "path", [mainPos, dimId, itemNbtStr](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showCommissionDetailsForm(p, mainPos, dimId, region, itemNbtStr);
+                });
+            } else {
+                fm.appendButton(buttonText, [mainPos, dimId, itemNbtStr](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    showCommissionDetailsForm(p, mainPos, dimId, region, itemNbtStr);
+                });
+            }
         }
     }
 
     fm.appendButton(txt.getMessage("form.button_back"), [mainPos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showRecycleShopManageForm(p, mainPos, dimId, region);
+        auto  info   = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
+        CT::showChestLockForm(
+            p,
+            mainPos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
 
     fm.sendTo(player);
@@ -998,7 +1008,16 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
 
     fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showRecycleShopManageForm(p, pos, dimId, region);
+        auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+        CT::showChestLockForm(
+            p,
+            pos,
+            dimId,
+            info.has_value(),
+            info ? info->ownerUuid : "",
+            info ? info->type : ChestType::Invalid,
+            region
+        );
     });
 
     fm.sendTo(player);
@@ -1148,7 +1167,16 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 showSetRecycleItemPriceForm(p, item, pos, dimId, region);
                 return;
             }
-            showRecycleShopManageForm(p, pos, dimId, region);
+            auto info = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            CT::showChestLockForm(
+                p,
+                pos,
+                dimId,
+                info.has_value(),
+                info ? info->ownerUuid : "",
+                info ? info->type : ChestType::Invalid,
+                region
+            );
         }
     );
 }

@@ -99,12 +99,21 @@ void showChestLockForm(
                 );
             } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {
                 fm.appendButton(
-                    textService.getMessage("form.button_manage_recycle"),
+                    textService.getMessage("form.button_add_commission"),
                     "textures/ui/trade_icon",
                     "path",
                     [pos, dimId](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showRecycleShopManageForm(p, pos, dimId, region);
+                        showAddItemToRecycleShopForm(p, pos, dimId, region);
+                    }
+                );
+                fm.appendButton(
+                    textService.getMessage("form.button_view_commission"),
+                    "textures/ui/book_edit_default",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showViewRecycleCommissionsForm(p, pos, dimId, region);
                     }
                 );
                 fm.appendButton(

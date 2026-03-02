@@ -4,6 +4,7 @@
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
+#include <functional>
 #include <string>
 
 namespace CT {
@@ -28,6 +29,6 @@ void showShopItemBuyForm(
     BlockSource&       region,
     const std::string& itemNbtStr
 );
-void showPlayerPurchaseHistoryForm(Player& player);
+void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack = {});
 
 } // namespace CT
