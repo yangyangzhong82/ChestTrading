@@ -1,5 +1,7 @@
 #include "ItemTextureManager.h"
 #include "logger.h"
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 
 namespace CT {
@@ -33,8 +35,26 @@ bool ItemTextureManager::loadTextures(const std::string& filePath) {
 }
 
 bool ItemTextureManager::loadTextures(const std::vector<std::string>& filePaths) {
+    auto isItemTextureFile = [](const std::string& path) {
+        std::string lower = path;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        return lower.find("item_texture") != std::string::npos;
+    };
+
+    std::vector<std::string> orderedPaths;
+    orderedPaths.reserve(filePaths.size());
+
+    for (const auto& path : filePaths) {
+        if (isItemTextureFile(path)) orderedPaths.push_back(path);
+    }
+    for (const auto& path : filePaths) {
+        if (!isItemTextureFile(path)) orderedPaths.push_back(path);
+    }
+
     bool ok = true;
-    for (const auto& path : filePaths) ok &= loadTextures(path);
+    for (const auto& path : orderedPaths) ok &= loadTextures(path);
     return ok;
 }
 

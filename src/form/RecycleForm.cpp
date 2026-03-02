@@ -145,11 +145,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             }
             buttonText += itemInfo;
 
-            std::string itemName = item.getTypeName();
-            if (itemName.rfind("minecraft:", 0) == 0) {
-                itemName = itemName.substr(10);
-            }
-            std::string texturePath      = CT::ItemTextureManager::getInstance().getTexture(itemName);
+            std::string texturePath      = CT::FormUtils::getItemTexturePath(item);
             std::string commissionNbtStr = commission.itemNbt;
             double      price            = displayUnitPrice;
 
@@ -976,11 +972,7 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
         if (!item.isNull()) {
             std::string buttonText =
                 std::string(item.getName()) + " §7(" + item.getTypeName() + ")§r x" + std::to_string(item.mCount);
-            std::string itemName = item.getTypeName();
-            if (itemName.rfind("minecraft:", 0) == 0) {
-                itemName = itemName.substr(10);
-            }
-            std::string texturePath = CT::ItemTextureManager::getInstance().getTexture(itemName);
+            std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
             if (!texturePath.empty()) {
                 fm.appendButton(buttonText, texturePath, "path", [pos, dimId, item](Player& p) {

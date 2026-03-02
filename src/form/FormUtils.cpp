@@ -105,11 +105,55 @@ std::string getItemDisplayString(const ItemStack& item, int count, bool showType
 }
 
 std::string getItemTexturePath(const ItemStack& item) {
-    std::string itemName = item.getTypeName();
-    if (itemName.rfind("minecraft:", 0) == 0) {
-        itemName = itemName.substr(10);
+    auto& textureManager = CT::ItemTextureManager::getInstance();
+    short auxValue       = item.getAuxValue();
+
+    auto lookupTexture = [&](const std::string& key) -> std::string {
+        if (key.empty()) {
+            return {};
+        }
+
+        if (key.rfind("textures/", 0) == 0) {
+            return key;
+        }
+
+        if (auto path = textureManager.getTexture(key, auxValue); !path.empty()) {
+            return path;
+        }
+
+        if (key.rfind("minecraft:", 0) == 0) {
+            if (auto path = textureManager.getTexture(key.substr(10), auxValue); !path.empty()) {
+                return path;
+            }
+        }
+
+        auto colonPos = key.find(':');
+        if (colonPos != std::string::npos && colonPos + 1 < key.size()) {
+            if (auto path = textureManager.getTexture(key.substr(colonPos + 1), auxValue); !path.empty()) {
+                return path;
+            }
+        }
+
+        return {};
+    };
+
+    if (auto itemDef = item.getItem(); itemDef != nullptr) {
+        std::string iconKey = itemDef->mIconName;
+        if (auto path = lookupTexture(iconKey); !path.empty()) {
+            return path;
+        }
+
+        std::string atlasKey = itemDef->mAtlasName;
+        if (auto path = lookupTexture(atlasKey); !path.empty()) {
+            return path;
+        }
     }
-    return CT::ItemTextureManager::getInstance().getTexture(itemName, item.getAuxValue());
+
+    if (auto path = lookupTexture(item.getRawNameId()); !path.empty()) {
+        return path;
+    }
+
+    return lookupTexture(item.getTypeName());
 }
 
 std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemNbtStr) {
