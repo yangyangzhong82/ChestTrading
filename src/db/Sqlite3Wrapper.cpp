@@ -2,6 +2,7 @@
 #include "SchemaMigration.h"
 #include "logger.h"
 #include <algorithm>
+#include <filesystem>
 #include <vector>
 
 #include "Config/ConfigManager.h"
@@ -20,8 +21,32 @@ bool Sqlite3Wrapper::open(const std::string& db_path) {
 
     mDbPath = db_path; // 保存路径用于读连接池
 
+    // 确保数据库目录存在，避免 sqlite3_open 因父目录缺失失败。
+    try {
+        std::filesystem::path dbFilePath(db_path);
+        if (dbFilePath.has_parent_path()) {
+            std::error_code ec;
+            std::filesystem::create_directories(dbFilePath.parent_path(), ec);
+            if (ec) {
+                CT::logger.error(
+                    "无法创建数据库目录: {} ({})",
+                    dbFilePath.parent_path().string(),
+                    ec.message()
+                );
+                return false;
+            }
+        }
+    } catch (const std::exception& e) {
+        CT::logger.error("处理数据库路径时发生异常: {}", e.what());
+        return false;
+    }
+
     if (sqlite3_open(db_path.c_str(), &db) != SQLITE_OK) {
-        CT::logger.error("无法打开数据库: {}", sqlite3_errmsg(db));
+        CT::logger.error("无法打开数据库 {}: {}", db_path, db ? sqlite3_errmsg(db) : "未知错误");
+        if (db) {
+            sqlite3_close(db);
+            db = nullptr;
+        }
         return false;
     }
 

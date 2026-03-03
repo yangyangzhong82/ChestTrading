@@ -1,11 +1,11 @@
 #include "economy.h"
 #include "LLMoney.h"
-// czmoney/money_api.h 已经在 economy.h 中包含
 #include "Config/ConfigManager.h"      // 包含配置管理器
 #include "config.h"                    // 包含 EconomyType 定义
 #include "ll/api/service/PlayerInfo.h" // 用于 XUID 到 UUID 的转换
 #include "logger.h"                    // 包含 logger
 #include <cmath>                       // 用于 std::floor
+#include <mutex>
 
 namespace CT {
 namespace Economy {
@@ -38,10 +38,18 @@ std::string getUuidStringFromXuid(const std::string& xuid) {
     return "";
 }
 
+#if !CT_ENABLE_CZMONEY
+void logCzMoneyUnavailable() {
+    static std::once_flag once;
+    std::call_once(once, []() { logger.warn("当前构建未启用 CzMoney（CT_ENABLE_CZMONEY=0），请将 economyType 设为 LLMoney。"); });
+}
+#endif
+
 bool hasMoney(Player& player, double amount) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
         return LLMoney_Get(player.getXuid()) >= convertToLLMoneyAmount(amount);
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         auto balance = czmoney::api::getPlayerBalance(player.getUuid().asString(), "money");
         if (balance.has_value()) {
             logger.debug(
@@ -58,6 +66,11 @@ bool hasMoney(Player& player, double amount) {
             player.getUuid().asString()
         );
         return false;
+#else
+        (void)amount;
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -72,8 +85,13 @@ bool reduceMoney(Player& player, double amount) {
         }
         return LLMoney_Reduce(player.getXuid(), amountToReduce);
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         auto result = czmoney::api::subtractPlayerBalance(player.getUuid().asString(), "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
+#else
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -86,8 +104,13 @@ bool addMoney(Player& player, double amount) {
         }
         return LLMoney_Add(player.getXuid(), amountToAdd);
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         auto result = czmoney::api::addPlayerBalance(player.getUuid().asString(), "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
+#else
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -100,12 +123,19 @@ bool addMoneyByXuid(const std::string& xuid, double amount) {
         }
         return LLMoney_Add(xuid, amountToAdd);
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         std::string uuid = getUuidStringFromXuid(xuid);
         if (!uuid.empty()) {
             auto result = czmoney::api::addPlayerBalance(uuid, "money", amount);
             return result == czmoney::api::MoneyApiResult::Success;
         }
         return false; // 无法从 XUID 获取 UUID
+#else
+        (void)xuid;
+        (void)amount;
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -119,6 +149,7 @@ double getMoney(const std::string& xuid) {
     if (ConfigManager::getInstance().get().economyType == EconomyType::LLMoney) {
         return static_cast<double>(LLMoney_Get(xuid));
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         std::string uuid = getUuidStringFromXuid(xuid);
         if (!uuid.empty()) {
             auto balance = czmoney::api::getPlayerBalance(uuid, "money");
@@ -132,6 +163,11 @@ double getMoney(const std::string& xuid) {
             logger.warn("getMoney (CzMoney): Failed to get UUID for XUID {}. Returning 0.0.", xuid);
         }
         return 0.0; // 无法从 XUID 获取 UUID 或余额
+#else
+        (void)xuid;
+        logCzMoneyUnavailable();
+        return 0.0;
+#endif
     }
 }
 
@@ -153,6 +189,7 @@ bool reduceMoneyByXuid(const std::string& xuid, double amount) {
         }
         return success;
     } else { // CzMoney
+#if CT_ENABLE_CZMONEY
         std::string uuid = getUuidStringFromXuid(xuid);
         if (!uuid.empty()) {
             auto result = czmoney::api::subtractPlayerBalance(uuid, "money", amount);
@@ -171,6 +208,12 @@ bool reduceMoneyByXuid(const std::string& xuid, double amount) {
         }
         logger.warn("reduceMoneyByXuid (CzMoney): Failed to get UUID for XUID {}. Cannot reduce money.", xuid);
         return false; // 无法从 XUID 获取 UUID
+#else
+        (void)xuid;
+        (void)amount;
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -189,8 +232,15 @@ bool addMoneyByUuid(const std::string& uuid, double amount) {
         }
         return false; // 找不到玩家
     } else {          // CzMoney
+#if CT_ENABLE_CZMONEY
         auto result = czmoney::api::addPlayerBalance(uuid, "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
+#else
+        (void)uuid;
+        (void)amount;
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 
@@ -209,8 +259,15 @@ bool reduceMoneyByUuid(const std::string& uuid, double amount) {
         }
         return false; // 找不到玩家
     } else {          // CzMoney
+#if CT_ENABLE_CZMONEY
         auto result = czmoney::api::subtractPlayerBalance(uuid, "money", amount);
         return result == czmoney::api::MoneyApiResult::Success;
+#else
+        (void)uuid;
+        (void)amount;
+        logCzMoneyUnavailable();
+        return false;
+#endif
     }
 }
 

@@ -1,6 +1,6 @@
 #include "interaction/ChestDestroyHandler.h"
 
-#include "Bedrock-Authority/permission/PermissionManager.h"
+#include "compat/PermissionCompat.h"
 #include "compat/PLandCompat.h"
 #include "logger.h"
 #include "mc/world/level/block/Block.h"
@@ -36,7 +36,7 @@ void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
         return;
     }
 
-    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(player.getUuid().asString(),
+    bool isAdmin = PermissionCompat::hasPermission(player.getUuid().asString(),
                                                                                 "chest.admin");
     if (isAdmin) {
         chestService.removeChest(pos, dimId, region);
@@ -59,3 +59,4 @@ void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
 }
 
 } // namespace CT
+

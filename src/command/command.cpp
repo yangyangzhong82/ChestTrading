@@ -1,11 +1,10 @@
 #include "command.h"
-#include "Bedrock-Authority/permission/PermissionManager.h"
 #include "Config/ConfigManager.h"
+#include "compat/PermissionCompat.h"
 #include "form/AdminForm.h"
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
 #include "form/SalesRankingForm.h"
-#include "service/ChestService.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -13,11 +12,13 @@
 #include "mc/server/commands/CommandPermissionLevel.h"
 #include "mc/server/commands/PlayerCommandOrigin.h"
 #include "mc/world/actor/player/Player.h"
+#include "service/ChestService.h"
 #include "service/I18nService.h"
 #include "service/PlayerLimitService.h"
 #include "test/TestHelper.h"
 #include <mutex>
 #include <set>
+
 
 
 namespace CT {
@@ -61,8 +62,11 @@ void registerCommand() {
         }
     );
 
-    auto& adminCmd =
-        registrar.getOrCreateCommand("ctadmin", i18n.get("command.admin_description"), CommandPermissionLevel::Any);
+    auto& adminCmd = registrar.getOrCreateCommand(
+        "ctadmin",
+        i18n.get("command.admin_description"),
+        CommandPermissionLevel::GameDirectors
+    );
 
     adminCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
@@ -71,8 +75,7 @@ void registerCommand() {
                 output.error(i18n.get("command.player_only"));
                 return;
             }
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -244,13 +247,13 @@ void registerCommand() {
     };
 
     auto executeLimitReset = [&i18n](
-                                 CommandOrigin const&         origin,
-                                 CommandOutput&               output,
-                                 LimitResetPosParam const&    param,
-                                 bool                         resetShop,
-                                 bool                         resetRecycle,
-                                 int                          itemId,
-                                 bool                         specificItem
+                                 CommandOrigin const&      origin,
+                                 CommandOutput&            output,
+                                 LimitResetPosParam const& param,
+                                 bool                      resetShop,
+                                 bool                      resetRecycle,
+                                 int                       itemId,
+                                 bool                      specificItem
                              ) {
         auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
         if (!player) {
@@ -258,7 +261,7 @@ void registerCommand() {
             return;
         }
 
-        if (!BA::permission::PermissionManager::getInstance().hasPermission(player->getUuid().asString(), "chest.admin")) {
+        if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
             output.error(i18n.get("command.no_permission"));
             return;
         }
@@ -285,10 +288,8 @@ void registerCommand() {
             return;
         }
 
-        bool isShopChest =
-            chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::AdminShop;
-        bool isRecycleChest =
-            chestInfo->type == ChestType::RecycleShop || chestInfo->type == ChestType::AdminRecycle;
+        bool isShopChest    = chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::AdminShop;
+        bool isRecycleChest = chestInfo->type == ChestType::RecycleShop || chestInfo->type == ChestType::AdminRecycle;
 
         if (resetShop && !resetRecycle && !isShopChest) {
             output.error(i18n.get("command.limit_reset_not_shop"));
@@ -333,7 +334,7 @@ void registerCommand() {
                     {"y",       std::to_string(mainPos.y)},
                     {"z",       std::to_string(mainPos.z)},
                     {"dim",     std::to_string(dimId)    }
-                }
+            }
             ));
         } else {
             output.success(i18n.get(
@@ -344,7 +345,7 @@ void registerCommand() {
                     {"y",    std::to_string(mainPos.y)},
                     {"z",    std::to_string(mainPos.z)},
                     {"dim",  std::to_string(dimId)    }
-                }
+            }
             ));
         }
     };
@@ -356,8 +357,7 @@ void registerCommand() {
                 output.error(i18n.get("command.player_only"));
                 return;
             }
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -365,41 +365,23 @@ void registerCommand() {
         }
     );
 
-    limitResetCmd.overload<LimitResetPosParam>()
-        .text("shop")
-        .required("x")
-        .required("y")
-        .required("z")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&      origin,
-                     CommandOutput&            output,
-                     LimitResetPosParam const& param,
-                     class Command const&
-                 ) { executeLimitReset(origin, output, param, true, false, 0, false); });
+    limitResetCmd.overload<LimitResetPosParam>().text("shop").required("x").required("y").required("z").execute(
+        [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetPosParam const& param, class Command const&) {
+            executeLimitReset(origin, output, param, true, false, 0, false);
+        }
+    );
 
-    limitResetCmd.overload<LimitResetPosParam>()
-        .text("recycle")
-        .required("x")
-        .required("y")
-        .required("z")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&      origin,
-                     CommandOutput&            output,
-                     LimitResetPosParam const& param,
-                     class Command const&
-                 ) { executeLimitReset(origin, output, param, false, true, 0, false); });
+    limitResetCmd.overload<LimitResetPosParam>().text("recycle").required("x").required("y").required("z").execute(
+        [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetPosParam const& param, class Command const&) {
+            executeLimitReset(origin, output, param, false, true, 0, false);
+        }
+    );
 
-    limitResetCmd.overload<LimitResetPosParam>()
-        .text("all")
-        .required("x")
-        .required("y")
-        .required("z")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&      origin,
-                     CommandOutput&            output,
-                     LimitResetPosParam const& param,
-                     class Command const&
-                 ) { executeLimitReset(origin, output, param, true, true, 0, false); });
+    limitResetCmd.overload<LimitResetPosParam>().text("all").required("x").required("y").required("z").execute(
+        [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetPosParam const& param, class Command const&) {
+            executeLimitReset(origin, output, param, true, true, 0, false);
+        }
+    );
 
     limitResetCmd.overload<LimitResetItemParam>()
         .text("shop")
@@ -407,22 +389,19 @@ void registerCommand() {
         .required("y")
         .required("z")
         .required("item_id")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&       origin,
-                     CommandOutput&             output,
-                     LimitResetItemParam const& param,
-                     class Command const&
-                 ) {
-                     executeLimitReset(
-                         origin,
-                         output,
-                         LimitResetPosParam{param.x, param.y, param.z},
-                         true,
-                         false,
-                         param.item_id,
-                         true
-                     );
-                 });
+        .execute(
+            [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetItemParam const& param, class Command const&) {
+                executeLimitReset(
+                    origin,
+                    output,
+                    LimitResetPosParam{param.x, param.y, param.z},
+                    true,
+                    false,
+                    param.item_id,
+                    true
+                );
+            }
+        );
 
     limitResetCmd.overload<LimitResetItemParam>()
         .text("recycle")
@@ -430,22 +409,19 @@ void registerCommand() {
         .required("y")
         .required("z")
         .required("item_id")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&       origin,
-                     CommandOutput&             output,
-                     LimitResetItemParam const& param,
-                     class Command const&
-                 ) {
-                     executeLimitReset(
-                         origin,
-                         output,
-                         LimitResetPosParam{param.x, param.y, param.z},
-                         false,
-                         true,
-                         param.item_id,
-                         true
-                     );
-                 });
+        .execute(
+            [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetItemParam const& param, class Command const&) {
+                executeLimitReset(
+                    origin,
+                    output,
+                    LimitResetPosParam{param.x, param.y, param.z},
+                    false,
+                    true,
+                    param.item_id,
+                    true
+                );
+            }
+        );
 
     limitResetCmd.overload<LimitResetItemParam>()
         .text("all")
@@ -453,22 +429,19 @@ void registerCommand() {
         .required("y")
         .required("z")
         .required("item_id")
-        .execute([&executeLimitReset](
-                     CommandOrigin const&       origin,
-                     CommandOutput&             output,
-                     LimitResetItemParam const& param,
-                     class Command const&
-                 ) {
-                     executeLimitReset(
-                         origin,
-                         output,
-                         LimitResetPosParam{param.x, param.y, param.z},
-                         true,
-                         true,
-                         param.item_id,
-                         true
-                     );
-                 });
+        .execute(
+            [&executeLimitReset](CommandOrigin const& origin, CommandOutput& output, LimitResetItemParam const& param, class Command const&) {
+                executeLimitReset(
+                    origin,
+                    output,
+                    LimitResetPosParam{param.x, param.y, param.z},
+                    true,
+                    true,
+                    param.item_id,
+                    true
+                );
+            }
+        );
 
     // 注册 /cttest 命令 - 自动化测试（开发者工具）
     auto& testCmd =
@@ -487,8 +460,7 @@ void registerCommand() {
             }
 
             // 权限检查：只允许管理员使用测试命令
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -518,8 +490,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -539,8 +510,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -568,8 +538,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -594,8 +563,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -616,8 +584,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -639,8 +606,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -659,8 +625,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -679,8 +644,7 @@ void registerCommand() {
                 return;
             }
 
-            if (!BA::permission::PermissionManager::getInstance()
-                     .hasPermission(player->getUuid().asString(), "chest.admin")) {
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                 output.error(i18n.get("command.no_permission"));
                 return;
             }
@@ -701,8 +665,7 @@ void registerCommand() {
                     return;
                 }
 
-                if (!BA::permission::PermissionManager::getInstance()
-                         .hasPermission(player->getUuid().asString(), "chest.admin")) {
+                if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                     output.error(i18n.get("command.no_permission"));
                     return;
                 }
@@ -723,8 +686,7 @@ void registerCommand() {
                     return;
                 }
 
-                if (!BA::permission::PermissionManager::getInstance()
-                         .hasPermission(player->getUuid().asString(), "chest.admin")) {
+                if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
                     output.error(i18n.get("command.no_permission"));
                     return;
                 }

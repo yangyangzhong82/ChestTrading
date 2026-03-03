@@ -1,17 +1,12 @@
 {
-    "name": "${modName}",
+    "name": "${pluginName}",
     "entry": "${modFile}",
     "version": "${modVersion}",
     "type": "native",
-        "dependencies": [
+    "dependencies": [
         {
             "name": "LegacyMoney"
-        },
-        {
-            "name": "czmoney"
-        },
-        {
-            "name": "Bedrock-Authority"
         }
+${czmoneyDependency}${permissionDependency}
     ]
 }

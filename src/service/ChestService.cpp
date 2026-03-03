@@ -1,5 +1,5 @@
 #include "ChestService.h"
-#include "Bedrock-Authority/permission/PermissionManager.h"
+#include "compat/PermissionCompat.h"
 #include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
 #include "TextService.h"
@@ -406,7 +406,7 @@ bool ChestService::canPlayerAccess(const std::string& playerUuid, BlockPos pos, 
 
 bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::string& errorMessage) {
     // 检查管理员权限
-    if (BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin")) {
+    if (PermissionCompat::hasPermission(playerUuid, "chest.admin")) {
         return true;
     }
 
@@ -436,7 +436,7 @@ bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType
         return false;
     }
 
-    if (!BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, requiredPermission)) {
+    if (!PermissionCompat::hasPermission(playerUuid, requiredPermission)) {
         errorMessage = TextService::getInstance().getMessage("chest.no_permission");
         return false;
     }

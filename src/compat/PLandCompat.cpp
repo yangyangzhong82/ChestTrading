@@ -205,7 +205,7 @@ bool resolveSymbolsLocked(ResolverState& s) {
 
     if (!symbols.ready()) {
         if (!s.warnedSymbol) {
-            logger.warn("PLand detected but required symbols are missing, integration is disabled.");
+            logger.warn("检测到 PLand，但缺少必要符号，已禁用对接功能。");
             s.warnedSymbol = true;
         }
         resetSymbols(s);
@@ -217,7 +217,7 @@ bool resolveSymbolsLocked(ResolverState& s) {
     s.available    = true;
 
     if (!s.loggedLoaded) {
-        logger.info("PLand integration enabled via runtime symbols.");
+        logger.info("已通过运行时符号启用 PLand 对接。");
         s.loggedLoaded = true;
     }
 
@@ -309,21 +309,21 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     try {
         landModPtr = std::addressof(symbols.getInstance());
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=getInstance, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getInstance，已回退为放行。");
         return true;
     }
 
     try {
         registryPtr = std::addressof(symbols.getRegistry(landModPtr));
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=getLandRegistry, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandRegistry，已回退为放行。");
         return true;
     }
 
     try {
         symbols.getLandAt(registryPtr, &land, pos, static_cast<int>(player.getDimensionId()));
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=getLandAt, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandAt，已回退为放行。");
         return true;
     }
 
@@ -335,14 +335,14 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     try {
         uuidPtr = std::addressof(player.getUuid());
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=getPlayerUuid, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getPlayerUuid，已回退为放行。");
         return true;
     }
 
     try {
         tablePtr = std::addressof(symbols.getPermTable(landPtr));
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=getPermTable, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getPermTable，已回退为放行。");
         return true;
     }
 
@@ -358,7 +358,7 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
             return true;
         }
     } catch (...) {
-        reportRuntimeFailureThrottled("PLand integration failed at step=evaluatePermission, fallback to allow.");
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=evaluatePermission，已回退为放行。");
         return true;
     }
 }

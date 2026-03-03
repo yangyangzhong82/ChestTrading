@@ -1,6 +1,6 @@
 #include "interaction/ChestInteractHandler.h"
 
-#include "Bedrock-Authority/permission/PermissionManager.h"
+#include "compat/PermissionCompat.h"
 #include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "command/command.h"
@@ -184,7 +184,7 @@ void handleStickManage(
 ) {
     auto& txt = TextService::getInstance();
 
-    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin");
+    bool isAdmin = PermissionCompat::hasPermission(playerUuid, "chest.admin");
     bool isOwner = (ownerUuid == playerUuid) || isAdmin;
 
     if (isLocked && !isOwner) {
@@ -273,7 +273,7 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
     std::string ownerUuid = isLocked ? chestInfo->ownerUuid : "";
     ChestType   chestType = isLocked ? chestInfo->type : ChestType::Invalid;
 
-    bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin");
+    bool isAdmin = PermissionCompat::hasPermission(playerUuid, "chest.admin");
     bool isOwner = (ownerUuid == playerUuid) || isAdmin;
 
     bool isTradeChest = chestType == ChestType::Shop || chestType == ChestType::RecycleShop
@@ -310,3 +310,4 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
 }
 
 } // namespace CT
+
