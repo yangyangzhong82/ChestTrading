@@ -3,6 +3,7 @@
 #include "PlayerLimitForm.h"
 #include "RecycleForm.h"
 #include "ShopForm.h"
+#include "compat/PermissionCompat.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/economy.h"
 #include "ll/api/form/CustomForm.h"
@@ -15,9 +16,62 @@
 
 namespace CT {
 
+void showChestLockForm(
+    Player&            player,
+    BlockPos           pos,
+    int                dimId,
+    bool               isLocked,
+    const std::string& ownerUuid,
+    ChestType          chestType,
+    BlockSource&       region
+);
+
 void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, ChestType chestType);
 void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showSetRecycleShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+
+static void showRemoveChestConfirmForm(Player& player, BlockPos pos, int dimId) {
+    ll::form::SimpleForm fm;
+    auto&                i18n        = I18nService::getInstance();
+    auto&                textService = TextService::getInstance();
+    bool                 isEn        = (i18n.getCurrentLang() == "en_US");
+
+    fm.setTitle(textService.getMessage("form.button_remove_settings"));
+    fm.setContent(
+        isEn ? "Are you sure you want to remove this chest settings?\nThis action cannot be undone."
+             : "你确定要移除该箱子设置吗？\n此操作不可撤销。"
+    );
+
+    fm.appendButton(
+        textService.getMessage("form.button_remove_settings"),
+        "textures/ui/trash_default",
+        "path",
+        [pos, dimId](Player& p) {
+            auto& region = p.getDimensionBlockSource();
+            auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
+            p.sendMessage(result.message);
+        }
+    );
+    fm.appendButton(
+        textService.getMessage("form.button_cancel"),
+        "textures/ui/cancel",
+        "path",
+        [pos, dimId](Player& p) {
+            auto& region = p.getDimensionBlockSource();
+            auto  info   = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            showChestLockForm(
+                p,
+                pos,
+                dimId,
+                info.has_value(),
+                info ? info->ownerUuid : "",
+                info ? info->type : ChestType::Invalid,
+                region
+            );
+        }
+    );
+    fm.sendTo(player);
+}
 
 void showChestLockForm(
     Player&            player,
@@ -30,13 +84,13 @@ void showChestLockForm(
 ) {
     ll::form::SimpleForm fm;
     std::string          player_uuid  = player.getUuid().asString();
+    bool                 isAdmin      = PermissionCompat::hasPermission(player_uuid, "chest.admin");
     auto&                textService  = TextService::getInstance();
-    auto&                chestService = ChestService::getInstance();
 
     if (isLocked) {
         // 箱子已设置
-        if (ownerUuid == player_uuid) {
-            // 当前玩家是主人
+        if (ownerUuid == player_uuid || isAdmin) {
+            // 当前玩家是主人或管理员
             std::string typeStr = textService.getChestTypeName(chestType);
             fm.setTitle(textService.getMessage("form.chest_manage_title"));
             fm.setContent(textService.getMessage(
@@ -51,9 +105,7 @@ void showChestLockForm(
                 "textures/ui/trash_default",
                 "path",
                 [pos, dimId](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
-                    p.sendMessage(result.message);
+                    showRemoveChestConfirmForm(p, pos, dimId);
                 }
             );
 
@@ -79,15 +131,17 @@ void showChestLockForm(
                         showShopChestManageForm(p, pos, dimId, region);
                     }
                 );
-                fm.appendButton(
-                    textService.getMessage("form.button_set_shop_name"),
-                    "textures/ui/editIcon",
-                    "path",
-                    [pos, dimId](Player& p) {
-                        auto& region = p.getDimensionBlockSource();
-                        showSetShopNameForm(p, pos, dimId, region);
-                    }
-                );
+                if (isAdmin) {
+                    fm.appendButton(
+                        textService.getMessage("form.button_set_shop_name"),
+                        "textures/ui/editIcon",
+                        "path",
+                        [pos, dimId](Player& p) {
+                            auto& region = p.getDimensionBlockSource();
+                            showSetShopNameForm(p, pos, dimId, region);
+                        }
+                    );
+                }
                 fm.appendButton(
                     I18nService::getInstance().get("limit.manage_btn"),
                     "textures/ui/permissions_member_star",
@@ -116,15 +170,17 @@ void showChestLockForm(
                         showViewRecycleCommissionsForm(p, pos, dimId, region);
                     }
                 );
-                fm.appendButton(
-                    textService.getMessage("form.button_set_shop_name"),
-                    "textures/ui/editIcon",
-                    "path",
-                    [pos, dimId](Player& p) {
-                        auto& region = p.getDimensionBlockSource();
-                        showSetRecycleShopNameForm(p, pos, dimId, region);
-                    }
-                );
+                if (isAdmin) {
+                    fm.appendButton(
+                        textService.getMessage("form.button_set_shop_name"),
+                        "textures/ui/editIcon",
+                        "path",
+                        [pos, dimId](Player& p) {
+                            auto& region = p.getDimensionBlockSource();
+                            showSetRecycleShopNameForm(p, pos, dimId, region);
+                        }
+                    );
+                }
                 fm.appendButton(
                     I18nService::getInstance().get("limit.manage_btn"),
                     "textures/ui/permissions_member_star",

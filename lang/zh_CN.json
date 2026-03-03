@@ -501,8 +501,8 @@
   "sales_ranking": {
     "title": "销量榜单",
     "no_data": "§7暂无销量数据。",
-    "header": "§e共 {count} 个商店",
-    "entry": "§6#{rank} §b{shop} §7({owner})\n§7位置: §e{location} §7| 销量: §a{count} §7| 收入: §6{revenue}\n§7最近成交: §e{last_time}",
+    "header": "§e共 {count} 位玩家",
+    "entry": "§6#{rank} §b{owner}\n§7总销量: §a{count} §7| 总收入: §6{revenue}\n§7最近成交: §e{last_time} §7| 箱子坐标: §e{location}\n§7最近交易数量: §a{last_count} §7| 最近交易额: §6{last_price}",
     "no_sales": "无成交"
   }
 }

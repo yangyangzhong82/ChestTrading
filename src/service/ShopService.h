@@ -66,6 +66,14 @@ public:
 
 private:
     ShopService() = default;
+
+    // 将数据库库存与箱子实际库存对齐；传入 items 可复用已查询结果避免重复查询。
+    bool syncDbStockWithChest(
+        BlockPos                   pos,
+        int                        dimId,
+        BlockSource&               region,
+        std::vector<ShopItemData>* items = nullptr
+    );
 };
 
 } // namespace CT

@@ -16,7 +16,7 @@ void showSalesRankingForm(Player& player, int currentPage) {
     ll::form::SimpleForm fm;
     fm.setTitle(i18n.get("sales_ranking.title"));
 
-    auto rankings = ShopRepository::getInstance().getChestSalesRanking(config.salesRankingSettings.maxDisplayCount);
+    auto rankings = ShopRepository::getInstance().getPlayerSalesRanking(config.salesRankingSettings.maxDisplayCount);
 
     if (rankings.empty()) {
         fm.setContent(i18n.get("sales_ranking.no_data"));
@@ -40,28 +40,24 @@ void showSalesRankingForm(Player& player, int currentPage) {
             const std::string& ownerName = nameCache[data.ownerUuid];
             int                rank      = static_cast<int>(i + 1);
 
-            std::string shopName = data.shopName.empty() ? i18n.get(
-                                                               "public_shop.owner_shop",
-                                                               {
-                                                                   {"owner", ownerName}
-            }
-                                                           )
-                                                         : data.shopName;
-
             std::string lastTime = data.lastSaleTime.empty() ? i18n.get("sales_ranking.no_sales") : data.lastSaleTime;
-            std::string location = CT::FormUtils::dimIdToString(data.dimId) + " [" + std::to_string(data.pos.x) + ","
-                                 + std::to_string(data.pos.y) + "," + std::to_string(data.pos.z) + "]";
+            std::string location = data.lastSaleTime.empty()
+                                       ? i18n.get("sales_ranking.no_sales")
+                                       : (CT::FormUtils::dimIdToString(data.lastSaleDimId) + " ["
+                                          + std::to_string(data.lastSalePos.x) + "," + std::to_string(data.lastSalePos.y)
+                                          + "," + std::to_string(data.lastSalePos.z) + "]");
 
             content += i18n.get(
                 "sales_ranking.entry",
                 {
                     {"rank",      std::to_string(rank)                      },
-                    {"shop",      shopName                                  },
                     {"owner",     ownerName                                 },
                     {"location",  location                                  },
                     {"count",     std::to_string(data.totalSalesCount)      },
                     {"revenue",   CT::MoneyFormat::format(data.totalRevenue)},
-                    {"last_time", lastTime                                  }
+                    {"last_time", lastTime                                  },
+                    {"last_count", std::to_string(data.lastTradeCount)      },
+                    {"last_price", CT::MoneyFormat::format(data.lastTradePrice)}
             }
             );
             content += "\n";

@@ -26,6 +26,7 @@
 #include "mc/world/level/ChangeDimensionRequest.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include "repository/ShopRepository.h"
 #include "service/DynamicPricingService.h"
 #include "service/TextService.h"
 
@@ -538,8 +539,8 @@ void FloatingTextManager::loadAllChests() {
  *    - 快速完成后释放写锁
  *
  * @details 更新策略：
- * - 交替更新悬浮字文本和假物品（updateText 标志）
- * - 每次循环：文本 → 假物品 → 文本 → 假物品 ...
+ * - 悬浮字与假物品同步切换（同一轮更新同一个物品索引）
+ * - 维护性任务（库存同步/动态价格重置）隔轮执行，降低开销
  * - 更新间隔由配置文件控制（floatingTextUpdateIntervalSeconds）
  *
  * @performance 性能优化效果：
@@ -551,7 +552,7 @@ void FloatingTextManager::loadAllChests() {
  */
 ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
     logger.debug("dynamicTextUpdateCoroutine: 协程开始运行");
-    bool updateText = true; // 交替标志：true更新悬浮字，false更新假物品
+    bool updateText = true; // 交替标志：true执行轮播切换，false执行维护任务
 
     while (!mShouldStopUpdate.load()) {
         // 优化：使用结构体批量复制需要更新的数据，减少锁持有时间
@@ -594,9 +595,6 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
             if (updateText && info.itemNamesSize > 0) {
                 // 计算下一个物品索引（循环轮播）
                 info.currentItemIndex = (info.currentItemIndex + 1) % info.itemNamesSize;
-            } else if (!updateText && info.itemsSize > 0) {
-                // 计算下一个假物品索引
-                info.currentFakeItemIndex = (info.currentFakeItemIndex + 1) % info.itemsSize;
             }
         }
 
@@ -617,6 +615,10 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                     if (info.currentItemIndex >= ft.itemNames.size()) continue;
 
                     ft.currentItemIndex = info.currentItemIndex;
+                    if (!ft.itemNbts.empty()) {
+                        // 假物品与悬浮字使用同一轮播索引，确保同帧切换。
+                        ft.currentFakeItemIndex = ft.currentItemIndex % ft.itemNbts.size();
+                    }
                     ft.text =
                         TextService::getInstance().generateDynamicShopText(ft.type, ft.itemNames[ft.currentItemIndex]);
                     logger.trace(
@@ -631,11 +633,6 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                         ft.debugText->setText(ft.text);
                         ft.debugText->update();
                     }
-                } else if (!updateText && !ft.itemNbts.empty()) {
-                    // 边界检查
-                    if (info.currentFakeItemIndex >= ft.itemNbts.size()) continue;
-
-                    ft.currentFakeItemIndex = info.currentFakeItemIndex;
                 }
             }
         } // 快速释放写锁
@@ -656,11 +653,11 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                 updateShopFloatingText(shopPos, shopDimId, shopType);
             }
 
-            // 更新所有玩家的假物品
-            updateFakeItemsForAllPlayers();
             // 检查并重置过期的动态价格计数器
             DynamicPricingService::getInstance().checkAndResetCounters();
         }
+        // 每轮都刷新一次假物品，让假物品与悬浮字同帧生效。
+        updateFakeItemsForAllPlayers();
         updateText = !updateText; // 交替
 
         co_await ll::coro::SleepAwaiter(
@@ -707,22 +704,16 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
         std::vector<std::vector<std::string>> itemResults;
         Player*                               dimPlayer = nullptr;
+        bool                                  isShopType =
+            (type == ChestType::Shop || type == ChestType::AdminShop);
         if (auto level = ll::service::getLevel()) {
             dimPlayer = findAnyOnlinePlayerInDimension(*level, dimId);
         }
 
-        if (type == ChestType::Shop) {
+        if (isShopType) {
             itemResults = db.query(
-                "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
-                "si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ? AND si.db_count > 0;",
-                dimId,
-                pos.x,
-                pos.y,
-                pos.z
-            );
-        } else if (type == ChestType::AdminShop) {
-            itemResults = db.query(
-                "SELECT id.item_nbt FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
+                "SELECT si.item_id, id.item_nbt, si.db_count "
+                "FROM shop_items si JOIN item_definitions id ON si.item_id = id.item_id WHERE "
                 "si.dim_id = ? AND si.pos_x = ? AND si.pos_y = ? AND si.pos_z = ?;",
                 dimId,
                 pos.x,
@@ -743,19 +734,72 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         newItemNames.reserve(itemResults.size());
         newItemNbts.reserve(itemResults.size());
 
-        for (const auto& itemRow : itemResults) {
-            if (itemRow.empty()) continue;
+        int rawCount          = static_cast<int>(itemResults.size());
+        int filteredByStock   = 0;
+        int syncedDbCountRows = 0;
+        BlockSource* region   = nullptr;
+        if (isShopType && dimPlayer) {
+            region = &dimPlayer->getDimensionBlockSource();
+        }
 
-            auto nbt = CT::NbtUtils::parseSNBT(itemRow[0]);
+        for (const auto& itemRow : itemResults) {
+            if (isShopType) {
+                if (itemRow.size() < 3) continue;
+            } else if (itemRow.empty()) {
+                continue;
+            }
+
+            int         itemId   = -1;
+            int         dbStock  = 0;
+            std::string itemNbt  = isShopType ? itemRow[1] : itemRow[0];
+            int         realStock = -1;
+
+            if (isShopType) {
+                try {
+                    itemId  = std::stoi(itemRow[0]);
+                    dbStock = std::stoi(itemRow[2]);
+                } catch (...) {
+                    logger.warn("updateShopFloatingText: 解析 shop_items 行失败，跳过。");
+                    continue;
+                }
+
+                if (region) {
+                    realStock = CT::FormUtils::countItemsInChest(*region, pos, dimId, itemNbt);
+                    if (type == ChestType::Shop && realStock != dbStock) {
+                        if (ShopRepository::getInstance().updateDbCount(pos, dimId, itemId, realStock)) {
+                            ++syncedDbCountRows;
+                        } else {
+                            logger.warn(
+                                "updateShopFloatingText: 库存回写失败 ({}, {}, {}) dim {} item {}",
+                                pos.x,
+                                pos.y,
+                                pos.z,
+                                dimId,
+                                itemId
+                            );
+                        }
+                    }
+                    if (realStock <= 0) {
+                        ++filteredByStock;
+                        continue;
+                    }
+                } else if (type == ChestType::Shop && dbStock <= 0) {
+                    // 无法读取箱子时，普通商店退化为使用 db_count 过滤。
+                    ++filteredByStock;
+                    continue;
+                }
+            }
+
+            auto nbt = CT::NbtUtils::parseSNBT(itemNbt);
             if (!nbt) {
-                logger.warn("updateShopFloatingText: 无法从 NBT 字符串解析物品: {}", itemRow[0]);
+                logger.warn("updateShopFloatingText: 无法从 NBT 字符串解析物品: {}", itemNbt);
                 continue;
             }
 
             nbt->at("Count") = ByteTag(1);
             auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
             if (!itemPtr || itemPtr->isNull()) {
-                logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemRow[0]);
+                logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemNbt);
                 continue;
             }
 
@@ -766,54 +810,31 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
             }
 
             newItemNames.push_back(std::move(itemName));
-            newItemNbts.push_back(itemRow[0]);
+            newItemNbts.push_back(std::move(itemNbt));
         }
 
-        if ((type == ChestType::Shop || type == ChestType::AdminShop) && dimPlayer) {
-            auto& region = dimPlayer->getDimensionBlockSource();
-            std::vector<std::string> filteredNames;
-            std::vector<std::string> filteredNbts;
-            filteredNames.reserve(newItemNames.size());
-            filteredNbts.reserve(newItemNbts.size());
-            auto rawCount = newItemNbts.size();
-
-            for (size_t i = 0; i < newItemNbts.size(); ++i) {
-                int stock = CT::FormUtils::countItemsInChest(region, pos, dimId, newItemNbts[i]);
-                if (stock > 0) {
-                    filteredNames.push_back(newItemNames[i]);
-                    filteredNbts.push_back(newItemNbts[i]);
-                }
-            }
-
-            newItemNames = std::move(filteredNames);
-            newItemNbts  = std::move(filteredNbts);
+        if (isShopType && dimPlayer) {
             logger.debug(
-                "updateShopFloatingText: stock filter ({}, {}, {}) dim {} type {} raw {} -> filtered {}",
+                "updateShopFloatingText: stock filter ({}, {}, {}) dim {} type {} raw {} -> filtered {}, synced {} rows",
                 pos.x,
                 pos.y,
                 pos.z,
                 dimId,
                 static_cast<int>(type),
                 rawCount,
-                newItemNbts.size()
+                newItemNbts.size(),
+                syncedDbCountRows
             );
-        } else if (type == ChestType::Shop || type == ChestType::AdminShop) {
+        } else if (isShopType) {
             logger.debug(
-                "updateShopFloatingText: no online player in dim {}, skip stock filter for ({}, {}, {})",
+                "updateShopFloatingText: no online player in dim {}, fallback db_count filter for ({}, {}, {}), filtered {}",
                 dimId,
                 pos.x,
                 pos.y,
-                pos.z
+                pos.z,
+                filteredByStock
             );
         }
-    }
-
-    // 生成新的悬浮字文本（锁外）
-    std::string newText;
-    if (!newItemNames.empty()) {
-        newText = TextService::getInstance().generateDynamicShopText(type, newItemNames[0]);
-    } else {
-        newText = TextService::getInstance().generateEmptyShopText(type);
     }
 
     bool shouldUpdateFakeItems = false;
@@ -832,19 +853,37 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
             return;
         }
 
-        auto& ft     = it->second;
-        bool  changed = (ft.itemNames != newItemNames) || (ft.itemNbts != newItemNbts) || (ft.text != newText);
+        auto& ft = it->second;
 
+        auto oldItemNames = ft.itemNames;
+        auto oldItemNbts  = ft.itemNbts;
+        auto oldText      = ft.text;
+
+        std::string newText;
         ft.itemNames = std::move(newItemNames);
         ft.itemNbts  = std::move(newItemNbts);
         ft.isDynamic = true;
-        if (ft.currentItemIndex >= ft.itemNames.size()) {
+
+        if (!ft.itemNames.empty()) {
+            if (ft.currentItemIndex >= ft.itemNames.size()) {
+                ft.currentItemIndex = 0;
+            }
+            newText = TextService::getInstance().generateDynamicShopText(type, ft.itemNames[ft.currentItemIndex]);
+        } else {
             ft.currentItemIndex = 0;
+            newText             = TextService::getInstance().generateEmptyShopText(type);
         }
-        if (ft.currentFakeItemIndex >= ft.itemNbts.size()) {
+
+        if (!ft.itemNbts.empty()) {
+            if (ft.currentFakeItemIndex >= ft.itemNbts.size()) {
+                ft.currentFakeItemIndex = ft.currentItemIndex % ft.itemNbts.size();
+            }
+        } else {
             ft.currentFakeItemIndex = 0;
         }
-        ft.text = std::move(newText);
+        ft.text = newText;
+
+        bool changed = (oldItemNames != ft.itemNames) || (oldItemNbts != ft.itemNbts) || (oldText != ft.text);
 
         if (changed && ft.debugText) {
             ft.debugText->setText(ft.text);

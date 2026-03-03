@@ -93,6 +93,18 @@ struct ChestSalesData {
     std::string lastSaleTime;
 };
 
+// 玩家销量统计数据
+struct PlayerSalesData {
+    std::string ownerUuid;
+    int         totalSalesCount;
+    double      totalRevenue;
+    std::string lastSaleTime;
+    int         lastSaleDimId;
+    BlockPos    lastSalePos;
+    int         lastTradeCount;
+    double      lastTradePrice;
+};
+
 /**
  * @brief 商店数据访问层
  */
@@ -134,6 +146,7 @@ public:
 
     // === 销量统计 ===
     std::vector<ChestSalesData> getChestSalesRanking(int limit = 50);
+    std::vector<PlayerSalesData> getPlayerSalesRanking(int limit = 50);
 
 private:
     ShopRepository() = default;

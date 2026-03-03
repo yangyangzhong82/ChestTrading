@@ -429,4 +429,51 @@ std::vector<ChestSalesData> ShopRepository::getChestSalesRanking(int limit) {
     });
 }
 
+std::vector<PlayerSalesData> ShopRepository::getPlayerSalesRanking(int limit) {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "WITH player_stats AS ("
+        "  SELECT c.player_uuid AS owner_uuid, "
+        "         SUM(p.purchase_count) AS total_count, "
+        "         SUM(p.total_price) AS total_revenue, "
+        "         MAX(p.timestamp) AS last_sale_time "
+        "  FROM chests c "
+        "  JOIN purchase_records p "
+        "    ON c.dim_id = p.dim_id AND c.pos_x = p.pos_x AND c.pos_y = p.pos_y AND c.pos_z = p.pos_z "
+        "  WHERE c.type IN (2, 5) "
+        "  GROUP BY c.player_uuid "
+        "), "
+        "last_trade AS ("
+        "  SELECT c.player_uuid AS owner_uuid, p.dim_id, p.pos_x, p.pos_y, p.pos_z, "
+        "         p.purchase_count, p.total_price, p.timestamp, "
+        "         ROW_NUMBER() OVER (PARTITION BY c.player_uuid ORDER BY p.timestamp DESC, p.id DESC) AS rn "
+        "  FROM purchase_records p "
+        "  JOIN chests c "
+        "    ON c.dim_id = p.dim_id AND c.pos_x = p.pos_x AND c.pos_y = p.pos_y AND c.pos_z = p.pos_z "
+        "  WHERE c.type IN (2, 5) "
+        ") "
+        "SELECT ps.owner_uuid, ps.total_count, ps.total_revenue, ps.last_sale_time, "
+        "       COALESCE(lt.dim_id, 0), COALESCE(lt.pos_x, 0), COALESCE(lt.pos_y, 0), COALESCE(lt.pos_z, 0), "
+        "       COALESCE(lt.purchase_count, 0), COALESCE(lt.total_price, 0) "
+        "FROM player_stats ps "
+        "LEFT JOIN last_trade lt ON ps.owner_uuid = lt.owner_uuid AND lt.rn = 1 "
+        "ORDER BY ps.total_revenue DESC, ps.total_count DESC "
+        "LIMIT ?;",
+        limit
+    );
+
+    return parseRows<PlayerSalesData>(results, 10, [](DbRowParser r) {
+        return PlayerSalesData{
+            r.getString(0),
+            r.getInt(1),
+            r.getDouble(2),
+            r.getString(3),
+            r.getInt(4),
+            BlockPos{r.getInt(5), r.getInt(6), r.getInt(7)},
+            r.getInt(8),
+            r.getDouble(9)
+        };
+    });
+}
+
 } // namespace CT

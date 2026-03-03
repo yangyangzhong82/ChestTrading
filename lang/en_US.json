@@ -501,8 +501,8 @@
   "sales_ranking": {
     "title": "Sales Ranking",
     "no_data": "§7No sales data available.",
-    "header": "§eTotal {count} shops",
-    "entry": "§6#{rank} §b{shop} §7({owner})\n§7Location: §e{location} §7| Sales: §a{count} §7| Revenue: §6{revenue}\n§7Last sale: §e{last_time}",
+    "header": "§eTotal {count} players",
+    "entry": "§6#{rank} §b{owner}\n§7Total Sales: §a{count} §7| Total Revenue: §6{revenue}\n§7Last Trade: §e{last_time} §7| Chest: §e{location}\n§7Last Qty: §a{last_count} §7| Last Amount: §6{last_price}",
     "no_sales": "No sales"
   }
 }

@@ -80,7 +80,18 @@ bool ShopService::removeItem(BlockPos pos, int dimId, int itemId, BlockSource& r
 
 std::vector<ShopItemData> ShopService::getShopItems(BlockPos pos, int dimId, BlockSource& region) {
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
-    return ShopRepository::getInstance().findAllItems(mainPos, dimId);
+    auto     items   = ShopRepository::getInstance().findAllItems(mainPos, dimId);
+    auto     chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region);
+
+    bool changed = false;
+    if (chestInfo && chestInfo->type == ChestType::Shop) {
+        changed = syncDbStockWithChest(mainPos, dimId, region, &items);
+    }
+    if (changed) {
+        FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, chestInfo->type);
+    }
+
+    return items;
 }
 
 /**
@@ -249,10 +260,40 @@ PurchaseResult ShopService::purchaseItem(
     ScopeGuard rollbackGuard;
 
     // 官方商店：无限出售，不检查库存，不移除物品
+    bool stockCorrected = false;
     if (!isAdminShop) {
         // 检查箱子库存
         int actualAvailable = countMatchingItems(chest, itemNbt);
+        if (actualAvailable != itemOpt->dbCount) {
+            int oldDbCount = itemOpt->dbCount;
+            if (ShopRepository::getInstance().updateDbCount(mainPos, dimId, itemId, actualAvailable)) {
+                itemOpt->dbCount = actualAvailable;
+                stockCorrected   = true;
+                logger.debug(
+                    "purchaseItem: 校准库存 ({}, {}, {}) dim {} item {} db={} -> chest={}",
+                    mainPos.x,
+                    mainPos.y,
+                    mainPos.z,
+                    dimId,
+                    itemId,
+                    oldDbCount,
+                    actualAvailable
+                );
+            } else {
+                logger.warn(
+                    "purchaseItem: 校准库存失败 ({}, {}, {}) dim {} item {}",
+                    mainPos.x,
+                    mainPos.y,
+                    mainPos.z,
+                    dimId,
+                    itemId
+                );
+            }
+        }
         if (actualAvailable < quantity) {
+            if (stockCorrected) {
+                FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, ChestType::Shop);
+            }
             return {
                 false,
                 txt.getMessage("shop.insufficient_stock", {{"stock", std::to_string(actualAvailable)}}
@@ -293,8 +334,9 @@ PurchaseResult ShopService::purchaseItem(
 
     // 官方商店不更新库存
     if (!isAdminShop) {
-        // 更新数据库库存
-        if (!ShopRepository::getInstance().decrementDbCount(mainPos, dimId, itemId, quantity)) {
+        // 使用箱子实时剩余量回写数据库，避免 db_count 漂移。
+        int remainingAfterPurchase = countMatchingItems(chest, itemNbt);
+        if (!ShopRepository::getInstance().updateDbCount(mainPos, dimId, itemId, remainingAfterPurchase)) {
             txn.rollback();
             return {false, txt.getMessage("shop.purchase_db_fail")};
             // rollbackGuard 析构时会自动退钱和放回物品
@@ -372,6 +414,51 @@ PurchaseResult ShopService::purchaseItem(
 int ShopService::countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& itemNbt) {
     auto* chest = getChestActor(region, pos);
     return countMatchingItems(chest, itemNbt);
+}
+
+bool ShopService::syncDbStockWithChest(
+    BlockPos                   pos,
+    int                        dimId,
+    BlockSource&               region,
+    std::vector<ShopItemData>* items
+) {
+    std::vector<ShopItemData> fetchedItems;
+    if (!items) {
+        fetchedItems = ShopRepository::getInstance().findAllItems(pos, dimId);
+        items        = &fetchedItems;
+    }
+
+    bool changed = false;
+    for (auto& item : *items) {
+        int actualCount = countItemsInChest(region, pos, dimId, item.itemNbt);
+        if (actualCount == item.dbCount) continue;
+
+        if (ShopRepository::getInstance().updateDbCount(pos, dimId, item.itemId, actualCount)) {
+            logger.debug(
+                "syncDbStockWithChest: ({}, {}, {}) dim {} item {} db={} -> chest={}",
+                pos.x,
+                pos.y,
+                pos.z,
+                dimId,
+                item.itemId,
+                item.dbCount,
+                actualCount
+            );
+            item.dbCount = actualCount;
+            changed      = true;
+        } else {
+            logger.warn(
+                "syncDbStockWithChest: 更新库存失败 ({}, {}, {}) dim {} item {}",
+                pos.x,
+                pos.y,
+                pos.z,
+                dimId,
+                item.itemId
+            );
+        }
+    }
+
+    return changed;
 }
 
 } // namespace CT

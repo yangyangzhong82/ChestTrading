@@ -4,6 +4,7 @@
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
+#include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
@@ -221,6 +222,11 @@ void showSetNameForm(
     ll::form::CustomForm fm;
     fm.setTitle(title);
     auto& txt = TextService::getInstance();
+    if (!PermissionCompat::hasPermission(player.getUuid().asString(), "chest.admin")) {
+        player.sendMessage(txt.getMessage("command.no_permission"));
+        if (onComplete) onComplete(player, pos, dimId);
+        return;
+    }
 
     std::string currentName = ChestService::getInstance().getShopName(pos, dimId, player.getDimensionBlockSource());
     std::string nameDisplay = currentName.empty() ? i18n.get("form_utils.name_not_set") : "§a" + currentName;
