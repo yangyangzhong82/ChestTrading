@@ -5,6 +5,7 @@
 #include "logger.h"
 #include "mc/world/level/block/Block.h"
 #include "service/ChestService.h"
+#include "service/TextService.h"
 
 namespace CT {
 
@@ -25,7 +26,7 @@ void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
 
     if (!PLandCompat::getInstance().canDestroy(player, pos)) {
         event.cancel();
-        player.sendMessage("§cYou don't have permission to destroy blocks in this land.");
+        player.sendMessage(TextService::getInstance().getMessage("chest.land_no_permission_destroy"));
         return;
     }
 

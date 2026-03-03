@@ -109,8 +109,9 @@ struct LandPermTableLayout {
 struct SymbolSet {
     using GetInstanceFn    = PLandOpaque& (*)();
     using GetRegistryFn    = LandRegistryOpaque& (*)(PLandOpaque const*);
-    // MSVC x64 for non-trivial return types uses a hidden return-buffer parameter.
-    using GetLandAtFn      = void (*)(std::shared_ptr<LandOpaque>*, LandRegistryOpaque const*, BlockPos const&, int);
+    // MSVC x64 member function with non-trivial return:
+    // RCX=this, RDX=hidden return-buffer, R8=arg1, R9=arg2.
+    using GetLandAtFn      = void (*)(LandRegistryOpaque const*, std::shared_ptr<LandOpaque>*, BlockPos const&, int);
     using IsOperatorFn     = bool (*)(LandRegistryOpaque const*, mce::UUID const&);
     using GetPermTypeFn    = int (*)(LandOpaque const*, mce::UUID const&);
     using GetPermTableFn   = LandPermTableLayout const& (*)(LandOpaque const*);
@@ -320,7 +321,7 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     }
 
     try {
-        symbols.getLandAt(&land, registryPtr, pos, static_cast<int>(player.getDimensionId()));
+        symbols.getLandAt(registryPtr, &land, pos, static_cast<int>(player.getDimensionId()));
     } catch (...) {
         reportRuntimeFailureThrottled("PLand integration failed at step=getLandAt, fallback to allow.");
         return true;

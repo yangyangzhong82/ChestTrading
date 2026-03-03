@@ -33,7 +33,11 @@
     "pack_item_fail": "§c创建物品失败。",
     "pack_inventory_full": "§c背包已满，无法打包箱子。",
     "pack_success": "§a箱子已打包成物品！",
-    "pack_large_chest_forbidden": "§c不允许打包大箱子！请先将其拆分为单箱子。"
+    "pack_large_chest_forbidden": "§c不允许打包大箱子！请先将其拆分为单箱子。",
+    "land_no_permission_container": "§c你没有在此领地使用容器的权限。",
+    "land_no_permission_place": "§c你没有在此领地放置方块的权限。",
+    "land_no_permission_destroy": "§c你没有在此领地破坏方块的权限。",
+    "land_no_permission_pack": "§c你没有在此领地打包箱子的权限。"
   },
   "shop": {
     "insufficient_money": "§c你的金币不足！需要 §6{price}§c 金币。",

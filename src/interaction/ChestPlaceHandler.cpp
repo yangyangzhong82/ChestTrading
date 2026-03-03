@@ -38,7 +38,7 @@ void handlePlayerPlacingBlock(ll::event::PlayerPlacingBlockEvent& ev) {
 
     if (!PLandCompat::getInstance().canPlace(player, ev.pos())) {
         ev.cancel();
-        player.sendMessage("§cYou don't have permission to place blocks in this land.");
+        player.sendMessage(TextService::getInstance().getMessage("chest.land_no_permission_place"));
         return;
     }
 

@@ -91,7 +91,7 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     // Packing removes the original chest block, so destroy permission is required.
     if (!PLandCompat::getInstance().canDestroy(player, originalPos)) {
-        player.sendMessage("§cYou don't have permission to pack chests in this land.");
+        player.sendMessage(txt.getMessage("chest.land_no_permission_pack"));
         return true;
     }
 
@@ -240,9 +240,7 @@ bool handleOpenOrForms(
 } // namespace
 
 void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
-    if (ev.isCancelled()) {
-        return;
-    }
+    bool wasCancelled = ev.isCancelled();
 
     auto block = ev.block();
     if (block->getTypeName() != "minecraft:chest") {
@@ -256,12 +254,6 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
 
     std::string playerUuid = player.getUuid().asString();
     auto&       region     = player.getDimensionBlockSource();
-
-    if (!PLandCompat::getInstance().canUseContainer(player, originalPos)) {
-        player.sendMessage("§cYou don't have permission to use containers in this land.");
-        ev.cancel();
-        return;
-    }
 
     if (shouldDebounce(playerUuid)) {
         ev.cancel();
@@ -283,6 +275,21 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
 
     bool isAdmin = BA::permission::PermissionManager::getInstance().hasPermission(playerUuid, "chest.admin");
     bool isOwner = (ownerUuid == playerUuid) || isAdmin;
+
+    bool isTradeChest = chestType == ChestType::Shop || chestType == ChestType::RecycleShop
+                     || chestType == ChestType::AdminShop || chestType == ChestType::AdminRecycle;
+    bool allowTradeBypass = isTradeChest && !isOwner;
+
+    // If another plugin already cancelled this interaction, only trade forms may bypass.
+    if (wasCancelled && !allowTradeBypass) {
+        return;
+    }
+
+    if (!PLandCompat::getInstance().canUseContainer(player, originalPos) && !allowTradeBypass) {
+        player.sendMessage(TextService::getInstance().getMessage("chest.land_no_permission_container"));
+        ev.cancel();
+        return;
+    }
 
     const auto& interactionSettings = ConfigManager::getInstance().get().interactionSettings;
     bool        isManageTool        = !interactionSettings.manageToolItem.empty()

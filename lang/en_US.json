@@ -33,7 +33,11 @@
     "pack_item_fail": "§cFailed to create item.",
     "pack_inventory_full": "§cInventory full, cannot pack chest.",
     "pack_success": "§aChest packed into item!",
-    "pack_large_chest_forbidden": "§cCannot pack large chests! Please split it into single chests first."
+    "pack_large_chest_forbidden": "§cCannot pack large chests! Please split it into single chests first.",
+    "land_no_permission_container": "§cYou don't have permission to use containers in this land.",
+    "land_no_permission_place": "§cYou don't have permission to place blocks in this land.",
+    "land_no_permission_destroy": "§cYou don't have permission to destroy blocks in this land.",
+    "land_no_permission_pack": "§cYou don't have permission to pack chests in this land."
   },
   "shop": {
     "insufficient_money": "§cInsufficient coins! Need §6{price}§c coins.",
