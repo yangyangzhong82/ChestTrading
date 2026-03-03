@@ -563,15 +563,21 @@ bool ChestService::updateChestConfig(BlockPos pos, int dimId, BlockSource& regio
         }
 
         auto& ftm = FloatingTextManager::getInstance();
-        if (!config.enableFloatingText) {
-            ftm.removeFloatingText(mainPos, dimId);
-        } else {
-            auto info = getChestInfo(pos, dimId, region);
-            if (info) {
+        auto  info = getChestInfo(pos, dimId, region);
+        if (info) {
+            bool isShopType = (info->type == ChestType::Shop || info->type == ChestType::RecycleShop
+                               || info->type == ChestType::AdminShop || info->type == ChestType::AdminRecycle);
+
+            if (isShopType) {
+                // 商店箱子始终保留状态，悬浮字和假物品开关分别独立控制
                 updateFloatingText(mainPos, dimId, info->ownerUuid, info->type);
-                if (info->type == ChestType::Shop || info->type == ChestType::RecycleShop) {
-                    ftm.updateShopFloatingText(mainPos, dimId, info->type);
-                }
+                ftm.updateShopFloatingText(mainPos, dimId, info->type);
+                ftm.setChestFakeItemEnabled(mainPos, dimId, config.enableFakeItem);
+                ftm.setFloatingTextVisible(mainPos, dimId, config.enableFloatingText);
+            } else if (config.enableFloatingText) {
+                updateFloatingText(mainPos, dimId, info->ownerUuid, info->type);
+            } else {
+                ftm.setFloatingTextVisible(mainPos, dimId, false);
             }
         }
     }

@@ -98,6 +98,7 @@ public:
 
     // 移除一个箱子的悬浮字
     void removeFloatingText(BlockPos pos, int dimId);
+    void setFloatingTextVisible(BlockPos pos, int dimId, bool visible);
 
     // 绘制所有悬浮字给特定玩家
     void drawAllFloatingTexts(Player& player);
@@ -130,6 +131,7 @@ public:
     void updateShopFloatingText(BlockPos pos, int dimId, ChestType type);
 
     // 假物品相关方法
+    void setChestFakeItemEnabled(BlockPos pos, int dimId, bool enable);
     void sendFakeItemToPlayer(Player& player, ChestFloatingText& ft);
     void removeFakeItemFromPlayer(Player& player, ChestFloatingText& ft);
     void updateFakeItemsForAllPlayers();

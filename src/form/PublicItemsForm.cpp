@@ -42,6 +42,7 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
     // 筛选物品
     std::vector<PublicShopItemData> filteredItems;
     for (const auto& item : allItems) {
+        if (item.dbCount <= 0) continue;
         if (!searchKeyword.empty()) {
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (!itemPtr) continue;

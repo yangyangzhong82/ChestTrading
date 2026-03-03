@@ -58,6 +58,7 @@ static bool shopContainsItem(const ChestData& shop, const std::string& keyword) 
         auto items = ShopRepository::getInstance().findAllItems(shop.pos, shop.dimId);
         logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
         for (const auto& item : items) {
+            if (item.dbCount <= 0) continue;
             if (item.itemNbt.empty()) continue;
             auto nbt = CT::NbtUtils::parseSNBT(item.itemNbt);
             if (nbt) {
@@ -487,8 +488,20 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
     if (items.empty()) {
         content += i18n.get("public_shop.preview_no_items");
     } else {
-        content += i18n.get("public_shop.preview_items_title");
+        bool hasDisplayItems = false;
         for (const auto& item : items) {
+            if (item.dbCount > 0) {
+                hasDisplayItems = true;
+                break;
+            }
+        }
+        if (!hasDisplayItems) {
+            content += i18n.get("public_shop.preview_no_items");
+        } else {
+            content += i18n.get("public_shop.preview_items_title");
+        }
+        for (const auto& item : items) {
+            if (item.dbCount <= 0) continue;
             // 直接使用 findAllItems 返回的 itemNbt 字段，避免 N+1 查询
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (itemPtr) {

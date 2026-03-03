@@ -41,16 +41,20 @@ ActorUniqueID AddFakeitem(Vec3 pos, Player& player, BlockSource& region, ItemSta
 
     AddItemActorPacket packet(itemActor);
 
-    // Use a controlled id so the follow-up RemoveActorPacket can reliably match it.
-    // (We cannot mutate the temporary actor's ids on server builds, so we patch the packet fields directly.)
-    auto rid = level->getNextRuntimeID();
-    auto uid = ActorUniqueID{static_cast<int64>(rid.rawID)};
+    // Prefer actor-provided ids for consistency with packet-internal entity data.
+    auto uid = itemActor.getOrCreateUniqueID();
+    auto rid = itemActor.getRuntimeID();
+    // Fallback when temporary actor ids are not initialized.
+    if (uid.rawID == 0 || rid.rawID == 0) {
+        rid = level->getNextRuntimeID();
+        uid = ActorUniqueID{static_cast<int64>(rid.rawID)};
+    }
+
     packet.mRuntimeId = rid;
     packet.mId        = uid;
 
-    auto id = uid;
     player.sendNetworkPacket(packet);
-    return id;
+    return uid;
 }
 
 void RemoveFakeitem(Player& player, ActorUniqueID id) {

@@ -353,7 +353,7 @@ std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
          "FROM chests c "
          "JOIN shop_items s ON c.dim_id = s.dim_id AND c.pos_x = s.pos_x AND c.pos_y = s.pos_y AND c.pos_z = s.pos_z "
          "JOIN item_definitions d ON s.item_id = d.item_id "
-         "WHERE c.is_public = 1 AND c.type IN (2, 5) "
+         "WHERE c.is_public = 1 AND c.type IN (2, 5) AND s.db_count > 0 "
          "ORDER BY c.shop_name, c.player_uuid;"
     );
 

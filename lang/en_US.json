@@ -337,7 +337,7 @@
     "filter_player_shops": "Player Shops Only",
     "filter_official_only": "§6Filter: Official Shops Only",
     "filter_player_only": "§7Filter: Player Shops Only",
-    "sales_count": "§7Sales: §a{count}"
+    "sales_count": "§cSales: §e{count}§r"
   },
   "public_items": {
     "list_title": "Public Shop Items",

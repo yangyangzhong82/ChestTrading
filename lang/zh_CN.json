@@ -337,7 +337,7 @@
     "filter_player_shops": "仅玩家商店",
     "filter_official_only": "§6筛选: 仅官方商店",
     "filter_player_only": "§7筛选: 仅玩家商店",
-    "sales_count": "§7销量: §a{count}"
+    "sales_count": "§c销量: §e{count}§r"
   },
   "public_items": {
     "list_title": "公开商店物品列表",
