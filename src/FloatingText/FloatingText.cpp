@@ -78,6 +78,7 @@ void FloatingTextManager::addOrUpdateFloatingText(
     if (mFloatingTexts.count(key)) {
         // 更新现有悬浮字
         auto& ft = mFloatingTexts.at(key);
+        ft.ownerUuid = ownerUuid;
         if (ft.text != text) {
             ft.text = text;
             if (ft.debugText) {
@@ -86,6 +87,19 @@ void FloatingTextManager::addOrUpdateFloatingText(
             }
         }
         ft.type = type; // 更新类型
+        // 关闭显示后会保留记录但清空 debugText，重新开启时需要补建实体。
+        if (!ft.debugText) {
+            ft.debugText = debug_shape::IDebugText::create(
+                Vec3(
+                    static_cast<float>(ft.pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET,
+                    static_cast<float>(ft.pos.y) + FloatingTextConstants::TEXT_HEIGHT_OFFSET,
+                    static_cast<float>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
+                ),
+                ft.text
+            );
+            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText);
+            logger.debug("已为箱子 ({}, {}, {}) in dim {} 重建悬浮字: {}", ft.pos.x, ft.pos.y, ft.pos.z, dimId, ft.text);
+        }
     } else {
         // 创建新的悬浮字（使用常量定义的偏移量）
         auto newText = debug_shape::IDebugText::create(
