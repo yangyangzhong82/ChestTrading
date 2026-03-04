@@ -43,6 +43,9 @@ bool ItemTextureManager::loadTextures(const std::vector<std::string>& filePaths)
         return lower.find("item_texture") != std::string::npos;
     };
 
+    mItemTextures.clear();
+    mIconKeyTextures.clear();
+
     std::vector<std::string> orderedPaths;
     orderedPaths.reserve(filePaths.size());
 
@@ -59,11 +62,122 @@ bool ItemTextureManager::loadTextures(const std::vector<std::string>& filePaths)
 }
 
 void ItemTextureManager::parseTextureEntry(const std::string& itemName, const nlohmann::json& val) {
-    if (val.is_string()) mItemTextures[itemName].push_back(val.get<std::string>());
-    else if (val.is_array())
+    if (val.is_string()) {
+        std::string texturePath = val.get<std::string>();
+        if (texturePath.rfind("textures/", 0) == 0) {
+            addTextureMapping(itemName, texturePath);
+        }
+        return;
+    }
+
+    if (val.is_array()) {
         for (const auto& e : val) parseTextureEntry(itemName, e);
-    else if (val.is_object() && val.contains("path") && val["path"].is_string())
-        mItemTextures[itemName].push_back(val["path"].get<std::string>());
+        return;
+    }
+
+    if (val.is_object()) {
+        if (val.contains("path") && val["path"].is_string()) {
+            std::string texturePath = val["path"].get<std::string>();
+            if (texturePath.rfind("textures/", 0) == 0) {
+                addTextureMapping(itemName, texturePath);
+            }
+        }
+
+        if (val.contains("textures")) {
+            parseTextureEntry(itemName, val["textures"]);
+        }
+
+        // 递归处理对象中的其余字段，覆盖 terrain_texture 等复杂结构
+        for (auto const& [k, v] : val.items()) {
+            if (k == "path" || k == "textures") continue;
+            parseTextureEntry(itemName, v);
+        }
+    }
+}
+
+std::string ItemTextureManager::extractTextureLeafKey(const std::string& texturePath) {
+    if (texturePath.empty()) return {};
+
+    size_t slashPos = texturePath.find_last_of("/\\");
+    std::string leaf =
+        (slashPos == std::string::npos) ? texturePath : texturePath.substr(slashPos + 1);
+
+    size_t dotPos = leaf.find('.');
+    if (dotPos != std::string::npos) leaf = leaf.substr(0, dotPos);
+
+    return leaf;
+}
+
+void ItemTextureManager::appendUnique(std::vector<std::string>& list, const std::string& value) {
+    if (value.empty()) return;
+    if (std::find(list.begin(), list.end(), value) == list.end()) {
+        list.push_back(value);
+    }
+}
+
+void ItemTextureManager::addTextureMapping(const std::string& itemName, const std::string& texturePath) {
+    if (itemName.empty() || texturePath.empty()) return;
+
+    appendUnique(mItemTextures[itemName], texturePath);
+    appendUnique(mIconKeyTextures[itemName], texturePath);
+
+    std::string leafKey = extractTextureLeafKey(texturePath);
+    if (!leafKey.empty()) {
+        appendUnique(mIconKeyTextures[leafKey], texturePath);
+    }
+}
+
+std::string ItemTextureManager::pickTextureByAux(const std::vector<std::string>& textures, short auxValue) const {
+    if (textures.empty()) return {};
+    size_t idx = auxValue >= 0 ? static_cast<size_t>(auxValue) : 0;
+    return textures[idx < textures.size() ? idx : 0];
+}
+
+std::string ItemTextureManager::getTextureByIconKey(const std::string& rawIconKey, short auxValue) const {
+    if (rawIconKey.empty()) return {};
+
+    std::vector<std::string> candidates;
+    candidates.reserve(6);
+    auto addCandidate = [&](const std::string& c) {
+        if (c.empty()) return;
+        if (std::find(candidates.begin(), candidates.end(), c) == candidates.end()) {
+            candidates.push_back(c);
+        }
+    };
+
+    addCandidate(rawIconKey);
+
+    if (rawIconKey.rfind("minecraft:", 0) == 0) {
+        addCandidate(rawIconKey.substr(10));
+    }
+
+    auto colonPos = rawIconKey.find(':');
+    if (colonPos != std::string::npos && colonPos + 1 < rawIconKey.size()) {
+        addCandidate(rawIconKey.substr(colonPos + 1));
+    }
+
+    addCandidate(extractTextureLeafKey(rawIconKey));
+
+    for (const auto& key : candidates) {
+        if (auto it = mIconKeyTextures.find(key); it != mIconKeyTextures.end()) {
+            if (auto path = pickTextureByAux(it->second, auxValue); !path.empty()) {
+                return path;
+            }
+        }
+    }
+
+    for (const auto& key : candidates) {
+        std::string standardized = standardizeItemName(key);
+        if (standardized == key) continue;
+
+        if (auto it = mIconKeyTextures.find(standardized); it != mIconKeyTextures.end()) {
+            if (auto path = pickTextureByAux(it->second, auxValue); !path.empty()) {
+                return path;
+            }
+        }
+    }
+
+    return {};
 }
 
 std::string ItemTextureManager::standardizeItemName(std::string name) {
@@ -83,7 +197,7 @@ std::string ItemTextureManager::standardizeItemName(std::string name) {
         return name.size() > s.size() && name.substr(name.size() - s.size()) == s;
     };
 
-    static const std::vector<std::string> reversePrefixes = {"cooked_", "baked_", "raw_", "enchanted_", "golden_"};
+    static const std::vector<std::string> reversePrefixes = {"cooked_", "baked_", "enchanted_", "golden_"};
     for (const auto& pre : reversePrefixes) {
         if (name.rfind(pre, 0) == 0) {
             name = name.substr(pre.length()) + "_" + pre.substr(0, pre.length() - 1);

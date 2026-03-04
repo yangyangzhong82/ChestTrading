@@ -9,6 +9,7 @@
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/item/Item.h"
+#include "mc/world/item/ResolvedItemIconInfo.h"
 #include "mc/world/item/enchanting/Enchant.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
@@ -16,6 +17,7 @@
 #include "service/I18nService.h"
 #include "service/TeleportService.h"
 #include "service/TextService.h"
+#include <limits>
 #include <set>
 
 
@@ -138,14 +140,70 @@ std::string getItemTexturePath(const ItemStack& item) {
         return {};
     };
 
-    if (auto itemDef = item.getItem(); itemDef != nullptr) {
-        std::string iconKey = itemDef->mIconName;
-        if (auto path = lookupTexture(iconKey); !path.empty()) {
+    auto lookupIconTexture = [&](const std::string& key) -> std::string {
+        if (key.empty()) {
+            return {};
+        }
+
+        if (key.rfind("textures/", 0) == 0) {
+            return key;
+        }
+
+        if (auto path = textureManager.getTextureByIconKey(key, auxValue); !path.empty()) {
             return path;
         }
 
+        return lookupTexture(key);
+    };
+
+    if (auto itemDef = item.getItem(); itemDef != nullptr) {
+        auto        resolvedIconInfo = itemDef->getIconInfo(item, 0, true);
+        std::string resolvedIconKey  = resolvedIconInfo.mIconName;
+        int         resolvedFrame    = resolvedIconInfo.mIconFrame;
+        short       resolvedAux      = auxValue;
+        if (resolvedFrame >= 0 && resolvedFrame <= std::numeric_limits<short>::max()) {
+            resolvedAux = static_cast<short>(resolvedFrame);
+        }
+
+        logger.debug(
+            "getItemTexturePath: item='{}', raw='{}', aux={}, Item::getIconInfo.mIconName='{}', frame={}, type={}",
+            item.getTypeName(),
+            item.getRawNameId(),
+            auxValue,
+            resolvedIconKey,
+            resolvedFrame,
+            static_cast<int>(resolvedIconInfo.mIconType)
+        );
+
+        if (auto path = textureManager.getTextureByIconKey(resolvedIconKey, resolvedAux); !path.empty()) {
+            logger.debug(
+                "getItemTexturePath: hit by Item::getIconInfo.mIconName='{}' (frame={}) -> '{}'",
+                resolvedIconKey,
+                resolvedAux,
+                path
+            );
+            return path;
+        }
+
+        if (auto path = lookupIconTexture(resolvedIconKey); !path.empty()) {
+            logger.debug(
+                "getItemTexturePath: fallback hit by Item::getIconInfo.mIconName='{}' -> '{}'",
+                resolvedIconKey,
+                path
+            );
+            return path;
+        }
+
+        std::string iconKey = itemDef->mIconName;
         std::string atlasKey = itemDef->mAtlasName;
-        if (auto path = lookupTexture(atlasKey); !path.empty()) {
+
+        if (auto path = lookupIconTexture(iconKey); !path.empty()) {
+            logger.debug("getItemTexturePath: fallback hit by Item.mIconName='{}' -> '{}'", iconKey, path);
+            return path;
+        }
+
+        if (auto path = lookupIconTexture(atlasKey); !path.empty()) {
+            logger.debug("getItemTexturePath: fallback hit by Item.mAtlasName='{}' -> '{}'", atlasKey, path);
             return path;
         }
     }
@@ -176,7 +234,7 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
     auto* blockActor = region.getBlockEntity(pos);
     int   totalCount = 0;
     if (!blockActor) {
-        logger.warn("countItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+        logger.debug("countItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
         return 0;
     }
 
