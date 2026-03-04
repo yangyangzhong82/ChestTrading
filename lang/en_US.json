@@ -368,6 +368,8 @@
     "total_players": "§eTotal {count} owners §7(Page {page}/{total})",
     "player_button": "{name}\n§7Shops: {count}",
     "player_recycle_button": "{name}\n§7Recycle Shops: {count}",
+    "player_shop_stats_button": "{name}\n§7On Sale: {active} | Sales: {sales} | Shop Chests: {count}",
+    "player_recycle_stats_button": "{name}\n§7Valid Commissions: {active} | Sales: {sales} | Shop Chests: {count}",
     "button_search": "§e Search Owners",
     "button_back_list": "§7Back to Owner List",
     "search_title": "Search Owner",

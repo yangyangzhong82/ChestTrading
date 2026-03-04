@@ -49,8 +49,9 @@ void showPlayerListForm(
 void showPlayerShopsForm(
     Player&            player,
     const std::string& ownerUuid,
-    int                currentPage = 0,
-    bool               isRecycle   = false
+    int                currentPage   = 0,
+    bool               isRecycle     = false,
+    OfficialFilter     officialFilter = OfficialFilter::All
 );
 
 } // namespace CT

@@ -124,9 +124,7 @@ static const ShopListI18nKeys RECYCLE_I18N_KEYS = {
 
 // 前向声明
 static void showSearchForm(Player& player, bool isRecycle, OfficialFilter currentFilter);
-
-using ShopPreviewCallback = void (*)(Player&, const ChestData&);
-using ShopListCallback    = void (*)(Player&, int, const std::string&, const std::string&, OfficialFilter);
+static const int PLAYERS_PER_PAGE = 10;
 
 // 判断是否为官方商店类型
 static bool isOfficialShopType(ChestType type) {
@@ -143,6 +141,29 @@ static bool matchesTargetType(ChestType chestType, ChestType targetType) {
     return chestType == targetType;
 }
 
+static std::string buildChestSalesKey(int dimId, const BlockPos& pos) {
+    return std::to_string(dimId) + "|" + std::to_string(pos.x) + "|" + std::to_string(pos.y) + "|"
+         + std::to_string(pos.z);
+}
+
+static int countActiveEntriesForChest(const ChestData& chest, bool isRecycle) {
+    if (isRecycle) {
+        auto commissions = ShopRepository::getInstance().findAllRecycleItems(chest.pos, chest.dimId);
+        int  validCount  = 0;
+        for (const auto& commission : commissions) {
+            if (commission.maxRecycleCount <= 0 || commission.currentRecycledCount < commission.maxRecycleCount) {
+                ++validCount;
+            }
+        }
+        return validCount;
+    }
+
+    auto items = ShopRepository::getInstance().findAllItems(chest.pos, chest.dimId);
+    return static_cast<int>(std::count_if(items.begin(), items.end(), [](const ShopItemData& item) {
+        return item.dbCount > 0;
+    }));
+}
+
 static void showShopListFormImpl(
     Player&                 player,
     int                     currentPage,
@@ -150,80 +171,115 @@ static void showShopListFormImpl(
     const std::string&      searchType,
     OfficialFilter          officialFilter,
     ChestType               targetType,
-    const ShopListI18nKeys& keys,
-    ShopPreviewCallback     previewCallback,
-    ShopListCallback        listCallback
+    const ShopListI18nKeys& keys
 ) {
     auto& i18n = I18nService::getInstance();
 
     ll::form::SimpleForm fm;
     fm.setTitle(i18n.get(keys.listTitle));
+    bool isRecycle = (targetType == ChestType::RecycleShop);
 
     auto allChests = ChestService::getInstance().getAllPublicChests();
 
-    // 预先批量查询所有潜在店主的名称
-    std::vector<std::string> filterUuids;
+    std::vector<ChestData> filteredChests;
     for (const auto& chest : allChests) {
-        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
-            filterUuids.push_back(chest.ownerUuid);
-        }
-    }
-    auto filterNameCache = CT::FormUtils::getPlayerNameCache(filterUuids);
+        if (!matchesTargetType(chest.type, targetType) || !chest.isPublic) continue;
 
-    std::vector<ChestData> shops;
-    for (const auto& chest : allChests) {
-        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
-            // 官方商店筛选
-            bool isOfficial = isOfficialShopType(chest.type);
-            if (officialFilter == OfficialFilter::Official && !isOfficial) continue;
-            if (officialFilter == OfficialFilter::Player && isOfficial) continue;
-
-            if (!searchKeyword.empty()) {
-                if (searchType == "owner") {
-                    const std::string& ownerName = filterNameCache[chest.ownerUuid];
-                    if (!fuzzyMatch(ownerName, searchKeyword)) continue;
-                } else if (searchType == "item") {
-                    if (!shopContainsItem(chest, searchKeyword)) continue;
-                }
-            }
-            shops.push_back(chest);
-        }
+        bool isOfficial = isOfficialShopType(chest.type);
+        if (officialFilter == OfficialFilter::Official && !isOfficial) continue;
+        if (officialFilter == OfficialFilter::Player && isOfficial) continue;
+        filteredChests.push_back(chest);
     }
 
-    // 获取销量数据并按销量排序（销量高的靠前）
-    auto                       salesRanking = ShopRepository::getInstance().getChestSalesRanking(1000);
-    std::map<std::string, int> salesMap; // key: "dimId|x|y|z", value: totalSalesCount
+    std::map<std::string, std::vector<ChestData>> ownerShops;
+    for (const auto& chest : filteredChests) {
+        ownerShops[chest.ownerUuid].push_back(chest);
+    }
+
+    std::vector<std::string> ownerUuids;
+    ownerUuids.reserve(ownerShops.size());
+    for (const auto& [uuid, _] : ownerShops) {
+        ownerUuids.push_back(uuid);
+    }
+    auto ownerNameCache = CT::FormUtils::getPlayerNameCache(ownerUuids);
+
+    auto                       salesRanking = ShopRepository::getInstance().getChestSalesRanking(10000);
+    std::map<std::string, int> salesMap;
     for (const auto& sale : salesRanking) {
-        std::string key = std::to_string(sale.dimId) + "|" + std::to_string(sale.pos.x) + "|"
-                        + std::to_string(sale.pos.y) + "|" + std::to_string(sale.pos.z);
-        salesMap[key] = sale.totalSalesCount;
+        salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
 
-    std::sort(shops.begin(), shops.end(), [&salesMap](const ChestData& a, const ChestData& b) {
-        std::string keyA = std::to_string(a.dimId) + "|" + std::to_string(a.pos.x) + "|" + std::to_string(a.pos.y) + "|"
-                         + std::to_string(a.pos.z);
-        std::string keyB = std::to_string(b.dimId) + "|" + std::to_string(b.pos.x) + "|" + std::to_string(b.pos.y) + "|"
-                         + std::to_string(b.pos.z);
-        int salesA = salesMap.count(keyA) ? salesMap[keyA] : 0;
-        int salesB = salesMap.count(keyB) ? salesMap[keyB] : 0;
-        return salesA > salesB; // 降序排列
+    std::map<std::string, int> activeEntryCountCache;
+
+    struct PlayerAggregateInfo {
+        std::string ownerUuid;
+        std::string ownerName;
+        int         shopCount;
+        int         activeEntryCount;
+        int         totalSalesCount;
+    };
+    std::vector<PlayerAggregateInfo> players;
+
+    for (const auto& [ownerUuid, shops] : ownerShops) {
+        std::string ownerName = ownerNameCache[ownerUuid];
+        if (ownerName.empty()) ownerName = i18n.get("public_shop.unknown_owner");
+
+        if (!searchKeyword.empty()) {
+            if (searchType == "owner") {
+                if (!fuzzyMatch(ownerName, searchKeyword)) continue;
+            } else if (searchType == "item") {
+                bool itemMatched = std::any_of(shops.begin(), shops.end(), [&searchKeyword](const ChestData& shop) {
+                    return shopContainsItem(shop, searchKeyword);
+                });
+                if (!itemMatched) continue;
+            }
+        }
+
+        int totalSalesCount  = 0;
+        int activeEntryCount = 0;
+        for (const auto& shop : shops) {
+            auto salesIt = salesMap.find(buildChestSalesKey(shop.dimId, shop.pos));
+            if (salesIt != salesMap.end()) totalSalesCount += salesIt->second;
+
+            std::string chestKey = buildChestSalesKey(shop.dimId, shop.pos);
+            auto        activeIt = activeEntryCountCache.find(chestKey);
+            if (activeIt == activeEntryCountCache.end()) {
+                int activeCount = countActiveEntriesForChest(shop, isRecycle);
+                activeEntryCountCache[chestKey] = activeCount;
+                activeEntryCount += activeCount;
+            } else {
+                activeEntryCount += activeIt->second;
+            }
+        }
+
+        players.push_back(
+            {ownerUuid, ownerName, static_cast<int>(shops.size()), activeEntryCount, totalSalesCount}
+        );
+    }
+
+    std::sort(players.begin(), players.end(), [](const PlayerAggregateInfo& a, const PlayerAggregateInfo& b) {
+        if (a.totalSalesCount != b.totalSalesCount) return a.totalSalesCount > b.totalSalesCount;
+        if (a.activeEntryCount != b.activeEntryCount) return a.activeEntryCount > b.activeEntryCount;
+        if (a.shopCount != b.shopCount) return a.shopCount > b.shopCount;
+        return a.ownerName < b.ownerName;
     });
 
-    int totalShops = static_cast<int>(shops.size());
-    int totalPages = (totalShops + SHOPS_PER_PAGE - 1) / SHOPS_PER_PAGE;
+    int totalPlayers = static_cast<int>(players.size());
+    int totalPages   = (totalPlayers + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
     if (totalPages == 0) totalPages = 1;
     currentPage = std::max(0, std::min(currentPage, totalPages - 1));
 
-    if (shops.empty()) {
-        fm.setContent(searchKeyword.empty() ? i18n.get(keys.noShops) : i18n.get(keys.noMatch));
+    if (players.empty()) {
+        fm.setContent(searchKeyword.empty() ? i18n.get(isRecycle ? "player_list.no_recycle_players" : "player_list.no_players")
+                                            : i18n.get(keys.noMatch));
     } else {
         std::string contentText = i18n.get(
-            keys.totalShops,
+            "player_list.total_players",
             {
-                {"count", std::to_string(totalShops)     },
+                {"count", std::to_string(totalPlayers)   },
                 {"page",  std::to_string(currentPage + 1)},
                 {"total", std::to_string(totalPages)     }
-        }
+            }
         );
         if (!searchKeyword.empty()) {
             std::string typeStr  = (searchType == "owner") ? i18n.get("public_shop.search_type_owner")
@@ -245,8 +301,6 @@ static void showShopListFormImpl(
         fm.setContent(contentText);
     }
 
-    // 搜索按钮置顶
-    bool isRecycle = (targetType == ChestType::RecycleShop);
     fm.appendButton(
         i18n.get("public_shop.button_search"),
         "textures/ui/magnifyingGlass",
@@ -254,44 +308,30 @@ static void showShopListFormImpl(
         [isRecycle, officialFilter](Player& p) { showSearchForm(p, isRecycle, officialFilter); }
     );
 
-    if (!shops.empty()) {
-        int startIdx = currentPage * SHOPS_PER_PAGE;
-        int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
-
-        // 预先批量查询当前页所有玩家名称
-        std::vector<std::string> uuids;
-        for (int i = startIdx; i < endIdx; ++i) {
-            uuids.push_back(shops[i].ownerUuid);
-        }
-        auto ownerNameCache = CT::FormUtils::getPlayerNameCache(uuids);
+    if (!players.empty()) {
+        int startIdx = currentPage * PLAYERS_PER_PAGE;
+        int endIdx   = std::min(startIdx + PLAYERS_PER_PAGE, totalPlayers);
+        const char* buttonKey =
+            isRecycle ? "player_list.player_recycle_stats_button" : "player_list.player_shop_stats_button";
 
         for (int i = startIdx; i < endIdx; ++i) {
-            const auto&        shop      = shops[i];
-            const std::string& ownerName = ownerNameCache[shop.ownerUuid];
+            const auto& info = players[i];
+            std::string buttonText = i18n.get(
+                buttonKey,
+                {
+                    {"name",   info.ownerName                     },
+                    {"active", std::to_string(info.activeEntryCount)},
+                    {"sales",  std::to_string(info.totalSalesCount)},
+                    {"count",  std::to_string(info.shopCount)     }
+                }
+            );
 
-            std::string shopDisplayName = shop.shopName.empty() ? i18n.get(
-                                                                      keys.ownerShop,
-                                                                      {
-                                                                          {"owner", ownerName}
-            }
-                                                                  )
-                                                                : shop.shopName;
-
-            // 官方商店添加标识
-            std::string officialTag;
-            if (isOfficialShopType(shop.type)) {
-                officialTag = i18n.get("public_shop.official_tag") + " ";
-            }
-
-            // 获取销量
-            std::string salesKey = std::to_string(shop.dimId) + "|" + std::to_string(shop.pos.x) + "|"
-                                 + std::to_string(shop.pos.y) + "|" + std::to_string(shop.pos.z);
-            int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
-
-            std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
-                                   + i18n.get("public_shop.sales_count", {{"count", std::to_string(sales)}});
-
-            fm.appendButton(buttonText, [shop, previewCallback](Player& p) { previewCallback(p, shop); });
+            fm.appendButton(
+                buttonText,
+                [ownerUuid = info.ownerUuid, isRecycle, officialFilter](Player& p) {
+                    showPlayerShopsForm(p, ownerUuid, 0, isRecycle, officialFilter);
+                }
+            );
         }
     }
 
@@ -301,8 +341,12 @@ static void showShopListFormImpl(
                 i18n.get("public_shop.button_prev_page"),
                 "textures/ui/arrow_left",
                 "path",
-                [currentPage, searchKeyword, searchType, officialFilter, listCallback](Player& p) {
-                    listCallback(p, currentPage - 1, searchKeyword, searchType, officialFilter);
+                [currentPage, searchKeyword, searchType, officialFilter, isRecycle](Player& p) {
+                    if (isRecycle) {
+                        showPublicRecycleShopListForm(p, currentPage - 1, searchKeyword, searchType, officialFilter);
+                    } else {
+                        showPublicShopListForm(p, currentPage - 1, searchKeyword, searchType, officialFilter);
+                    }
                 }
             );
         }
@@ -311,14 +355,18 @@ static void showShopListFormImpl(
                 i18n.get("public_shop.button_next_page"),
                 "textures/ui/arrow_right",
                 "path",
-                [currentPage, searchKeyword, searchType, officialFilter, listCallback](Player& p) {
-                    listCallback(p, currentPage + 1, searchKeyword, searchType, officialFilter);
+                [currentPage, searchKeyword, searchType, officialFilter, isRecycle](Player& p) {
+                    if (isRecycle) {
+                        showPublicRecycleShopListForm(p, currentPage + 1, searchKeyword, searchType, officialFilter);
+                    } else {
+                        showPublicShopListForm(p, currentPage + 1, searchKeyword, searchType, officialFilter);
+                    }
                 }
             );
         }
     }
 
-    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
+    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player&) {});
     fm.sendTo(player);
 }
 
@@ -419,9 +467,7 @@ void showPublicShopListForm(
         searchType,
         officialFilter,
         ChestType::Shop,
-        SHOP_I18N_KEYS,
-        showShopPreviewForm,
-        showPublicShopListForm
+        SHOP_I18N_KEYS
     );
 }
 
@@ -439,9 +485,7 @@ void showPublicRecycleShopListForm(
         searchType,
         officialFilter,
         ChestType::RecycleShop,
-        RECYCLE_I18N_KEYS,
-        showRecycleShopPreviewForm,
-        showPublicRecycleShopListForm
+        RECYCLE_I18N_KEYS
     );
 }
 
@@ -618,206 +662,22 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
     fm.sendTo(player);
 }
 
-// 店主列表的 i18n key 配置
-struct PlayerListI18nKeys {
-    const char* listTitle;
-    const char* noPlayers;
-    const char* totalPlayers;
-    const char* playerButton;
-    const char* searchTitle;
-    const char* searchKeyword;
-    const char* searchHint;
-};
-
-static const PlayerListI18nKeys PLAYER_LIST_I18N_KEYS = {
-    "player_list.list_title",
-    "player_list.no_players",
-    "player_list.total_players",
-    "player_list.player_button",
-    "player_list.search_title",
-    "player_list.search_keyword",
-    "player_list.search_hint"
-};
-
-static const PlayerListI18nKeys RECYCLE_PLAYER_LIST_I18N_KEYS = {
-    "player_list.recycle_list_title",
-    "player_list.no_recycle_players",
-    "player_list.total_players",
-    "player_list.player_recycle_button",
-    "player_list.recycle_search_title",
-    "player_list.search_keyword",
-    "player_list.search_hint"
-};
-
-static const int PLAYERS_PER_PAGE = 10;
-
-// 店主搜索表单
-static void showPlayerSearchForm(Player& player, bool isRecycle) {
-    auto&                i18n = I18nService::getInstance();
-    ll::form::CustomForm fm;
-
-    const auto& keys = isRecycle ? RECYCLE_PLAYER_LIST_I18N_KEYS : PLAYER_LIST_I18N_KEYS;
-    fm.setTitle(i18n.get(keys.searchTitle));
-    fm.appendInput("keyword", i18n.get(keys.searchKeyword), i18n.get(keys.searchHint));
-
-    fm.sendTo(player, [isRecycle](Player& p, ll::form::CustomFormResult const& result, ll::form::FormCancelReason) {
-        if (!result.has_value() || result->empty()) {
-            showPlayerListForm(p, 0, isRecycle, "");
-            return;
-        }
-
-        std::string keyword;
-        auto keywordIt = result->find("keyword");
-        if (keywordIt != result->end()) {
-            if (auto* ptr = std::get_if<std::string>(&keywordIt->second)) {
-                keyword = *ptr;
-            }
-        }
-
-        showPlayerListForm(p, 0, isRecycle, keyword);
-    });
-}
-
-// 显示店主列表
 void showPlayerListForm(Player& player, int currentPage, bool isRecycle, const std::string& searchKeyword) {
-    auto& i18n = I18nService::getInstance();
-    const auto& keys = isRecycle ? RECYCLE_PLAYER_LIST_I18N_KEYS : PLAYER_LIST_I18N_KEYS;
-
-    ll::form::SimpleForm fm;
-    fm.setTitle(i18n.get(keys.listTitle));
-
-    auto allChests = ChestService::getInstance().getAllPublicChests();
-
-    // 目标类型
-    ChestType targetType = isRecycle ? ChestType::RecycleShop : ChestType::Shop;
-
-    // 按店主统计商店数量
-    std::map<std::string, int> ownerShopCount;
-    for (const auto& chest : allChests) {
-        if (matchesTargetType(chest.type, targetType) && chest.isPublic) {
-            ownerShopCount[chest.ownerUuid]++;
-        }
-    }
-
-    if (ownerShopCount.empty()) {
-        fm.setContent(i18n.get(keys.noPlayers));
-        fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
-        fm.sendTo(player);
-        return;
-    }
-
-    // 获取所有店主的名字
-    std::vector<std::string> uuids;
-    for (const auto& [uuid, count] : ownerShopCount) {
-        uuids.push_back(uuid);
-    }
-    auto nameCache = CT::FormUtils::getPlayerNameCache(uuids);
-
-    // 构建店主列表并应用搜索过滤
-    struct PlayerInfo {
-        std::string uuid;
-        std::string name;
-        int         shopCount;
-    };
-    std::vector<PlayerInfo> players;
-
-    for (const auto& [uuid, count] : ownerShopCount) {
-        std::string name = nameCache[uuid];
-        if (name.empty()) name = i18n.get("public_shop.unknown_owner");
-
-        // 搜索过滤
-        if (!searchKeyword.empty() && !fuzzyMatch(name, searchKeyword)) {
-            continue;
-        }
-
-        players.push_back({uuid, name, count});
-    }
-
-    // 按商店数量排序（降序）
-    std::sort(players.begin(), players.end(), [](const PlayerInfo& a, const PlayerInfo& b) {
-        return a.shopCount > b.shopCount;
-    });
-
-    int totalPlayers = static_cast<int>(players.size());
-    int totalPages   = (totalPlayers + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
-
-    if (players.empty()) {
-        fm.setContent(i18n.get("public_shop.no_match"));
+    if (isRecycle) {
+        showPublicRecycleShopListForm(player, currentPage, searchKeyword, "owner", OfficialFilter::All);
     } else {
-        std::string contentText = i18n.get(
-            keys.totalPlayers,
-            {
-                {"count", std::to_string(totalPlayers)    },
-                {"page",  std::to_string(currentPage + 1) },
-                {"total", std::to_string(totalPages)      }
-            }
-        );
-        if (!searchKeyword.empty()) {
-            contentText += "\n§6" + i18n.get("player_list.search_result", {{"keyword", searchKeyword}});
-        }
-        fm.setContent(contentText);
+        showPublicShopListForm(player, currentPage, searchKeyword, "owner", OfficialFilter::All);
     }
-
-    // 搜索按钮置顶
-    fm.appendButton(
-        i18n.get("player_list.button_search"),
-        "textures/ui/magnifyingGlass",
-        "path",
-        [isRecycle](Player& p) { showPlayerSearchForm(p, isRecycle); }
-    );
-
-    if (!players.empty()) {
-        int startIdx = currentPage * PLAYERS_PER_PAGE;
-        int endIdx   = std::min(startIdx + PLAYERS_PER_PAGE, totalPlayers);
-
-        for (int i = startIdx; i < endIdx; ++i) {
-            const auto& info = players[i];
-            std::string buttonText = i18n.get(
-                keys.playerButton,
-                {
-                    {"name",  info.name                     },
-                    {"count", std::to_string(info.shopCount)}
-                }
-            );
-
-            fm.appendButton(buttonText, [uuid = info.uuid, isRecycle](Player& p) {
-                showPlayerShopsForm(p, uuid, 0, isRecycle);
-            });
-        }
-    }
-
-    // 分页按钮
-    if (totalPages > 1) {
-        if (currentPage > 0) {
-            fm.appendButton(
-                i18n.get("public_shop.button_prev_page"),
-                "textures/ui/arrow_left",
-                "path",
-                [currentPage, isRecycle, searchKeyword](Player& p) {
-                    showPlayerListForm(p, currentPage - 1, isRecycle, searchKeyword);
-                }
-            );
-        }
-        if (currentPage < totalPages - 1) {
-            fm.appendButton(
-                i18n.get("public_shop.button_next_page"),
-                "textures/ui/arrow_right",
-                "path",
-                [currentPage, isRecycle, searchKeyword](Player& p) {
-                    showPlayerListForm(p, currentPage + 1, isRecycle, searchKeyword);
-                }
-            );
-        }
-    }
-
-    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [](Player& p) {});
-    fm.sendTo(player);
 }
 
 // 显示指定玩家的商店列表
-void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int currentPage, bool isRecycle) {
+void showPlayerShopsForm(
+    Player&            player,
+    const std::string& ownerUuid,
+    int                currentPage,
+    bool               isRecycle,
+    OfficialFilter     officialFilter
+) {
     auto& i18n = I18nService::getInstance();
 
     ll::form::SimpleForm fm;
@@ -838,27 +698,27 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
     // 筛选该店主的商店
     std::vector<ChestData> shops;
     for (const auto& chest : allChests) {
-        if (matchesTargetType(chest.type, targetType) && chest.isPublic && chest.ownerUuid == ownerUuid) {
-            shops.push_back(chest);
-        }
+        if (!matchesTargetType(chest.type, targetType) || !chest.isPublic || chest.ownerUuid != ownerUuid) continue;
+
+        bool isOfficial = isOfficialShopType(chest.type);
+        if (officialFilter == OfficialFilter::Official && !isOfficial) continue;
+        if (officialFilter == OfficialFilter::Player && isOfficial) continue;
+
+        shops.push_back(chest);
     }
 
     // 获取销量数据并按销量排序
-    auto salesRanking = ShopRepository::getInstance().getChestSalesRanking(1000);
+    auto salesRanking = ShopRepository::getInstance().getChestSalesRanking(10000);
     std::map<std::string, int> salesMap;
     for (const auto& sale : salesRanking) {
-        std::string key = std::to_string(sale.dimId) + "|" + std::to_string(sale.pos.x) + "|"
-                        + std::to_string(sale.pos.y) + "|" + std::to_string(sale.pos.z);
-        salesMap[key] = sale.totalSalesCount;
+        salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
 
     std::sort(shops.begin(), shops.end(), [&salesMap](const ChestData& a, const ChestData& b) {
-        std::string keyA = std::to_string(a.dimId) + "|" + std::to_string(a.pos.x) + "|"
-                         + std::to_string(a.pos.y) + "|" + std::to_string(a.pos.z);
-        std::string keyB = std::to_string(b.dimId) + "|" + std::to_string(b.pos.x) + "|"
-                         + std::to_string(b.pos.y) + "|" + std::to_string(b.pos.z);
-        int salesA = salesMap.count(keyA) ? salesMap[keyA] : 0;
-        int salesB = salesMap.count(keyB) ? salesMap[keyB] : 0;
+        std::string keyA = buildChestSalesKey(a.dimId, a.pos);
+        std::string keyB = buildChestSalesKey(b.dimId, b.pos);
+        int         salesA = salesMap.count(keyA) ? salesMap[keyA] : 0;
+        int         salesB = salesMap.count(keyB) ? salesMap[keyB] : 0;
         return salesA > salesB;
     });
 
@@ -899,8 +759,7 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
             }
 
             // 获取销量
-            std::string salesKey = std::to_string(shop.dimId) + "|" + std::to_string(shop.pos.x) + "|"
-                                 + std::to_string(shop.pos.y) + "|" + std::to_string(shop.pos.z);
+            std::string salesKey = buildChestSalesKey(shop.dimId, shop.pos);
             int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
 
             std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
@@ -921,8 +780,8 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
                 i18n.get("public_shop.button_prev_page"),
                 "textures/ui/arrow_left",
                 "path",
-                [ownerUuid, currentPage, isRecycle](Player& p) {
-                    showPlayerShopsForm(p, ownerUuid, currentPage - 1, isRecycle);
+                [ownerUuid, currentPage, isRecycle, officialFilter](Player& p) {
+                    showPlayerShopsForm(p, ownerUuid, currentPage - 1, isRecycle, officialFilter);
                 }
             );
         }
@@ -931,8 +790,8 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
                 i18n.get("public_shop.button_next_page"),
                 "textures/ui/arrow_right",
                 "path",
-                [ownerUuid, currentPage, isRecycle](Player& p) {
-                    showPlayerShopsForm(p, ownerUuid, currentPage + 1, isRecycle);
+                [ownerUuid, currentPage, isRecycle, officialFilter](Player& p) {
+                    showPlayerShopsForm(p, ownerUuid, currentPage + 1, isRecycle, officialFilter);
                 }
             );
         }
@@ -943,7 +802,13 @@ void showPlayerShopsForm(Player& player, const std::string& ownerUuid, int curre
         i18n.get("player_list.button_back_list"),
         "textures/ui/arrow_left",
         "path",
-        [isRecycle](Player& p) { showPlayerListForm(p, 0, isRecycle, ""); }
+        [isRecycle, officialFilter](Player& p) {
+            if (isRecycle) {
+                showPublicRecycleShopListForm(p, 0, "", "owner", officialFilter);
+            } else {
+                showPublicShopListForm(p, 0, "", "owner", officialFilter);
+            }
+        }
     );
 
     fm.sendTo(player);

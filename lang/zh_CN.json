@@ -368,6 +368,8 @@
     "total_players": "§e共 {count} 位店主 §7(第 {page}/{total} 页)",
     "player_button": "{name}\n§7商店数量: {count}",
     "player_recycle_button": "{name}\n§7回收商店数量: {count}",
+    "player_shop_stats_button": "{name}\n§7在售: {active} | 销量: {sales} | 箱子店铺数: {count}",
+    "player_recycle_stats_button": "{name}\n§7有效委托: {active} | 销量: {sales} | 箱子店铺数: {count}",
     "button_search": "§e 搜索店主",
     "button_back_list": "§7返回店主列表",
     "search_title": "搜索店主",
