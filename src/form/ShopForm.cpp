@@ -26,7 +26,15 @@ namespace CT {
 void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage("form.shop_items_title"));
+
+    std::string title = txt.getMessage("form.shop_items_title");
+    auto        info  = ChestService::getInstance().getChestInfo(pos, dimId, region);
+    if (info && !info->ownerUuid.empty()) {
+        auto ownerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(info->ownerUuid));
+        std::string ownerName = ownerInfo ? ownerInfo->name : txt.getMessage("public_shop.unknown_owner");
+        title                 = txt.getMessage("form.shop_items_title_with_owner", {{"owner", ownerName}});
+    }
+    fm.setTitle(title);
 
     logger.debug(
         "showShopChestItemsForm: Player {} is opening shop at pos ({},{},{}) dim {}.",
