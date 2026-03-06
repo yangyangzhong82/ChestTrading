@@ -67,6 +67,11 @@ struct SalesRankingSettings {
     int maxDisplayCount = 50; // 销量榜单最多显示数量
 };
 
+struct ShopNameRestrictions {
+    int                      maxLength       = 32; // 商店名称最大长度，按 UTF-8 字符数计算，<=0 表示不限制
+    std::vector<std::string> blockedKeywords = {}; // 禁止出现在商店名称中的关键词，按子串匹配
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -88,4 +93,5 @@ struct Config {
     ResourcePaths        resourcePaths;                                // 数据库/贴图等路径配置
     InteractionSettings  interactionSettings;                          // 交互相关设置
     SalesRankingSettings salesRankingSettings;                         // 销量榜单设置
+    ShopNameRestrictions shopNameRestrictions;                         // 商店名称限制
 };

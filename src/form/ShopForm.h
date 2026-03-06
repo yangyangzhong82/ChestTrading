@@ -9,7 +9,13 @@
 
 namespace CT {
 
-void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
+void showShopChestItemsForm(
+    Player&            player,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region,
+    const std::string& searchKeyword = ""
+);
 void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
 void showShopItemManageForm(
     Player&            player,
@@ -27,7 +33,8 @@ void showShopItemBuyForm(
     int                slot,
     double             unitPrice,
     BlockSource&       region,
-    const std::string& itemNbtStr
+    const std::string& itemNbtStr,
+    const std::string& searchKeyword = ""
 );
 void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack = {});
 

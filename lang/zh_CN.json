@@ -57,6 +57,8 @@
     "empty": "商店是空的，没有可购买的商品。\n",
     "name_set_success": "§a商店名称设置成功！",
     "name_set_fail": "§c商店名称设置失败！",
+    "name_too_long": "§c商店名称最多只能包含 {max} 个字符！",
+    "name_blocked_keyword": "§c商店名称包含被禁止的关键词：{keyword}",
     "data_corrupt": "§c该物品数据已损坏，无法购买。",
     "item_manage_fail": "§c无法管理该物品，无法从NBT创建物品。",
     "item_id_fail": "§c无法管理该物品，无法获取物品ID。",
@@ -343,7 +345,9 @@
     "sort_current_latest": "§e排序: 按最新上架",
     "button_sort_sales": "§b排序: 按销量 (点击切换到最新上架)",
     "button_sort_latest": "§b排序: 按最新上架 (点击切换到销量)",
-    "sales_count": "§c销量: §e{count}§r"
+    "sales_count": "§c销量: §e{count}§r",
+    "shop_button_stats": "§b在售物品: §a{active} §f| §6销量: §c{sales}",
+    "recycle_button_stats": "§b有效委托: §a{active} §f| §6销量: §c{sales}"
   },
   "public_items": {
     "list_title": "公开商店物品列表",

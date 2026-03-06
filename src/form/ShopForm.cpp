@@ -21,10 +21,75 @@
 #include "service/TeleportService.h"
 #include "service/TextService.h"
 
+#include <algorithm>
+#include <cctype>
 
 namespace CT {
 
-void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
+namespace {
+
+std::string toLowerCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+std::string trimCopy(const std::string& value) {
+    auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    auto end   = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+    if (begin >= end) {
+        return {};
+    }
+    return std::string(begin, end);
+}
+
+bool itemMatchesKeyword(const ItemStack& item, const std::string& keyword) {
+    if (keyword.empty()) {
+        return true;
+    }
+
+    const std::string lowerKeyword = toLowerCopy(keyword);
+    const std::string itemName     = toLowerCopy(std::string(item.getName()));
+    const std::string typeName     = toLowerCopy(item.getTypeName());
+    return itemName.find(lowerKeyword) != std::string::npos || typeName.find(lowerKeyword) != std::string::npos;
+}
+
+void showShopItemSearchForm(Player& player, BlockPos pos, int dimId, const std::string& currentKeyword) {
+    ll::form::CustomForm fm;
+    auto&                txt = TextService::getInstance();
+    fm.setTitle(txt.getMessage("public_items.search_title"));
+    fm.appendInput(
+        "keyword",
+        txt.getMessage("public_items.search_keyword"),
+        txt.getMessage("public_items.search_hint"),
+        currentKeyword
+    );
+
+    fm.sendTo(
+        player,
+        [pos, dimId, currentKeyword](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+            auto& region = p.getDimensionBlockSource();
+            if (!result.has_value()) {
+                showShopChestItemsForm(p, pos, dimId, region, currentKeyword);
+                return;
+            }
+
+            const auto keywordIt = result->find("keyword");
+            std::string keyword;
+            if (keywordIt != result->end()) {
+                if (const auto* value = std::get_if<std::string>(&keywordIt->second)) {
+                    keyword = trimCopy(*value);
+                }
+            }
+            showShopChestItemsForm(p, pos, dimId, region, keyword);
+        }
+    );
+}
+
+} // namespace
+
+void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource& region, const std::string& searchKeyword) {
     ll::form::SimpleForm fm;
     auto&                txt = TextService::getInstance();
 
@@ -47,6 +112,14 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
     );
 
     auto items = ShopService::getInstance().getShopItems(pos, dimId, region);
+    int  matchedItemCount = 0;
+
+    fm.appendButton(
+        txt.getMessage("public_shop.button_search"),
+        "textures/ui/magnifyingGlass",
+        "path",
+        [pos, dimId, searchKeyword](Player& p) { showShopItemSearchForm(p, pos, dimId, searchKeyword); }
+    );
 
     if (items.empty()) {
         fm.setContent(txt.getMessage("shop.empty"));
@@ -66,6 +139,10 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
             }
             ItemStack item = *itemPtr;
             item.set(1);
+            if (!itemMatchesKeyword(item, searchKeyword)) {
+                continue;
+            }
+            ++matchedItemCount;
 
             int         totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
             std::string buttonText =
@@ -77,17 +154,28 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
                     buttonText,
                     texturePath,
                     "path",
-                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price](Player& p) {
+                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr);
+                        showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
                     }
                 );
             } else {
-                fm.appendButton(buttonText, [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price](Player& p) {
-                    auto& region = p.getDimensionBlockSource();
-                    showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr);
-                });
+                fm.appendButton(
+                    buttonText,
+                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
+                    }
+                );
             }
+        }
+
+        if (!searchKeyword.empty()) {
+            std::string content = txt.getMessage("public_items.search_result", {{"keyword", searchKeyword}});
+            if (matchedItemCount == 0) {
+                content = txt.getMessage("public_items.no_match") + content;
+            }
+            fm.setContent(content);
         }
     }
 
@@ -414,7 +502,8 @@ void showShopItemBuyForm(
     int                slot,
     double             unitPrice, // 淇敼涓?double
     BlockSource&       region,
-    const std::string& itemNbtStr // 娣诲姞 itemNbtStr 鍙傛暟
+    const std::string& itemNbtStr, // 娣诲姞 itemNbtStr 鍙傛暟
+    const std::string& searchKeyword
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
@@ -469,7 +558,7 @@ void showShopItemBuyForm(
 
     fm.sendTo(
         player,
-        [item, pos, dimId, slot, unitPrice, itemNbtStr](
+        [item, pos, dimId, slot, unitPrice, itemNbtStr, searchKeyword](
             Player&                           p,
             const ll::form::CustomFormResult& result,
             ll::form::FormCancelReason        reason
@@ -479,7 +568,7 @@ void showShopItemBuyForm(
             if (!result.has_value()) {
                 logger.debug("showShopItemBuyForm: Player {} cancelled purchase.", p.getRealName());
                 p.sendMessage(txt.getMessage("action.cancelled"));
-                showShopChestItemsForm(p, pos, dimId, region);
+                showShopChestItemsForm(p, pos, dimId, region, searchKeyword);
                 return;
             }
 
@@ -502,14 +591,14 @@ void showShopItemBuyForm(
                     p.sendMessage(txt.getMessage("input.invalid_count"));
                     logger
                         .warn("showShopItemBuyForm: Player {} entered invalid buyCount {}.", p.getRealName(), buyCount);
-                    showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
+                    showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
                     return;
                 }
             } catch (const std::exception& e) {
                 p.sendMessage(txt.getMessage("input.invalid_buy_count"));
                 logger
                     .error("showShopItemBuyForm: Error parsing buyCount for player {}: {}", p.getRealName(), e.what());
-                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr);
+                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
                 return;
             }
 
@@ -517,14 +606,14 @@ void showShopItemBuyForm(
             if (itemId < 0) {
                 p.sendMessage(txt.getMessage("shop.purchase_id_fail"));
                 logger.error("showShopItemBuyForm: Failed to get or create item_id for item NBT {}.", itemNbtStr);
-                showShopChestItemsForm(p, pos, dimId, region);
+                showShopChestItemsForm(p, pos, dimId, region, searchKeyword);
                 return;
             }
 
             auto purchaseResult =
                 ShopService::getInstance().purchaseItem(p, pos, dimId, itemId, buyCount, region, itemNbtStr);
             p.sendMessage(purchaseResult.message);
-            showShopChestItemsForm(p, pos, dimId, region);
+            showShopChestItemsForm(p, pos, dimId, region, searchKeyword);
         }
     );
 }

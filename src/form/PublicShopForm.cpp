@@ -843,9 +843,16 @@ void showPlayerShopsForm(
             // 获取销量
             std::string salesKey = buildChestSalesKey(shop.dimId, shop.pos);
             int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
+            int activeEntryCount = countActiveEntriesForChest(shop, isRecycle);
 
             std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
-                                   + i18n.get("public_shop.sales_count", {{"count", std::to_string(sales)}});
+                                   + i18n.get(
+                                       isRecycle ? "public_shop.recycle_button_stats" : "public_shop.shop_button_stats",
+                                       {
+                                           {"active", std::to_string(activeEntryCount)},
+                                           {"sales",  std::to_string(sales)           }
+                                       }
+                                   );
 
             if (isRecycle) {
                 fm.appendButton(buttonText, [shop](Player& p) { showRecycleShopPreviewForm(p, shop); });

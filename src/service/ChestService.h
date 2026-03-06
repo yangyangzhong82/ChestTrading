@@ -147,7 +147,13 @@ public:
     // === 配置管理 ===
     bool            updateChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfigData& config);
     ChestConfigData getChestConfig(BlockPos pos, int dimId, BlockSource& region);
-    bool            setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& name);
+    bool            setShopName(
+        BlockPos           pos,
+        int                dimId,
+        BlockSource&       region,
+        const std::string& name,
+        std::string*       errorMessage = nullptr
+    );
     std::string     getShopName(BlockPos pos, int dimId, BlockSource& region);
 
     // === 工具方法 ===

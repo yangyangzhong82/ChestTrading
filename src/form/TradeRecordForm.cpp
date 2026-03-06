@@ -604,10 +604,6 @@ void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack
         });
     }
 
-    fm.appendButton(i18n.get("trade_records.button_last_purchase"), [](Player& p) {
-        teleportToLastPurchase(p);
-    });
-
     if (admin) {
         fm.appendButton(i18n.get("trade_records.button_lookup_player"), [onBack](Player& p) {
             showPlayerLookupForm(p, [onBack](Player& backPlayer) { showTradeRecordMenuForm(backPlayer, onBack); });

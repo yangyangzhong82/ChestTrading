@@ -57,6 +57,8 @@
     "empty": "The shop is empty, no items available.\n",
     "name_set_success": "§aShop name set successfully!",
     "name_set_fail": "§cFailed to set shop name!",
+    "name_too_long": "§cShop name can be at most {max} characters long!",
+    "name_blocked_keyword": "§cShop name contains a blocked keyword: {keyword}",
     "data_corrupt": "§cThis item data is corrupted, cannot purchase.",
     "item_manage_fail": "§cCannot manage this item, failed to create from NBT.",
     "item_id_fail": "§cCannot manage this item, failed to get item ID.",
@@ -343,7 +345,9 @@
     "sort_current_latest": "§eSort: By Latest Listed",
     "button_sort_sales": "§bSort: By Sales (Click to switch to Latest Listed)",
     "button_sort_latest": "§bSort: By Latest Listed (Click to switch to Sales)",
-    "sales_count": "§cSales: §e{count}§r"
+    "sales_count": "§cSales: §e{count}§r",
+    "shop_button_stats": "§bOn Sale Items: §a{active} §f| §6Sales: §c{sales}",
+    "recycle_button_stats": "§bValid Commissions: §a{active} §f| §6Sales: §c{sales}"
   },
   "public_items": {
     "list_title": "Public Shop Items",

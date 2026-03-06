@@ -4,7 +4,6 @@
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
-#include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
@@ -279,12 +278,6 @@ void showSetNameForm(
     auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
     fm.setTitle(title);
-    auto& txt = TextService::getInstance();
-    if (!PermissionCompat::hasPermission(player.getUuid().asString(), "chest.admin")) {
-        player.sendMessage(txt.getMessage("command.no_permission"));
-        if (onComplete) onComplete(player, pos, dimId);
-        return;
-    }
 
     std::string currentName = ChestService::getInstance().getShopName(pos, dimId, player.getDimensionBlockSource());
     std::string nameDisplay = currentName.empty() ? i18n.get("form_utils.name_not_set") : "§a" + currentName;
@@ -308,10 +301,11 @@ void showSetNameForm(
 
             std::string newName = std::get<std::string>(result.value().at("shop_name"));
             auto&       region  = p.getDimensionBlockSource();
-            if (ChestService::getInstance().setShopName(pos, dimId, region, newName)) {
+            std::string errorMessage;
+            if (ChestService::getInstance().setShopName(pos, dimId, region, newName, &errorMessage)) {
                 p.sendMessage(txt.getMessage("shop.name_set_success"));
             } else {
-                p.sendMessage(txt.getMessage("shop.name_set_fail"));
+                p.sendMessage(errorMessage.empty() ? txt.getMessage("shop.name_set_fail") : errorMessage);
             }
             if (onComplete) onComplete(p, pos, dimId);
         }

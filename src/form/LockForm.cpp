@@ -131,17 +131,15 @@ void showChestLockForm(
                         showShopChestManageForm(p, pos, dimId, region);
                     }
                 );
-                if (isAdmin) {
-                    fm.appendButton(
-                        textService.getMessage("form.button_set_shop_name"),
-                        "textures/ui/editIcon",
-                        "path",
-                        [pos, dimId](Player& p) {
-                            auto& region = p.getDimensionBlockSource();
-                            showSetShopNameForm(p, pos, dimId, region);
-                        }
-                    );
-                }
+                fm.appendButton(
+                    textService.getMessage("form.button_set_shop_name"),
+                    "textures/ui/editIcon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showSetShopNameForm(p, pos, dimId, region);
+                    }
+                );
                 fm.appendButton(
                     I18nService::getInstance().get("limit.manage_btn"),
                     "textures/ui/permissions_member_star",
@@ -170,17 +168,15 @@ void showChestLockForm(
                         showViewRecycleCommissionsForm(p, pos, dimId, region);
                     }
                 );
-                if (isAdmin) {
-                    fm.appendButton(
-                        textService.getMessage("form.button_set_shop_name"),
-                        "textures/ui/editIcon",
-                        "path",
-                        [pos, dimId](Player& p) {
-                            auto& region = p.getDimensionBlockSource();
-                            showSetRecycleShopNameForm(p, pos, dimId, region);
-                        }
-                    );
-                }
+                fm.appendButton(
+                    textService.getMessage("form.button_set_shop_name"),
+                    "textures/ui/editIcon",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        showSetRecycleShopNameForm(p, pos, dimId, region);
+                    }
+                );
                 fm.appendButton(
                     I18nService::getInstance().get("limit.manage_btn"),
                     "textures/ui/permissions_member_star",

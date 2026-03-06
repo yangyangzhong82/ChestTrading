@@ -12,7 +12,40 @@
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
 
+#include <algorithm>
+#include <cctype>
+
 namespace CT {
+
+namespace {
+
+std::string trimCopy(const std::string& input) {
+    auto begin = std::find_if_not(input.begin(), input.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    auto end   = std::find_if_not(input.rbegin(), input.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+    if (begin >= end) {
+        return {};
+    }
+    return std::string(begin, end);
+}
+
+size_t countUtf8CodePoints(const std::string& input) {
+    size_t count = 0;
+    for (unsigned char ch : input) {
+        if ((ch & 0xC0) != 0x80) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::string toLowerAscii(std::string input) {
+    std::transform(input.begin(), input.end(), input.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return input;
+}
+
+} // namespace
 
 ChestService& ChestService::getInstance() {
     static ChestService instance;
@@ -597,11 +630,49 @@ ChestConfigData ChestService::getChestConfig(BlockPos pos, int dimId, BlockSourc
     return config;
 }
 
-bool ChestService::setShopName(BlockPos pos, int dimId, BlockSource& region, const std::string& name) {
+bool ChestService::setShopName(
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region,
+    const std::string& name,
+    std::string*       errorMessage
+) {
+    auto&             txt            = TextService::getInstance();
+    const auto&       restrictions   = ConfigManager::getInstance().get().shopNameRestrictions;
+    const std::string normalizedName = trimCopy(name);
+
+    if (restrictions.maxLength > 0
+        && countUtf8CodePoints(normalizedName) > static_cast<size_t>(restrictions.maxLength)) {
+        if (errorMessage != nullptr) {
+            *errorMessage = txt.getMessage("shop.name_too_long", {{"max", std::to_string(restrictions.maxLength)}});
+        }
+        return false;
+    }
+
+    if (!normalizedName.empty()) {
+        const std::string lowerName = toLowerAscii(normalizedName);
+        for (const auto& rawKeyword : restrictions.blockedKeywords) {
+            std::string keyword = trimCopy(rawKeyword);
+            if (keyword.empty()) {
+                continue;
+            }
+
+            if (lowerName.find(toLowerAscii(keyword)) != std::string::npos) {
+                if (errorMessage != nullptr) {
+                    *errorMessage = txt.getMessage("shop.name_blocked_keyword", {{"keyword", keyword}});
+                }
+                return false;
+            }
+        }
+    }
+
     BlockPos mainPos = getMainChestPos(pos, region);
-    bool     success = ChestRepository::getInstance().updateShopName(mainPos, dimId, name);
+    bool     success = ChestRepository::getInstance().updateShopName(mainPos, dimId, normalizedName);
     if (!success) {
-        logger.error("设置商店名称失败: name={}", name);
+        logger.error("设置商店名称失败: name={}", normalizedName);
+        if (errorMessage != nullptr) {
+            *errorMessage = txt.getMessage("shop.name_set_fail");
+        }
     }
 
     // 缓存一致性：使缓存失效
