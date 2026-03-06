@@ -5,8 +5,10 @@
 #include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
+#include "ll/api/service/Bedrock.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
+#include "mc/world/level/Level.h"
 #include "repository/ShopRepository.h"
 #include "service/I18nService.h"
 #include <algorithm>
@@ -416,6 +418,24 @@ std::vector<PlayerLookupCandidate> findFuzzyPlayerLookupCandidates(const std::st
     return candidates;
 }
 
+std::vector<PlayerLookupCandidate> getOnlinePlayerLookupCandidates() {
+    std::vector<PlayerLookupCandidate> candidates;
+    auto                              level = ll::service::getLevel();
+    if (!level) {
+        return candidates;
+    }
+
+    level->forEachPlayer([&candidates](Player& onlinePlayer) {
+        candidates.push_back({onlinePlayer.getUuid().asString(), onlinePlayer.getRealName()});
+        return true;
+    });
+
+    std::sort(candidates.begin(), candidates.end(), [](const PlayerLookupCandidate& a, const PlayerLookupCandidate& b) {
+        return a.name < b.name;
+    });
+    return candidates;
+}
+
 void showPlayerLookupCandidateForm(
     Player&                                 player,
     std::vector<PlayerLookupCandidate>      candidates,
@@ -563,14 +583,24 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, c
     auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
     fm.setTitle(i18n.get("trade_records.lookup_title"));
+    auto onlinePlayers = getOnlinePlayerLookupCandidates();
     fm.appendInput(
         "player_name",
         i18n.get("trade_records.lookup_player_name"),
         i18n.get("trade_records.lookup_player_hint"),
         initialKeyword
     );
+    if (!onlinePlayers.empty()) {
+        std::vector<std::string> playerOptions;
+        playerOptions.reserve(onlinePlayers.size() + 1);
+        playerOptions.push_back(i18n.get("trade_records.lookup_online_placeholder"));
+        for (const auto& onlinePlayer : onlinePlayers) {
+            playerOptions.push_back(onlinePlayer.name);
+        }
+        fm.appendDropdown("online_player", i18n.get("trade_records.lookup_online_player"), playerOptions, 0);
+    }
 
-    fm.sendTo(player, [onBack](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+    fm.sendTo(player, [onBack, onlinePlayers](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
         auto& i18n = I18nService::getInstance();
         if (!result.has_value() || result->empty()) {
             if (onBack) onBack(p);
@@ -585,6 +615,13 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, c
             }
         }
         playerName = trimCopy(playerName);
+
+        int selectedOnlineIndex = getDropdownIndex(result, "online_player", 0);
+        if (playerName.empty() && selectedOnlineIndex > 0
+            && selectedOnlineIndex <= static_cast<int>(onlinePlayers.size())) {
+            openPlayerTradeRecords(p, onlinePlayers[static_cast<size_t>(selectedOnlineIndex - 1)], onBack);
+            return;
+        }
 
         if (playerName.empty()) {
             p.sendMessage(i18n.get("trade_records.player_not_found"));

@@ -447,6 +447,8 @@
     "lookup_title": "Lookup Player Records",
     "lookup_player_name": "Player Name",
     "lookup_player_hint": "Enter a player name, fuzzy search supported",
+    "lookup_online_player": "Online Players",
+    "lookup_online_placeholder": "Select an online player directly",
     "lookup_select_title": "Select Player",
     "lookup_select_content": "Multiple players matched.\n§eKeyword: {keyword}",
     "player_not_found": "§cPlayer not found.",

@@ -445,7 +445,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         int                totalCount = std::get<1>(entry.second);
         const std::string& priceStr   = std::get<2>(entry.second);
 
-        std::string buttonText  = CT::FormUtils::getItemDisplayString(item, totalCount, true) + " " + priceStr;
+        std::string buttonText  = CT::FormUtils::getItemDisplayString(item, totalCount, false) + "\n" + priceStr;
         std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
         logger.debug(
