@@ -1,5 +1,6 @@
 #include "interaction/ChestDestroyHandler.h"
 
+#include "Utils/ChestTypeUtils.h"
 #include "compat/PermissionCompat.h"
 #include "compat/PLandCompat.h"
 #include "logger.h"
@@ -20,7 +21,7 @@ void handlePlayerDestroyBlock(ll::event::PlayerDestroyBlockEvent& event) {
     auto& region = player.getDimensionBlockSource();
     auto& block  = region.getBlock(pos);
 
-    if (block.getTypeName() != "minecraft:chest") {
+    if (!ChestTypeUtils::isSupportedChestBlock(block)) {
         return;
     }
 

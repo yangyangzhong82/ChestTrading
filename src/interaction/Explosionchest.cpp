@@ -1,4 +1,5 @@
 #include "ll/api/memory/Hook.h"
+#include "Utils/ChestTypeUtils.h"
 #include "mc/world/events/ExplosionStartedEvent.h"
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/Explosion.h"
@@ -35,7 +36,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     std::unordered_set<BlockPos> replaced;
     for (const auto& pos : *affectedBlocks) {
         // 检查主方块是否是箱子
-        if (region->getBlock(pos).getTypeName() == "minecraft:chest") {
+        if (ChestTypeUtils::isSupportedChestBlock(region->getBlock(pos))) {
             // 检查箱子是否需要保护
             int dimId = static_cast<int>(region->getDimensionId());
             if (ChestService::getInstance().isChestProtected(pos, dimId, *region)) {
@@ -44,7 +45,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             }
         }
         // 检查额外方块是否是箱子
-        if (region->getExtraBlock(pos).getTypeName() == "minecraft:chest") {
+        if (ChestTypeUtils::isSupportedChestBlock(region->getExtraBlock(pos))) {
             // 检查箱子是否需要保护
             int dimId = static_cast<int>(region->getDimensionId());
             if (ChestService::getInstance().isChestProtected(pos, dimId, *region)) {

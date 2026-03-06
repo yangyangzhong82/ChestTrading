@@ -218,6 +218,10 @@ void registerCommand() {
                 return;
             }
             std::string uuid = player->getUuid().asString();
+            if (!PermissionCompat::hasPermission(uuid, "chest.pack")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
             if (isInPackChestMode(uuid)) {
                 setPackChestMode(uuid, false);
                 output.success(i18n.get("command.packchest_exit"));

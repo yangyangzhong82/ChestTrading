@@ -1,5 +1,6 @@
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
+#include "Utils/ChestTypeUtils.h"
 #include "mc/deps/ecs/gamerefs_entity/EntityContext.h"
 #include "mc/deps/game_refs/WeakRef.h"
 #include "mc/world/actor/Actor.h"
@@ -37,7 +38,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                 // 检查方块是否存在且是箱子
                 if (region.hasBlock(currentPos)) {
                     auto& block = region.getBlock(currentPos);
-                    if (block.getTypeName() == "minecraft:chest") {
+                    if (ChestTypeUtils::isSupportedChestBlock(block)) {
                         // 检查箱子是否需要保护
                         if (ChestService::getInstance().isChestProtected(currentPos, dimId, region)) {
                             logger.debug(
@@ -146,7 +147,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 
                     // 获取方块
                     auto block = griefingEvent->mBlock;
-                    if (block->getTypeName() == "minecraft:chest") {
+                    if (ChestTypeUtils::isSupportedChestTypeName(block->getTypeName())) {
                         // 检查箱子是否需要保护
                         if (ChestService::getInstance().isChestProtected(*pos, dim, region)) {
                             logger.debug(
@@ -194,7 +195,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
                 // 检查方块是否存在且是箱子
                 if (region.hasBlock(currentPos)) {
                     auto& block = region.getBlock(currentPos);
-                    if (block.getTypeName() == "minecraft:chest") {
+                    if (ChestTypeUtils::isSupportedChestBlock(block)) {
                         // 检查箱子是否需要保护
                         if (ChestService::getInstance().isChestProtected(currentPos, dimId, region)) {
                             logger.debug(
@@ -230,7 +231,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     // 检查被推动的方块是否存在且是箱子 (curPos即为被推动方块的坐标)
     if (region.hasBlock(curPos)) {
         auto& block = region.getBlock(curPos);
-        if (block.getTypeName() == "minecraft:chest") {
+        if (ChestTypeUtils::isSupportedChestBlock(block)) {
             int dimId = static_cast<int>(region.getDimensionId());
             if (ChestService::getInstance().isChestProtected(curPos, dimId, region)) {
                 logger.debug(

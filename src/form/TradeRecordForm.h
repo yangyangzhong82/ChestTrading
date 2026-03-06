@@ -6,7 +6,7 @@
 
 namespace CT {
 
-void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack = {});
+void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack = {}, bool showLastPurchase = true);
 void showPlayerTradeRecordsForm(Player& player, std::function<void(Player&)> onBack = {});
 void showShopTradeRecordsForm(
     Player&                      player,

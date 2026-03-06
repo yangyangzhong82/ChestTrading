@@ -1,7 +1,9 @@
 #include "interaction/ChestPlaceHandler.h"
 
 #include "FloatingText/FloatingText.h"
+#include "Utils/ChestTypeUtils.h"
 #include "Utils/NbtUtils.h"
+#include "compat/PermissionCompat.h"
 #include "compat/PLandCompat.h"
 #include "logger.h"
 #include "mc/nbt/CompoundTag.h"
@@ -32,7 +34,7 @@ void handlePlayerPlacingBlock(ll::event::PlayerPlacingBlockEvent& ev) {
 
     logger.debug("handlePlayerPlacingBlock: item={}", item.getTypeName());
 
-    if (item.getTypeName() != "minecraft:chest") {
+    if (!ChestTypeUtils::isSupportedChestItemTypeName(item.getTypeName())) {
         return;
     }
 
@@ -69,8 +71,14 @@ void handlePlayerPlacingBlock(ll::event::PlayerPlacingBlockEvent& ev) {
     int64_t packedId = ctData.at("packedId").get<Int64Tag>();
     logger.info("handlePlayerPlacingBlock: found packedId={}", packedId);
 
-    // 缓存 packed_id 供放置后使用
     std::string playerUuid = player.getUuid().asString();
+    if (!PermissionCompat::hasPermission(playerUuid, "chest.pack")) {
+        ev.cancel();
+        player.sendMessage(TextService::getInstance().getMessage("command.no_permission"));
+        return;
+    }
+
+    // 缓存 packed_id 供放置后使用
     {
         std::lock_guard<std::mutex> lock(gPendingMutex);
         gPendingPackedId[playerUuid] = packedId;
@@ -81,7 +89,7 @@ void handlePlayerPlacedBlock(ll::event::PlayerPlacedBlockEvent& ev) {
     auto& placedBlock = ev.placedBlock();
     logger.debug("handlePlayerPlacedBlock: block={}", placedBlock.getTypeName());
 
-    if (placedBlock.getTypeName() != "minecraft:chest") {
+    if (!ChestTypeUtils::isSupportedChestTypeName(placedBlock.getTypeName())) {
         return;
     }
 

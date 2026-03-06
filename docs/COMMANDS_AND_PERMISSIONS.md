@@ -19,7 +19,7 @@
 | `/players` | 无 | 按玩家浏览商店 | 仅玩家 |
 | `/recycleplayers` | 无 | 按玩家浏览回收商店 | 仅玩家 |
 | `/records` | 无 | 打开全服交易记录表单 | 仅玩家 |
-| `/packchest` | 无 | 切换“打包箱子模式”开关 | 仅玩家 |
+| `/packchest` | 无 | 切换“打包箱子模式”开关 | 仅玩家；需要 `chest.pack` |
 | `/ctlimitreset` | 无 | 显示重置限购用法说明 | 仅玩家；需要管理员权限 |
 | `/ctlimitreset shop <x> <y> <z> [item_id]` | `shop` 子命令 | 重置商店限购窗口（可选指定商品） | 仅玩家；需要管理员权限 |
 | `/ctlimitreset recycle <x> <y> <z> [item_id]` | `recycle` 子命令 | 重置回收限购窗口（可选指定商品） | 仅玩家；需要管理员权限 |
@@ -49,6 +49,7 @@
 | `chest.create.shop` | 允许创建“商店”。 |
 | `chest.create.adminshop` | 允许创建“官方商店”。 |
 | `chest.create.adminrecycle` | 允许创建“官方回收商店”。 |
+| `chest.pack` | 允许进入打包箱子模式，并执行打包/恢复已打包箱子。 |
 
 ## 3. 重要说明
 

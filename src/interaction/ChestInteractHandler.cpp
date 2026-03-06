@@ -2,6 +2,7 @@
 
 #include "compat/PermissionCompat.h"
 #include "Config/ConfigManager.h"
+#include "Utils/ChestTypeUtils.h"
 #include "Utils/NbtUtils.h"
 #include "command/command.h"
 #include "compat/PLandCompat.h"
@@ -89,6 +90,11 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
 
     auto& txt = TextService::getInstance();
 
+    if (!PermissionCompat::hasPermission(playerUuid, "chest.pack")) {
+        player.sendMessage(txt.getMessage("command.no_permission"));
+        return true;
+    }
+
     // Packing removes the original chest block, so destroy permission is required.
     if (!PLandCompat::getInstance().canDestroy(player, originalPos)) {
         player.sendMessage(txt.getMessage("chest.land_no_permission_pack"));
@@ -129,7 +135,7 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     }
 
     CompoundTag itemNbt;
-    itemNbt["Name"]        = StringTag("minecraft:chest");
+    itemNbt["Name"]        = StringTag(region.getBlock(originalPos).getTypeName());
     itemNbt["Count"]       = ByteTag(1);
     itemNbt["Damage"]      = ShortTag(0);
     itemNbt["WasPickedUp"] = ByteTag(0);
@@ -243,7 +249,7 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
     bool wasCancelled = ev.isCancelled();
 
     auto block = ev.block();
-    if (block->getTypeName() != "minecraft:chest") {
+    if (!ChestTypeUtils::isSupportedChestTypeName(block->getTypeName())) {
         return;
     }
 

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <optional>
+#include <unordered_set>
 #include <vector>
 
 namespace CT {
@@ -63,6 +64,11 @@ struct DisplayTradeRecord {
     double          unitPrice = 0.0;
 };
 
+struct PlayerLookupCandidate {
+    std::string uuid;
+    std::string name;
+};
+
 bool isAdmin(const Player& player) {
     return PermissionCompat::hasPermission(player.getUuid().asString(), "chest.admin");
 }
@@ -70,6 +76,15 @@ bool isAdmin(const Player& player) {
 std::string toLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return str;
+}
+
+std::string trimCopy(const std::string& value) {
+    auto begin = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    auto end   = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) { return std::isspace(ch) != 0; }).base();
+    if (begin >= end) {
+        return {};
+    }
+    return std::string(begin, end);
 }
 
 bool fuzzyMatch(const std::string& text, const std::string& keyword) {
@@ -332,6 +347,100 @@ void teleportToLastPurchase(Player& player) {
 }
 
 void showTradeRecordListForm(Player& player, TradeRecordListState state);
+void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, const std::string& initialKeyword = {});
+
+void openPlayerTradeRecords(Player& player, const PlayerLookupCandidate& candidate, std::function<void(Player&)> onBack) {
+    auto& i18n = I18nService::getInstance();
+
+    TradeRecordListState state;
+    state.actorUuid          = candidate.uuid;
+    state.actorName          = candidate.name;
+    state.title              = i18n.get("trade_records.target_title", {{"player", candidate.name}});
+    state.allowPlayerKeyword = false;
+    state.onBack             = onBack;
+    showTradeRecordListForm(player, state);
+}
+
+std::vector<PlayerLookupCandidate> findFuzzyPlayerLookupCandidates(const std::string& keyword) {
+    std::vector<PlayerLookupCandidate> candidates;
+    if (keyword.empty()) {
+        return candidates;
+    }
+
+    TradeRecordQuery query;
+    auto             records = ShopRepository::getInstance().getTradeRecords(query);
+    if (records.empty()) {
+        return candidates;
+    }
+
+    std::vector<std::string> actorUuids;
+    actorUuids.reserve(records.size());
+    for (const auto& record : records) {
+        actorUuids.push_back(record.actorUuid);
+    }
+
+    auto nameCache = FormUtils::getPlayerNameCache(actorUuids);
+    std::unordered_set<std::string> seen;
+    const std::string               unknownOwner = I18nService::getInstance().get("public_shop.unknown_owner");
+
+    for (const auto& actorUuid : actorUuids) {
+        if (actorUuid.empty() || !seen.insert(actorUuid).second) {
+            continue;
+        }
+
+        auto nameIt = nameCache.find(actorUuid);
+        if (nameIt == nameCache.end()) {
+            continue;
+        }
+
+        const std::string& actorName = nameIt->second;
+        if (actorName.empty() || actorName == unknownOwner) {
+            continue;
+        }
+
+        if (fuzzyMatch(actorName, keyword)) {
+            candidates.push_back({actorUuid, actorName});
+        }
+    }
+
+    const std::string lowerKeyword = toLower(keyword);
+    std::sort(candidates.begin(), candidates.end(), [&lowerKeyword](const PlayerLookupCandidate& a, const PlayerLookupCandidate& b) {
+        const bool exactA = toLower(a.name) == lowerKeyword;
+        const bool exactB = toLower(b.name) == lowerKeyword;
+        if (exactA != exactB) {
+            return exactA;
+        }
+        return a.name < b.name;
+    });
+
+    return candidates;
+}
+
+void showPlayerLookupCandidateForm(
+    Player&                                 player,
+    std::vector<PlayerLookupCandidate>      candidates,
+    std::function<void(Player&)>            onBack,
+    const std::string&                      keyword
+) {
+    auto&                i18n = I18nService::getInstance();
+    ll::form::SimpleForm fm;
+    fm.setTitle(i18n.get("trade_records.lookup_select_title"));
+    fm.setContent(i18n.get(
+        "trade_records.lookup_select_content",
+        {
+            {"keyword", keyword}
+        }
+    ));
+
+    for (const auto& candidate : candidates) {
+        fm.appendButton(candidate.name, [candidate, onBack](Player& p) { openPlayerTradeRecords(p, candidate, onBack); });
+    }
+
+    fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [onBack, keyword](Player& p) {
+        showPlayerLookupForm(p, onBack, keyword);
+    });
+    fm.sendTo(player);
+}
 
 void showTradeRecordDetailForm(Player& player, const DisplayTradeRecord& record, const TradeRecordListState& state) {
     auto&                i18n = I18nService::getInstance();
@@ -450,11 +559,16 @@ void showTradeRecordSearchForm(Player& player, TradeRecordListState state) {
     });
 }
 
-void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack) {
+void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, const std::string& initialKeyword) {
     auto&                i18n = I18nService::getInstance();
     ll::form::CustomForm fm;
     fm.setTitle(i18n.get("trade_records.lookup_title"));
-    fm.appendInput("player_name", i18n.get("trade_records.lookup_player_name"), i18n.get("trade_records.lookup_player_hint"));
+    fm.appendInput(
+        "player_name",
+        i18n.get("trade_records.lookup_player_name"),
+        i18n.get("trade_records.lookup_player_hint"),
+        initialKeyword
+    );
 
     fm.sendTo(player, [onBack](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
         auto& i18n = I18nService::getInstance();
@@ -470,6 +584,7 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack) {
                 playerName = *value;
             }
         }
+        playerName = trimCopy(playerName);
 
         if (playerName.empty()) {
             p.sendMessage(i18n.get("trade_records.player_not_found"));
@@ -478,19 +593,25 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack) {
         }
 
         auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(playerName);
-        if (!playerInfo) {
+
+        if (playerInfo) {
+            openPlayerTradeRecords(p, {playerInfo->uuid.asString(), playerInfo->name}, onBack);
+            return;
+        }
+
+        auto candidates = findFuzzyPlayerLookupCandidates(playerName);
+        if (candidates.empty()) {
             p.sendMessage(i18n.get("trade_records.player_not_found"));
             if (onBack) onBack(p);
             return;
         }
 
-        TradeRecordListState state;
-        state.actorUuid          = playerInfo->uuid.asString();
-        state.actorName          = playerInfo->name;
-        state.title              = i18n.get("trade_records.target_title", {{"player", playerInfo->name}});
-        state.allowPlayerKeyword = false;
-        state.onBack             = onBack;
-        showTradeRecordListForm(p, state);
+        if (candidates.size() == 1) {
+            openPlayerTradeRecords(p, candidates.front(), onBack);
+            return;
+        }
+
+        showPlayerLookupCandidateForm(p, std::move(candidates), onBack, playerName);
     });
 }
 
@@ -583,7 +704,7 @@ void showTradeRecordListForm(Player& player, TradeRecordListState state) {
 
 } // namespace
 
-void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack) {
+void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack, bool showLastPurchase) {
     auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
     bool                 admin = isAdmin(player);
@@ -591,24 +712,38 @@ void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack
     fm.setTitle(i18n.get("trade_records.menu_title"));
     fm.setContent(i18n.get(admin ? "trade_records.menu_content_admin" : "trade_records.menu_content"));
 
-    fm.appendButton(i18n.get("trade_records.button_personal_records"), [onBack](Player& p) {
-        showPlayerTradeRecordsForm(p, [onBack](Player& backPlayer) { showTradeRecordMenuForm(backPlayer, onBack); });
+    fm.appendButton(i18n.get("trade_records.button_personal_records"), [onBack, showLastPurchase](Player& p) {
+        showPlayerTradeRecordsForm(
+            p,
+            [onBack, showLastPurchase](Player& backPlayer) {
+                showTradeRecordMenuForm(backPlayer, onBack, showLastPurchase);
+            }
+        );
     });
 
-    if (admin) {
-        fm.appendButton(i18n.get("trade_records.button_global_records"), [onBack](Player& p) {
-            TradeRecordListState state;
-            state.title  = I18nService::getInstance().get("trade_records.global_title");
-            state.onBack = [onBack](Player& backPlayer) { showTradeRecordMenuForm(backPlayer, onBack); };
-            showTradeRecordListForm(p, state);
+    fm.appendButton(i18n.get("trade_records.button_global_records"), [onBack, showLastPurchase](Player& p) {
+        TradeRecordListState state;
+        state.title  = I18nService::getInstance().get("trade_records.global_title");
+        state.onBack = [onBack, showLastPurchase](Player& backPlayer) {
+            showTradeRecordMenuForm(backPlayer, onBack, showLastPurchase);
+        };
+        showTradeRecordListForm(p, state);
+    });
+
+    if (showLastPurchase) {
+        fm.appendButton(i18n.get("trade_records.button_last_purchase"), [](Player& p) {
+            teleportToLastPurchase(p);
         });
     }
 
-    if (admin) {
-        fm.appendButton(i18n.get("trade_records.button_lookup_player"), [onBack](Player& p) {
-            showPlayerLookupForm(p, [onBack](Player& backPlayer) { showTradeRecordMenuForm(backPlayer, onBack); });
-        });
-    }
+    fm.appendButton(i18n.get("trade_records.button_lookup_player"), [onBack, showLastPurchase](Player& p) {
+        showPlayerLookupForm(
+            p,
+            [onBack, showLastPurchase](Player& backPlayer) {
+                showTradeRecordMenuForm(backPlayer, onBack, showLastPurchase);
+            }
+        );
+    });
 
     fm.appendButton(i18n.get("form.button_back"), "textures/ui/arrow_left", "path", [onBack](Player& p) {
         if (onBack) onBack(p);

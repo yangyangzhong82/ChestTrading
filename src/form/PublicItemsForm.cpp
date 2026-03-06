@@ -70,7 +70,7 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
         [currentPage, searchKeyword](Player& p) {
             showTradeRecordMenuForm(p, [currentPage, searchKeyword](Player& playerToBack) {
                 showPublicItemsForm(playerToBack, currentPage, searchKeyword);
-            });
+            }, false);
         }
     );
 
@@ -221,7 +221,7 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
         [currentPage, searchKeyword](Player& p) {
             showTradeRecordMenuForm(p, [currentPage, searchKeyword](Player& playerToBack) {
                 showPublicRecycleItemsForm(playerToBack, currentPage, searchKeyword);
-            });
+            }, false);
         }
     );
 
