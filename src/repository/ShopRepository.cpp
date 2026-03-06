@@ -1,8 +1,43 @@
 #include "ShopRepository.h"
 #include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
+#include <algorithm>
 
 namespace CT {
+
+namespace {
+
+constexpr int UNSET_INT = -2147483647;
+
+struct TradeQueryArgs {
+    std::string actorUuid;
+    int         dimId;
+    int         posX;
+    int         posY;
+    int         posZ;
+    int         itemId;
+    int         officialMode;
+};
+
+TradeQueryArgs makeTradeQueryArgs(const TradeRecordQuery& query) {
+    TradeQueryArgs args;
+    args.actorUuid    = query.actorUuid.value_or("");
+    args.dimId        = query.dimId.value_or(-1);
+    args.posX         = query.pos ? query.pos->x : UNSET_INT;
+    args.posY         = query.pos ? query.pos->y : UNSET_INT;
+    args.posZ         = query.pos ? query.pos->z : UNSET_INT;
+    args.itemId       = query.itemId.value_or(-1);
+    args.officialMode = query.officialOnly.has_value() ? (*query.officialOnly ? 1 : 0) : -1;
+    return args;
+}
+
+bool tradeRecordTimeDesc(const TradeRecordData& a, const TradeRecordData& b) {
+    if (a.timestamp != b.timestamp) return a.timestamp > b.timestamp;
+    if (a.id != b.id) return a.id > b.id;
+    return static_cast<int>(a.kind) < static_cast<int>(b.kind);
+}
+
+} // namespace
 
 ShopRepository& ShopRepository::getInstance() {
     static ShopRepository instance;
@@ -188,6 +223,157 @@ std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const s
             r.getString(10)
         };
     });
+}
+
+std::optional<PurchaseRecordData> ShopRepository::getLatestPurchaseRecord(const std::string& playerUuid) {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT p.id, p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id, p.buyer_uuid, "
+        "p.purchase_count, p.total_price, p.timestamp, d.item_nbt "
+        "FROM purchase_records p "
+        "JOIN item_definitions d ON p.item_id = d.item_id "
+        "WHERE p.buyer_uuid = ? "
+        "ORDER BY p.timestamp DESC, p.id DESC LIMIT 1;",
+        playerUuid
+    );
+
+    return parseSingleRow<PurchaseRecordData>(results, 11, [](DbRowParser r) {
+        return PurchaseRecordData{
+            r.getInt(0),
+            r.getInt(1),
+            BlockPos{r.getInt(2), r.getInt(3), r.getInt(4)},
+            r.getInt(5),
+            r.getString(6),
+            r.getInt(7),
+            r.getDouble(8),
+            r.getString(9),
+            r.getString(10)
+        };
+    });
+}
+
+std::vector<TradeRecordData> ShopRepository::getTradeRecords(const TradeRecordQuery& query) {
+    auto&                        db   = Sqlite3Wrapper::getInstance();
+    auto                         args = makeTradeQueryArgs(query);
+    std::vector<TradeRecordData> records;
+    const std::string            unsetPos = std::to_string(UNSET_INT);
+
+    if (query.includePurchase) {
+        std::string purchaseSql =
+            "SELECT p.id, p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id, p.buyer_uuid, "
+            "p.purchase_count, p.total_price, p.timestamp, d.item_nbt, "
+            "COALESCE(c.player_uuid, ''), COALESCE(c.shop_name, ''), COALESCE(c.type, 2) "
+            "FROM purchase_records p "
+            "JOIN item_definitions d ON p.item_id = d.item_id "
+            "LEFT JOIN chests c ON c.dim_id = p.dim_id AND c.pos_x = p.pos_x AND c.pos_y = p.pos_y AND c.pos_z = p.pos_z "
+            "WHERE (? = '' OR p.buyer_uuid = ?) "
+            "AND (? < 0 OR p.dim_id = ?) "
+            "AND (? = " + unsetPos + " OR p.pos_x = ?) "
+            "AND (? = " + unsetPos + " OR p.pos_y = ?) "
+            "AND (? = " + unsetPos + " OR p.pos_z = ?) "
+            "AND (? < 0 OR p.item_id = ?) "
+            "AND (? = -1 OR (? = 1 AND c.type = 5) OR (? = 0 AND c.type = 2)) "
+            "ORDER BY p.timestamp DESC, p.id DESC;";
+
+        auto purchaseRows = db.query(
+            purchaseSql,
+            args.actorUuid,
+            args.actorUuid,
+            args.dimId,
+            args.dimId,
+            args.posX,
+            args.posX,
+            args.posY,
+            args.posY,
+            args.posZ,
+            args.posZ,
+            args.itemId,
+            args.itemId,
+            args.officialMode,
+            args.officialMode,
+            args.officialMode
+        );
+
+        auto purchaseRecords = parseRows<TradeRecordData>(purchaseRows, 14, [](DbRowParser r) {
+            int chestType = r.getIntOr(13, 2);
+            return TradeRecordData{
+                r.getInt(0),
+                TradeRecordKind::Purchase,
+                r.getInt(1),
+                BlockPos{r.getInt(2), r.getInt(3), r.getInt(4)},
+                r.getInt(5),
+                r.getString(6),
+                r.getString(11),
+                r.getString(12),
+                r.getString(10),
+                r.getInt(7),
+                r.getDouble(8),
+                r.getString(9),
+                chestType == 5
+            };
+        });
+        records.insert(records.end(), purchaseRecords.begin(), purchaseRecords.end());
+    }
+
+    if (query.includeRecycle) {
+        std::string recycleSql =
+            "SELECT r.id, r.dim_id, r.pos_x, r.pos_y, r.pos_z, r.item_id, r.recycler_uuid, "
+            "r.recycle_count, r.total_price, r.timestamp, d.item_nbt, "
+            "COALESCE(c.player_uuid, ''), COALESCE(c.shop_name, ''), COALESCE(c.type, 3) "
+            "FROM recycle_records r "
+            "JOIN item_definitions d ON r.item_id = d.item_id "
+            "LEFT JOIN chests c ON c.dim_id = r.dim_id AND c.pos_x = r.pos_x AND c.pos_y = r.pos_y AND c.pos_z = r.pos_z "
+            "WHERE (? = '' OR r.recycler_uuid = ?) "
+            "AND (? < 0 OR r.dim_id = ?) "
+            "AND (? = " + unsetPos + " OR r.pos_x = ?) "
+            "AND (? = " + unsetPos + " OR r.pos_y = ?) "
+            "AND (? = " + unsetPos + " OR r.pos_z = ?) "
+            "AND (? < 0 OR r.item_id = ?) "
+            "AND (? = -1 OR (? = 1 AND c.type = 6) OR (? = 0 AND c.type = 3)) "
+            "ORDER BY r.timestamp DESC, r.id DESC;";
+
+        auto recycleRows = db.query(
+            recycleSql,
+            args.actorUuid,
+            args.actorUuid,
+            args.dimId,
+            args.dimId,
+            args.posX,
+            args.posX,
+            args.posY,
+            args.posY,
+            args.posZ,
+            args.posZ,
+            args.itemId,
+            args.itemId,
+            args.officialMode,
+            args.officialMode,
+            args.officialMode
+        );
+
+        auto recycleRecords = parseRows<TradeRecordData>(recycleRows, 14, [](DbRowParser r) {
+            int chestType = r.getIntOr(13, 3);
+            return TradeRecordData{
+                r.getInt(0),
+                TradeRecordKind::Recycle,
+                r.getInt(1),
+                BlockPos{r.getInt(2), r.getInt(3), r.getInt(4)},
+                r.getInt(5),
+                r.getString(6),
+                r.getString(11),
+                r.getString(12),
+                r.getString(10),
+                r.getInt(7),
+                r.getDouble(8),
+                r.getString(9),
+                chestType == 6
+            };
+        });
+        records.insert(records.end(), recycleRecords.begin(), recycleRecords.end());
+    }
+
+    std::sort(records.begin(), records.end(), tradeRecordTimeDesc);
+    return records;
 }
 
 std::vector<RecycleItemData> ShopRepository::findAllRecycleItems(BlockPos pos, int dimId) {

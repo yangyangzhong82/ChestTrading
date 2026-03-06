@@ -6,6 +6,7 @@
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
 #include "form/SalesRankingForm.h"
+#include "form/TradeRecordForm.h"
 #include "ll/api/command/CommandHandle.h"
 #include "ll/api/command/CommandRegistrar.h"
 #include "mc/server/commands/CommandOrigin.h"
@@ -187,6 +188,19 @@ void registerCommand() {
                 return;
             }
             showPublicRecycleShopListForm(*player);
+        }
+    );
+
+    auto& recordsCmd =
+        registrar.getOrCreateCommand("records", i18n.get("command.records_description"), CommandPermissionLevel::Any);
+    recordsCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showTradeRecordMenuForm(*player);
         }
     );
 

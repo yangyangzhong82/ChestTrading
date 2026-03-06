@@ -4,6 +4,7 @@
 #include "FormUtils.h"
 #include "LockForm.h"
 #include "PlayerLimitForm.h"
+#include "TradeRecordForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -107,98 +108,7 @@ void showShopChestItemsForm(Player& player, BlockPos pos, int dimId, BlockSource
 }
 
 void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack) {
-    ll::form::SimpleForm fm;
-    auto&                txt        = TextService::getInstance();
-    std::string          playerUuid = player.getUuid().asString();
-
-    fm.setTitle(txt.getMessage("form.purchase_history_title"));
-
-    auto records = ShopRepository::getInstance().getPlayerPurchaseHistory(playerUuid, 20);
-
-    if (records.empty()) {
-        fm.setContent(txt.getMessage("shop.no_purchase_history"));
-    } else {
-        fm.setContent(txt.getMessage("shop.purchase_history_hint"));
-        for (const auto& record : records) {
-            auto itemPtr = CT::FormUtils::createItemStackFromNbtString(record.itemNbt);
-            if (!itemPtr) continue;
-
-            std::string itemName    = itemPtr->getName();
-            std::string texturePath = CT::FormUtils::getItemTexturePath(*itemPtr);
-            std::string buttonText  = txt.getMessage(
-                "form.history_item_button",
-                {
-                    {"item",  itemName                                  },
-                    {"stock", std::to_string(record.purchaseCount)      },
-                    {"price", CT::MoneyFormat::format(record.totalPrice)}
-            }
-            );
-
-            BlockPos recordPos  = record.pos;
-            int      recordDim  = record.dimId;
-            int      itemId     = record.itemId;
-            auto     itemNbtStr = record.itemNbt;
-
-            auto callback = [recordPos, recordDim, itemId, itemNbtStr](Player& p) {
-                auto& txt    = TextService::getInstance();
-                auto& config = ConfigManager::getInstance().get();
-
-                // 妫€鏌ヤ紶閫佸喎鍗?
-                std::string uuid = p.getUuid().asString();
-                if (!TeleportService::getInstance().canTeleport(uuid)) {
-                    int remaining = TeleportService::getInstance().getRemainingCooldown(uuid);
-                    p.sendMessage(txt.getMessage(
-                        "teleport.cooldown",
-                        {
-                            {"seconds", std::to_string(remaining)}
-                    }
-                    ));
-                    return;
-                }
-
-                // 妫€鏌ラ噾閽?
-                double cost = config.teleportSettings.teleportCost;
-                if (cost > 0 && Economy::getMoney(p) < cost) {
-                    p.sendMessage(txt.getMessage(
-                        "teleport.insufficient_money",
-                        {
-                            {"cost", CT::MoneyFormat::format(cost)}
-                    }
-                    ));
-                    return;
-                }
-
-                // 鎵ｉ挶骞朵紶閫?
-                if (cost > 0) Economy::reduceMoney(p, cost);
-                TeleportService::getInstance().recordTeleport(uuid);
-
-                p.teleport(Vec3(recordPos.x + 0.5f, recordPos.y + 1.0f, recordPos.z + 0.5f), recordDim);
-                p.sendMessage(txt.getMessage(
-                    "teleport.success",
-                    {
-                        {"cost", CT::MoneyFormat::format(cost)}
-                }
-                ));
-            };
-
-            if (!texturePath.empty()) {
-                fm.appendButton(buttonText, texturePath, "path", callback);
-            } else {
-                fm.appendButton(buttonText, callback);
-            }
-        }
-    }
-
-    fm.appendButton(
-        txt.getMessage("form.button_back"),
-        "textures/ui/arrow_left",
-        "path",
-        [onBack](Player& p) {
-            if (onBack) onBack(p);
-        }
-    );
-
-    fm.sendTo(player);
+    showPlayerTradeRecordsForm(player, onBack);
 }
 
 void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
@@ -634,47 +544,11 @@ void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& r
 }
 
 void showPurchaseRecordsForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    ll::form::SimpleForm fm;
-    auto&                txt = TextService::getInstance();
-    fm.setTitle(txt.getMessage("form.shop_records_title"));
-
-    auto records = ShopRepository::getInstance().getPurchaseRecords(pos, dimId);
-
-
-    if (records.empty()) {
-        fm.setContent(txt.getMessage("shop.no_records"));
-    } else {
-        std::string content = txt.getMessage("shop.records_title");
-        for (const auto& record : records) {
-            auto        itemPtr  = CT::FormUtils::createItemStackFromNbtString(record.itemNbt);
-            std::string itemName = itemPtr ? itemPtr->getName() : txt.getMessage("shop.unknown_item");
-
-            std::string buyerName = record.buyerUuid;
-            auto playerInfo = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(record.buyerUuid));
-            if (playerInfo) {
-                buyerName = playerInfo->name;
-            }
-
-            content += txt.getMessage(
-                "form.purchase_record_format",
-                {
-                    {"timestamp", record.timestamp                          },
-                    {"player",    buyerName                                 },
-                    {"item",      itemName                                  },
-                    {"count",     std::to_string(record.purchaseCount)      },
-                    {"price",     CT::MoneyFormat::format(record.totalPrice)}
-            }
-            );
-        }
-        fm.setContent(content);
-    }
-
-    fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {
-        auto& region = p.getDimensionBlockSource();
-        showShopChestManageForm(p, pos, dimId, region);
+    (void)region;
+    showShopTradeRecordsForm(player, pos, dimId, [pos, dimId](Player& p) {
+        auto& regionRef = p.getDimensionBlockSource();
+        showShopChestManageForm(p, pos, dimId, regionRef);
     });
-
-    fm.sendTo(player);
 }
 
 } // namespace CT

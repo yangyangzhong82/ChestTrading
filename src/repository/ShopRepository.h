@@ -57,6 +57,37 @@ struct PurchaseRecordData {
     std::string itemNbt; // 关联的物品NBT
 };
 
+enum class TradeRecordKind {
+    Purchase,
+    Recycle
+};
+
+struct TradeRecordData {
+    int             id;
+    TradeRecordKind kind;
+    int             dimId;
+    BlockPos        pos;
+    int             itemId;
+    std::string     actorUuid;
+    std::string     ownerUuid;
+    std::string     shopName;
+    std::string     itemNbt;
+    int             tradeCount;
+    double          totalPrice;
+    std::string     timestamp;
+    bool            isOfficial;
+};
+
+struct TradeRecordQuery {
+    bool                       includePurchase = true;
+    bool                       includeRecycle  = true;
+    std::optional<std::string> actorUuid;
+    std::optional<int>         dimId;
+    std::optional<BlockPos>    pos;
+    std::optional<int>         itemId;
+    std::optional<bool>        officialOnly;
+};
+
 // 公开商店物品数据（包含商店信息）
 struct PublicShopItemData {
     int         dimId;
@@ -130,6 +161,8 @@ public:
     bool                            addPurchaseRecord(const PurchaseRecordData& record);
     std::vector<PurchaseRecordData> getPurchaseRecords(BlockPos pos, int dimId, int limit = 50);
     std::vector<PurchaseRecordData> getPlayerPurchaseHistory(const std::string& playerUuid, int limit = 50);
+    std::optional<PurchaseRecordData> getLatestPurchaseRecord(const std::string& playerUuid);
+    std::vector<TradeRecordData> getTradeRecords(const TradeRecordQuery& query);
 
     // === 回收商店 ===
     std::vector<RecycleItemData>   findAllRecycleItems(BlockPos pos, int dimId);

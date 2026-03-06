@@ -4,6 +4,7 @@
 #include "LLMoney.h"
 #include "LockForm.h"
 #include "PlayerLimitForm.h"
+#include "TradeRecordForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -582,6 +583,13 @@ void showRecycleShopManageForm(Player& player, BlockPos pos, int dimId, BlockSou
     fm.appendButton(txt.getMessage("form.button_view_commission"), [pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
         showViewRecycleCommissionsForm(p, pos, dimId, region);
+    });
+
+    fm.appendButton(txt.getMessage("form.button_view_records"), [pos, dimId](Player& p) {
+        showRecycleShopTradeRecordsForm(p, pos, dimId, [pos, dimId](Player& backPlayer) {
+            auto& regionRef = backPlayer.getDimensionBlockSource();
+            showRecycleShopManageForm(backPlayer, pos, dimId, regionRef);
+        });
     });
 
     fm.appendButton(txt.getMessage("form.button_back"), [pos, dimId](Player& p) {

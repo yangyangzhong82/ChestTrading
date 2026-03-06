@@ -1,6 +1,7 @@
 #include "PublicItemsForm.h"
 #include "FormUtils.h"
 #include "ShopForm.h"
+#include "TradeRecordForm.h"
 #include "Utils/MoneyFormat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
@@ -63,11 +64,11 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
         showSearchForm(p);
     });
     fm.appendButton(
-        i18n.get("form.button_purchase_history"),
+        i18n.get("form.button_trade_records"),
         "textures/ui/book_edit_default",
         "path",
         [currentPage, searchKeyword](Player& p) {
-            showPlayerPurchaseHistoryForm(p, [currentPage, searchKeyword](Player& playerToBack) {
+            showTradeRecordMenuForm(p, [currentPage, searchKeyword](Player& playerToBack) {
                 showPublicItemsForm(playerToBack, currentPage, searchKeyword);
             });
         }
@@ -214,11 +215,11 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
         showRecycleSearchForm(p);
     });
     fm.appendButton(
-        i18n.get("form.button_purchase_history"),
+        i18n.get("form.button_trade_records"),
         "textures/ui/book_edit_default",
         "path",
         [currentPage, searchKeyword](Player& p) {
-            showPlayerPurchaseHistoryForm(p, [currentPage, searchKeyword](Player& playerToBack) {
+            showTradeRecordMenuForm(p, [currentPage, searchKeyword](Player& playerToBack) {
                 showPublicRecycleItemsForm(playerToBack, currentPage, searchKeyword);
             });
         }
