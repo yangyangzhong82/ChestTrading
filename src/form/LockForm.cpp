@@ -8,6 +8,7 @@
 #include "Utils/economy.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
+#include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
 #include "service/ChestService.h"
@@ -92,13 +93,30 @@ void showChestLockForm(
         if (ownerUuid == player_uuid || isAdmin) {
             // 当前玩家是主人或管理员
             std::string typeStr = textService.getChestTypeName(chestType);
+            std::string content;
+            if (isAdmin && ownerUuid != player_uuid && !ownerUuid.empty()) {
+                std::string ownerName = ownerUuid;
+                if (auto info = ll::service::PlayerInfo::getInstance().fromUuid(mce::UUID::fromString(ownerUuid))) {
+                    ownerName = info->name;
+                }
+                content += textService.getMessage(
+                    "form.chest_manage_admin_content",
+                    {
+                        {"owner", ownerName},
+                        {"type",  typeStr   }
+                    }
+                );
+                content += "\n";
+            }
+
             fm.setTitle(textService.getMessage("form.chest_manage_title"));
-            fm.setContent(textService.getMessage(
+            content += textService.getMessage(
                 "form.chest_manage_content",
                 {
                     {"type", typeStr}
-            }
-            ));
+                }
+            );
+            fm.setContent(content);
 
             fm.appendButton(
                 textService.getMessage("form.button_remove_settings"),

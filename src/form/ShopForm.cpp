@@ -13,6 +13,8 @@
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
+#include "mc/world/item/enchanting/EnchantmentInstance.h"
+#include "mc/world/item/enchanting/ItemEnchants.h"
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
@@ -23,10 +25,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 
 namespace CT {
 
 namespace {
+
+constexpr size_t kManageButtonLineWidth = 22;
 
 std::string toLowerCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -53,6 +58,159 @@ bool itemMatchesKeyword(const ItemStack& item, const std::string& keyword) {
     const std::string itemName     = toLowerCopy(std::string(item.getName()));
     const std::string typeName     = toLowerCopy(item.getTypeName());
     return itemName.find(lowerKeyword) != std::string::npos || typeName.find(lowerKeyword) != std::string::npos;
+}
+
+size_t getUtf8CodePointLength(unsigned char leadByte) {
+    if ((leadByte & 0x80u) == 0) {
+        return 1;
+    }
+    if ((leadByte & 0xE0u) == 0xC0u) {
+        return 2;
+    }
+    if ((leadByte & 0xF0u) == 0xE0u) {
+        return 3;
+    }
+    if ((leadByte & 0xF8u) == 0xF0u) {
+        return 4;
+    }
+    return 1;
+}
+
+size_t getDisplayWidthForCodePoint(unsigned char leadByte) {
+    return (leadByte & 0x80u) == 0 ? 1 : 2;
+}
+
+std::string stripMinecraftFormatting(const std::string& text) {
+    std::string result;
+    result.reserve(text.size());
+
+    for (size_t i = 0; i < text.size();) {
+        if (i + 2 < text.size() && static_cast<unsigned char>(text[i]) == 0xC2u
+            && static_cast<unsigned char>(text[i + 1]) == 0xA7u) {
+            i += 3;
+            continue;
+        }
+
+        auto cpLen = std::min(getUtf8CodePointLength(static_cast<unsigned char>(text[i])), text.size() - i);
+        result.append(text, i, cpLen);
+        i += cpLen;
+    }
+
+    return result;
+}
+
+std::string normalizeManagePriceText(const std::string& priceText) {
+    std::string normalized = stripMinecraftFormatting(priceText);
+
+    auto replaceAll = [](std::string& target, const std::string& from, const std::string& to) {
+        size_t pos = 0;
+        while ((pos = target.find(from, pos)) != std::string::npos) {
+            target.replace(pos, from.size(), to);
+            pos += to.size();
+        }
+    };
+
+    replaceAll(normalized, "[", "");
+    replaceAll(normalized, "]", "");
+    replaceAll(normalized, "已定价", "价格");
+    replaceAll(normalized, "Priced", "Price");
+    return trimCopy(normalized);
+}
+
+std::string truncateDisplayText(const std::string& text, size_t maxWidth) {
+    if (maxWidth == 0) {
+        return {};
+    }
+
+    constexpr size_t ellipsisWidth = 3;
+
+    size_t visibleWidth = 0;
+    size_t index        = 0;
+    bool   truncated    = false;
+
+    while (index < text.size()) {
+        auto cpLen   = std::min(getUtf8CodePointLength(static_cast<unsigned char>(text[index])), text.size() - index);
+        auto cpWidth = getDisplayWidthForCodePoint(static_cast<unsigned char>(text[index]));
+        if (visibleWidth + cpWidth > maxWidth) {
+            truncated = true;
+            break;
+        }
+        visibleWidth += cpWidth;
+        index += cpLen;
+    }
+
+    if (!truncated) {
+        return text;
+    }
+
+    if (maxWidth <= ellipsisWidth) {
+        return std::string(maxWidth, '.');
+    }
+
+    size_t targetWidth   = maxWidth - ellipsisWidth;
+    size_t trimmedWidth  = 0;
+    size_t trimmedLength = 0;
+    while (trimmedLength < text.size()) {
+        auto cpLen   = std::min(
+            getUtf8CodePointLength(static_cast<unsigned char>(text[trimmedLength])),
+            text.size() - trimmedLength
+        );
+        auto cpWidth = getDisplayWidthForCodePoint(static_cast<unsigned char>(text[trimmedLength]));
+        if (trimmedWidth + cpWidth > targetWidth) {
+            break;
+        }
+        trimmedWidth += cpWidth;
+        trimmedLength += cpLen;
+    }
+
+    return text.substr(0, trimmedLength) + "...";
+}
+
+std::optional<std::string> getCompactEnchantSummary(const ItemStack& item) {
+    if (item.isEnchanted()) {
+        ItemEnchants enchants    = item.constructItemEnchantsFromUserData();
+        auto         enchantList = enchants.getAllEnchants();
+        if (!enchantList.empty()) {
+            std::string summary =
+                CT::NbtUtils::enchantToString(enchantList.front().mEnchantType) + " " + std::to_string(enchantList.front().mLevel);
+            if (enchantList.size() > 1) {
+                summary += " +" + std::to_string(enchantList.size() - 1);
+            }
+            return summary;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::optional<std::string> getCompactAuxSummary(const ItemStack& item) {
+    short auxValue = item.getAuxValue();
+    if (auxValue != 0) {
+        return "Aux " + std::to_string(auxValue);
+    }
+
+    return std::nullopt;
+}
+
+std::string buildManageButtonText(const ItemStack& item, int totalCount, const std::string& priceStr) {
+    std::string nameLine = stripMinecraftFormatting(std::string(item.getName()));
+    if (nameLine.empty()) {
+        nameLine = item.getTypeName();
+    }
+    if (totalCount > 0) {
+        nameLine += " x" + std::to_string(totalCount);
+    }
+
+    std::string detailLine = normalizeManagePriceText(priceStr);
+    if (auto enchantSummary = getCompactEnchantSummary(item); enchantSummary.has_value()) {
+        detailLine = detailLine.empty() ? *enchantSummary : detailLine + " " + *enchantSummary;
+    }
+    if (auto auxSummary = getCompactAuxSummary(item); auxSummary.has_value()) {
+        detailLine = detailLine.empty() ? *auxSummary : detailLine + " " + *auxSummary;
+    }
+
+    return truncateDisplayText(nameLine, kManageButtonLineWidth) + "\n"
+         + truncateDisplayText(detailLine, kManageButtonLineWidth);
 }
 
 void showShopItemSearchForm(Player& player, BlockPos pos, int dimId, const std::string& currentKeyword) {
@@ -445,7 +603,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         int                totalCount = std::get<1>(entry.second);
         const std::string& priceStr   = std::get<2>(entry.second);
 
-        std::string buttonText  = CT::FormUtils::getItemDisplayString(item, totalCount, false) + "\n" + priceStr;
+        std::string buttonText  = buildManageButtonText(item, totalCount, priceStr);
         std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
         logger.debug(

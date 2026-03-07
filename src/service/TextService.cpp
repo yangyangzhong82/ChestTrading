@@ -70,14 +70,20 @@ std::string TextService::generateChestText(ChestType type, const std::string& ow
 
 std::string TextService::generateDynamicShopText(ChestType type, const std::string& itemName) {
     auto& i18n = I18nService::getInstance();
-    return (type == ChestType::Shop || type == ChestType::AdminShop)
-             ? i18n.get(
-                   "floating.shop_sell",
-                   {
-                       {"item", itemName}
+    std::string text = (type == ChestType::Shop || type == ChestType::AdminShop)
+                         ? i18n.get(
+                               "floating.shop_sell",
+                               {
+                                   {"item", itemName}
+                               }
+                           )
+                         : i18n.get("floating.recycle_buy", {{"item", itemName}});
+
+    if (type == ChestType::AdminShop || type == ChestType::AdminRecycle) {
+        text = "§e［官方］§r" + text;
     }
-               )
-             : i18n.get("floating.recycle_buy", {{"item", itemName}});
+
+    return text;
 }
 
 std::string TextService::generateEmptyShopText(ChestType type) {
