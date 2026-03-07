@@ -49,9 +49,12 @@ using ll::command::CommandRegistrar;
 void registerCommand() {
     auto& registrar = CommandRegistrar::getInstance(false);
     auto& i18n      = I18nService::getInstance();
+    auto& config    = ConfigManager::getInstance().get();
+    auto& commands  = config.commandSettings;
 
 
-    auto& ctCmd = registrar.getOrCreateCommand("ct", i18n.get("command.ct_description"), CommandPermissionLevel::Any);
+    auto& ctCmd =
+        registrar.getOrCreateCommand(commands.mainCommand, i18n.get("command.ct_description"), CommandPermissionLevel::Any);
 
     ctCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
@@ -65,7 +68,7 @@ void registerCommand() {
     );
 
     auto& adminCmd = registrar.getOrCreateCommand(
-        "ctadmin",
+        commands.adminCommand,
         i18n.get("command.admin_description"),
         CommandPermissionLevel::GameDirectors
     );
@@ -87,7 +90,7 @@ void registerCommand() {
 
     // 注册 /ctreload 命令 - 重新加载配置
     auto& reloadCmd = registrar.getOrCreateCommand(
-        "ctreload",
+        commands.reloadCommand,
         i18n.get("command.reload_description"),
         CommandPermissionLevel::GameDirectors
     );
@@ -103,7 +106,7 @@ void registerCommand() {
 
     // 注册 /shop 命令 - 打开公开商店列表
     auto& shopCmd =
-        registrar.getOrCreateCommand("shop", i18n.get("command.shop_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.publicShopCommand, i18n.get("command.shop_description"), CommandPermissionLevel::Any);
     shopCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -117,7 +120,7 @@ void registerCommand() {
 
     // 注册 /recycle 命令 - 打开公开回收商店列表
     auto& recycleCmd =
-        registrar.getOrCreateCommand("recycle", i18n.get("command.recycle_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.publicRecycleCommand, i18n.get("command.recycle_description"), CommandPermissionLevel::Any);
     recycleCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -131,7 +134,7 @@ void registerCommand() {
 
     // 注册 /items 命令 - 打开公开商店物品列表
     auto& itemsCmd =
-        registrar.getOrCreateCommand("items", i18n.get("command.items_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.publicItemsCommand, i18n.get("command.items_description"), CommandPermissionLevel::Any);
     itemsCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -145,7 +148,7 @@ void registerCommand() {
 
     // 注册 /recycleitems 命令 - 打开公开回收商店物品列表
     auto& recycleItemsCmd = registrar.getOrCreateCommand(
-        "recycleitems",
+        commands.recycleItemsCommand,
         i18n.get("command.recycleitems_description"),
         CommandPermissionLevel::Any
     );
@@ -162,7 +165,7 @@ void registerCommand() {
 
     // 注册 /ranking 命令 - 打开销量榜单
     auto& rankingCmd =
-        registrar.getOrCreateCommand("ranking", i18n.get("command.ranking_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.rankingCommand, i18n.get("command.ranking_description"), CommandPermissionLevel::Any);
     rankingCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -176,7 +179,7 @@ void registerCommand() {
 
     // 注册 /recycleplayers 命令 - 按玩家浏览回收商店
     auto& recyclePlayersCmd = registrar.getOrCreateCommand(
-        "recycleplayers",
+        commands.recyclePlayersCommand,
         i18n.get("command.recycleplayers_description"),
         CommandPermissionLevel::Any
     );
@@ -192,7 +195,7 @@ void registerCommand() {
     );
 
     auto& recordsCmd =
-        registrar.getOrCreateCommand("records", i18n.get("command.records_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.recordsCommand, i18n.get("command.records_description"), CommandPermissionLevel::Any);
     recordsCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -206,7 +209,7 @@ void registerCommand() {
 
     // 注册 /packchest 命令 - 打包箱子模式
     auto& packCmd = registrar.getOrCreateCommand(
-        "packchest",
+        commands.packChestCommand,
         i18n.get("command.packchest_description"),
         CommandPermissionLevel::Any
     );
@@ -233,7 +236,7 @@ void registerCommand() {
     );
 
     // 注册 /ctchestui 命令 - 假箱子 UI 测试
-    auto& chestUiCmd = registrar.getOrCreateCommand("ctchestui", "ChestUI test command", CommandPermissionLevel::Any);
+    auto& chestUiCmd = registrar.getOrCreateCommand(commands.chestUiCommand, "ChestUI test command", CommandPermissionLevel::Any);
 
     struct ChestUiSubcommand {
         std::string action;
@@ -369,7 +372,7 @@ void registerCommand() {
 
     // 注册 /ctlimitreset 命令 - 手动重置箱子限购窗口
     auto& limitResetCmd = registrar.getOrCreateCommand(
-        "ctlimitreset",
+        commands.limitResetCommand,
         i18n.get("command.limit_reset_description"),
         CommandPermissionLevel::Any
     );
@@ -585,7 +588,7 @@ void registerCommand() {
 
     // 注册 /cttest 命令 - 自动化测试（开发者工具）
     auto& testCmd =
-        registrar.getOrCreateCommand("cttest", i18n.get("command.test_description"), CommandPermissionLevel::Any);
+        registrar.getOrCreateCommand(commands.testCommand, i18n.get("command.test_description"), CommandPermissionLevel::Any);
 
     struct TestSubcommand {
         std::string testType;

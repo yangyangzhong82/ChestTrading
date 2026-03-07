@@ -4,6 +4,9 @@
 - 命令注册：`src/command/command.cpp`
 - 权限校验：`src/compat/PermissionCompat.h`、`src/service/ChestService.cpp`
 
+说明：
+- 以下命令名为默认值，现可通过配置文件中的 `commandSettings` 修改。
+
 ## 1. 可用命令
 
 | 命令 | 参数/子命令 | 用途 | 执行限制 |

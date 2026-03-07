@@ -72,6 +72,23 @@ struct ShopNameRestrictions {
     std::vector<std::string> blockedKeywords = {}; // 禁止出现在商店名称中的关键词，按子串匹配
 };
 
+struct CommandSettings {
+    std::string mainCommand           = "ct";            // 主命令
+    std::string adminCommand          = "ctadmin";       // 管理员菜单命令
+    std::string reloadCommand         = "ctreload";      // 重载配置命令
+    std::string publicShopCommand     = "shop";          // 公开商店列表命令
+    std::string publicRecycleCommand  = "recycle";       // 公开回收商店列表命令
+    std::string publicItemsCommand    = "items";         // 公开商店物品列表命令
+    std::string recycleItemsCommand   = "recycleitems";  // 公开回收商店物品列表命令
+    std::string rankingCommand        = "ranking";       // 销量榜命令
+    std::string recyclePlayersCommand = "recycleplayers"; // 按玩家浏览回收商店命令
+    std::string recordsCommand        = "records";       // 交易记录命令
+    std::string packChestCommand      = "packchest";     // 箱子打包模式命令
+    std::string chestUiCommand        = "ctchestui";     // ChestUI 测试命令
+    std::string limitResetCommand     = "ctlimitreset";  // 限购重置命令
+    std::string testCommand           = "cttest";        // 自动化测试命令
+};
+
 struct Config {
     int  version       = 1;
     bool enableWalMode = true; // 是否启用数据库的 WAL 模式
@@ -94,4 +111,5 @@ struct Config {
     InteractionSettings  interactionSettings;                          // 交互相关设置
     SalesRankingSettings salesRankingSettings;                         // 销量榜单设置
     ShopNameRestrictions shopNameRestrictions;                         // 商店名称限制
+    CommandSettings      commandSettings;                              // 命令名称配置
 };

@@ -123,6 +123,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 常见配置项包括：
 
 - `economyType`：经济实现类型
+- `commandSettings`：插件命令名称配置
 - `floatingText`：悬浮字与假掉落物显示
 - `chestLimits`：各类箱子数量上限
 - `chestCosts`：创建费用
@@ -137,6 +138,11 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 ```json
 {
   "economyType": 0,
+  "commandSettings": {
+    "mainCommand": "ct",
+    "publicShopCommand": "shop",
+    "publicRecycleCommand": "recycle"
+  },
   "taxSettings": {
     "shopTaxRate": 0.05,
     "recycleTaxRate": 0.02
