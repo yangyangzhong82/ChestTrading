@@ -808,7 +808,14 @@ void showEditCommissionForm(
                     return;
                 }
 
-                int newMaxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
+                std::string newMaxRecycleCountStr = std::get<std::string>(result.value().at("max_recycle_count"));
+                if (newMaxRecycleCountStr.find_first_not_of(" \t\r\n") == std::string::npos) {
+                    p.sendMessage(txt.getMessage("input.empty_max_recycle_count"));
+                    showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
+                    return;
+                }
+
+                int newMaxRecycleCount = std::stoi(newMaxRecycleCountStr);
                 if (newMaxRecycleCount < 0) {
                     p.sendMessage(txt.getMessage("input.negative_max_count"));
                     showEditCommissionForm(p, pos, dimId, region, commissionNbtStr);
@@ -1247,7 +1254,14 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 }
                 std::string enchantsJsonStr = enchantsJson.is_null() || enchantsJson.empty() ? "" : enchantsJson.dump();
 
-                int maxRecycleCount = std::stoi(std::get<std::string>(result.value().at("max_recycle_count")));
+                std::string maxRecycleCountStr = std::get<std::string>(result.value().at("max_recycle_count"));
+                if (maxRecycleCountStr.find_first_not_of(" \t\r\n") == std::string::npos) {
+                    p.sendMessage(txt.getMessage("input.empty_max_recycle_count"));
+                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    return;
+                }
+
+                int maxRecycleCount = std::stoi(maxRecycleCountStr);
                 if (maxRecycleCount < 0) {
                     p.sendMessage(txt.getMessage("input.negative_max_count"));
                     showSetRecycleItemPriceForm(p, item, pos, dimId, region);
