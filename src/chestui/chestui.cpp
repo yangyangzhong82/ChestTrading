@@ -531,6 +531,35 @@ bool open(Player& player, OpenRequest request) {
     return true;
 }
 
+bool update(Player& player, UpdateRequest request) {
+    std::string            nextTitle;
+    std::vector<ItemStack> nextItems;
+    ContainerID            containerId{ContainerID::None};
+    BlockPos               fakePos{};
+
+    {
+        std::scoped_lock lock(gSessionMutex);
+        auto             it = gSessions.find(getPlayerKey(player));
+        if (it == gSessions.end()) {
+            return false;
+        }
+
+        if (request.title.has_value()) {
+            it->second.title = std::move(request.title.value());
+        }
+        it->second.items = normalizeItems(request.items);
+
+        nextTitle   = it->second.title;
+        nextItems   = it->second.items;
+        containerId = it->second.containerId;
+        fakePos     = it->second.fakePos;
+    }
+
+    sendChestBlockActor(player, fakePos, nextTitle);
+    sendContainerSlots(player, containerId, nextItems);
+    return true;
+}
+
 bool close(Player& player) {
     auto sessionOpt = takeSession(player);
     if (!sessionOpt.has_value()) {

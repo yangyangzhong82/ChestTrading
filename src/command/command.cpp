@@ -1,7 +1,8 @@
 #include "command.h"
 #include "Config/ConfigManager.h"
-#include "compat/PermissionCompat.h"
 #include "chestui/chestui.h"
+#include "chestui/demo.h"
+#include "compat/PermissionCompat.h"
 #include "form/AdminForm.h"
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
@@ -20,7 +21,6 @@
 #include "test/TestHelper.h"
 #include <mutex>
 #include <set>
-
 
 
 namespace CT {
@@ -53,8 +53,11 @@ void registerCommand() {
     auto& commands  = config.commandSettings;
 
 
-    auto& ctCmd =
-        registrar.getOrCreateCommand(commands.mainCommand, i18n.get("command.ct_description"), CommandPermissionLevel::Any);
+    auto& ctCmd = registrar.getOrCreateCommand(
+        commands.mainCommand,
+        i18n.get("command.ct_description"),
+        CommandPermissionLevel::Any
+    );
 
     ctCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
@@ -105,8 +108,11 @@ void registerCommand() {
     );
 
     // 注册 /shop 命令 - 打开公开商店列表
-    auto& shopCmd =
-        registrar.getOrCreateCommand(commands.publicShopCommand, i18n.get("command.shop_description"), CommandPermissionLevel::Any);
+    auto& shopCmd = registrar.getOrCreateCommand(
+        commands.publicShopCommand,
+        i18n.get("command.shop_description"),
+        CommandPermissionLevel::Any
+    );
     shopCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -119,8 +125,11 @@ void registerCommand() {
     );
 
     // 注册 /recycle 命令 - 打开公开回收商店列表
-    auto& recycleCmd =
-        registrar.getOrCreateCommand(commands.publicRecycleCommand, i18n.get("command.recycle_description"), CommandPermissionLevel::Any);
+    auto& recycleCmd = registrar.getOrCreateCommand(
+        commands.publicRecycleCommand,
+        i18n.get("command.recycle_description"),
+        CommandPermissionLevel::Any
+    );
     recycleCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -133,8 +142,11 @@ void registerCommand() {
     );
 
     // 注册 /items 命令 - 打开公开商店物品列表
-    auto& itemsCmd =
-        registrar.getOrCreateCommand(commands.publicItemsCommand, i18n.get("command.items_description"), CommandPermissionLevel::Any);
+    auto& itemsCmd = registrar.getOrCreateCommand(
+        commands.publicItemsCommand,
+        i18n.get("command.items_description"),
+        CommandPermissionLevel::Any
+    );
     itemsCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -164,8 +176,11 @@ void registerCommand() {
     );
 
     // 注册 /ranking 命令 - 打开销量榜单
-    auto& rankingCmd =
-        registrar.getOrCreateCommand(commands.rankingCommand, i18n.get("command.ranking_description"), CommandPermissionLevel::Any);
+    auto& rankingCmd = registrar.getOrCreateCommand(
+        commands.rankingCommand,
+        i18n.get("command.ranking_description"),
+        CommandPermissionLevel::Any
+    );
     rankingCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -194,8 +209,11 @@ void registerCommand() {
         }
     );
 
-    auto& recordsCmd =
-        registrar.getOrCreateCommand(commands.recordsCommand, i18n.get("command.records_description"), CommandPermissionLevel::Any);
+    auto& recordsCmd = registrar.getOrCreateCommand(
+        commands.recordsCommand,
+        i18n.get("command.records_description"),
+        CommandPermissionLevel::Any
+    );
     recordsCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
@@ -235,138 +253,19 @@ void registerCommand() {
         }
     );
 
-    // 注册 /ctchestui 命令 - 假箱子 UI 测试
-    auto& chestUiCmd = registrar.getOrCreateCommand(commands.chestUiCommand, "ChestUI test command", CommandPermissionLevel::Any);
-
-    struct ChestUiSubcommand {
-        std::string action;
-    };
-
-    auto getChestUiCommandPlayer = [](CommandOrigin const& origin) -> Player* {
-        return static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
-    };
-
-    auto openChestUiDemo = [](Player& player, CommandOutput& output) {
-        auto actionTypeToString = [](ItemStackRequestActionType type) -> std::string {
-            switch (type) {
-            case ItemStackRequestActionType::Take:
-                return "Take";
-            case ItemStackRequestActionType::Place:
-                return "Place";
-            case ItemStackRequestActionType::Swap:
-                return "Swap";
-            case ItemStackRequestActionType::Drop:
-                return "Drop";
-            case ItemStackRequestActionType::Destroy:
-                return "Destroy";
-            case ItemStackRequestActionType::Consume:
-                return "Consume";
-            case ItemStackRequestActionType::Create:
-                return "Create";
-            default:
-                return std::to_string(static_cast<int>(type));
-            }
-        };
-        auto itemDisplayString = [](ItemStack const& item) -> std::string {
-            if (item.isNull()) {
-                return "Air";
-            }
-
-            auto name = item.getName();
-            if (name.empty()) {
-                name = item.getTypeName();
-            }
-
-            return name + " §7(" + item.getTypeName() + ")§r x" + std::to_string(item.mCount);
-        };
-
-        ChestUI::OpenRequest req;
-        req.title = "ChestUI Test";
-
-        ItemStack item1;
-        item1.reinit("minecraft:diamond", 16, 0);
-        req.items.push_back(item1);
-
-        ItemStack item2;
-        item2.reinit("minecraft:emerald", 32, 0);
-        req.items.push_back(item2);
-
-        ItemStack item3;
-        item3.reinit("minecraft:gold_ingot", 64, 0);
-        req.items.push_back(item3);
-
-        req.closeOnClick = true;
-        req.onClick      = [actionTypeToString, itemDisplayString](Player& p, ChestUI::ClickContext const& ctx) {
-            p.sendMessage(
-                "§a[ChestUI] 点击成功: slot=" + std::to_string(ctx.slot) + ", action="
-                + actionTypeToString(ctx.actionType) + ", item=" + itemDisplayString(ctx.item)
-            );
-            p.sendMessage("§7ChestUI 已关闭。");
-        };
-        req.onClose      = [](Player&) {};
-
-        if (!ChestUI::open(player, std::move(req))) {
-            output.error("无法打开 ChestUI。");
-            return;
-        }
-        output.success("已打开 ChestUI 测试界面，点击物品后会显示槽位和物品信息并自动关闭。");
-    };
-
+    auto& chestUiCmd = registrar.getOrCreateCommand("ctuitest", "ChestUI test command", CommandPermissionLevel::Any);
     chestUiCmd.overload<ll::command::EmptyParam>().execute(
-        [openChestUiDemo, getChestUiCommandPlayer](
-            CommandOrigin const& origin,
-            CommandOutput& output,
-            ll::command::EmptyParam const&,
-            class Command const&
-        ) {
-            auto* player = getChestUiCommandPlayer(origin);
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {
-                output.error("This command can only be used by players.");
+                output.error(i18n.get("command.player_only"));
                 return;
             }
-            openChestUiDemo(*player, output);
-        }
-    );
-
-    chestUiCmd.overload<ChestUiSubcommand>().text("open").execute(
-        [openChestUiDemo, getChestUiCommandPlayer](
-            CommandOrigin const& origin,
-            CommandOutput& output,
-            ChestUiSubcommand const&,
-            class Command const&
-        ) {
-            auto* player = getChestUiCommandPlayer(origin);
-            if (!player) {
-                output.error("This command can only be used by players.");
+            if (!ChestUI::Demo::openPagedDemo(*player)) {
+                output.error("无法打开 ChestUI。");
                 return;
             }
-            openChestUiDemo(*player, output);
-        }
-    );
-
-    chestUiCmd.overload<ChestUiSubcommand>().text("close").execute(
-        [getChestUiCommandPlayer](CommandOrigin const& origin, CommandOutput& output, ChestUiSubcommand const&, class Command const&) {
-            auto* player = getChestUiCommandPlayer(origin);
-            if (!player) {
-                output.error("This command can only be used by players.");
-                return;
-            }
-            if (ChestUI::close(*player)) {
-                output.success("ChestUI 已关闭。");
-            } else {
-                output.error("当前没有打开的 ChestUI。");
-            }
-        }
-    );
-
-    chestUiCmd.overload<ChestUiSubcommand>().text("state").execute(
-        [getChestUiCommandPlayer](CommandOrigin const& origin, CommandOutput& output, ChestUiSubcommand const&, class Command const&) {
-            auto* player = getChestUiCommandPlayer(origin);
-            if (!player) {
-                output.error("This command can only be used by players.");
-                return;
-            }
-            output.success(ChestUI::isOpen(*player) ? "ChestUI: opened" : "ChestUI: closed");
+            output.success("已打开 ChestUI 分页示例。");
         }
     );
 
@@ -587,8 +486,11 @@ void registerCommand() {
         );
 
     // 注册 /cttest 命令 - 自动化测试（开发者工具）
-    auto& testCmd =
-        registrar.getOrCreateCommand(commands.testCommand, i18n.get("command.test_description"), CommandPermissionLevel::Any);
+    auto& testCmd = registrar.getOrCreateCommand(
+        commands.testCommand,
+        i18n.get("command.test_description"),
+        CommandPermissionLevel::Any
+    );
 
     struct TestSubcommand {
         std::string testType;

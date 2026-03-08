@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,13 @@ struct OpenRequest {
     bool                   closeOnClick{true};
 };
 
+struct UpdateRequest {
+    std::optional<std::string> title;
+    std::vector<ItemStack>     items;
+};
+
 bool open(Player& player, OpenRequest request);
+bool update(Player& player, UpdateRequest request);
 bool close(Player& player);
 bool isOpen(Player const& player);
 void closeAll();
