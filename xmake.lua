@@ -17,7 +17,6 @@ add_requires("sqlite3")
 add_requires("legacymoney")
 
 add_requires("debug_shape")
-add_requires("czmoney", {optional = true})
 add_requires("Bedrock-Authority 0.2.0", {optional = true})
 if not has_config("vs_runtime") then
     set_runtimes("MD")
@@ -29,17 +28,10 @@ option("target_type")
     set_values("server", "client")
 option_end()
 
-function configure_chest_target(target_name, with_permission_group, with_czmoney)
+function configure_chest_target(target_name, with_permission_group)
 target(target_name)
     set_default(target_name == "ChestTrading")
     add_rules("@levibuildscript/linkrule")
-    local czmoney_dependency = ""
-    if with_czmoney then
-        czmoney_dependency = [[,
-        {
-            "name": "czmoney"
-        }]]
-    end
 
     local permission_dependency = ""
     if with_permission_group then
@@ -52,18 +44,11 @@ target(target_name)
     add_rules("@levibuildscript/modpacker", {
         pluginName           = "ChestTrading",
         modFile              = "ChestTrading.dll",
-        czmoneyDependency    = czmoney_dependency,
         permissionDependency = permission_dependency
     })
     add_cxflags( "/EHa", "/utf-8", "/W4", "/w44265", "/w44289", "/w44296", "/w45263", "/w44738", "/w45204")
     add_defines("NOMINMAX", "UNICODE")
     add_packages("levilamina", "sqlite3", "legacymoney", "debug_shape")
-    if with_czmoney then
-        add_packages("czmoney")
-        add_defines("CT_ENABLE_CZMONEY=1")
-    else
-        add_defines("CT_ENABLE_CZMONEY=0")
-    end
     if with_permission_group then
         add_packages("Bedrock-Authority")
         add_defines("CT_ENABLE_PERMISSION_GROUP=1")
@@ -106,7 +91,5 @@ target(target_name)
     end)
 end
 
-configure_chest_target("ChestTrading", true, true)
-configure_chest_target("ChestTradingNoPerm", false, true)
-configure_chest_target("ChestTradingNoCzMoney", true, false)
-configure_chest_target("ChestTradingNoPermNoCzMoney", false, false)
+configure_chest_target("ChestTrading", true)
+configure_chest_target("ChestTradingNoPerm", false)

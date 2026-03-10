@@ -1,8 +1,6 @@
 #pragma once
 
-#if CT_ENABLE_CZMONEY
-#include "czmoney/money_api.h"
-#endif
+#include "compat/CzMoneyCompat.h"
 #include "mc/world/actor/player/Player.h"
 #include <string>
 

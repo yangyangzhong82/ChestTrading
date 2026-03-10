@@ -97,11 +97,7 @@ struct Config {
     int  databaseThreadPoolSize            = 4;                        // 数据库线程池线程数量
     int  databaseCacheTimeoutSec           = 60;                       // 数据库查询缓存超时时间（秒）
     ll::io::LogLevel     logLevel          = ll::io::LogLevel::Info;   // 日志等级
-#if CT_ENABLE_CZMONEY
     CT::EconomyType      economyType       = CT::EconomyType::CzMoney; // 经济类型
-#else
-    CT::EconomyType      economyType       = CT::EconomyType::LLMoney; // 经济类型
-#endif
     FloatingTextSettings floatingText;                                 // 悬浮字相关设置
     ChestLimits          chestLimits;                                  // 箱子数量限制
     ChestCreationCosts   chestCosts;                                   // 箱子创建费用
