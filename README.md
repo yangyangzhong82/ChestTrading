@@ -66,8 +66,8 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 
 - LeviLamina
 - LegacyMoney
-- 如果使用带权限版本：`Bedrock-Authority`
-- 如果使用带 czmoney 版本：`czmoney`
+- 如果需要启用权限节点校验：`Bedrock-Authority`
+- 如果需要使用 `czmoney` 经济接口：`czmoney`
 
 ### 2. 放入插件文件
 

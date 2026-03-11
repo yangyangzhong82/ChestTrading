@@ -7,6 +7,5 @@
         {
             "name": "LegacyMoney"
         }
-${permissionDependency}
     ]
 }

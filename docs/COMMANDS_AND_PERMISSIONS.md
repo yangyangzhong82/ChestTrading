@@ -2,7 +2,7 @@
 
 本文档基于当前源码整理：
 - 命令注册：`src/command/command.cpp`
-- 权限校验：`src/compat/PermissionCompat.h`、`src/service/ChestService.cpp`
+- 权限校验：`src/compat/PermissionCompat.h`、`src/compat/PermissionCompat.cpp`、`src/service/ChestService.cpp`
 
 说明：
 - 以下命令名为默认值，现可通过配置文件中的 `commandSettings` 修改。
@@ -59,4 +59,4 @@
 - 命令级别（`CommandPermissionLevel`）和权限节点是两套检查：
   - 例如 `/ctadmin` 既要求命令级别为 `GameDirectors`，也要求 `chest.admin`。
 - 创建箱子的权限由业务逻辑校验（`ChestService::canPlayerCreateChest`），不是独立聊天命令。
-- 当构建为无权限组版本（`CT_ENABLE_PERMISSION_GROUP=0`）时，`PermissionCompat::hasPermission(...)` 会直接返回 `true`，即权限节点不生效。
+- 当服务器未安装 `Bedrock-Authority`，或其导出符号不可用时，`PermissionCompat::hasPermission(...)` 会回退为放行模式，即权限节点不生效。
