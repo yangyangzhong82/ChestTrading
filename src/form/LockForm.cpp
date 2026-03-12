@@ -6,6 +6,7 @@
 #include "compat/PermissionCompat.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/economy.h"
+#include "service/ChestPackService.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -81,11 +82,13 @@ void showChestLockForm(
     bool               isLocked,
     const std::string& ownerUuid,
     ChestType          chestType,
-    BlockSource&       region
+    BlockSource&
 ) {
     ll::form::SimpleForm fm;
     std::string          player_uuid  = player.getUuid().asString();
     bool                 isAdmin      = PermissionCompat::hasPermission(player_uuid, "chest.admin");
+    bool                 canPackChest = PermissionCompat::hasPermission(player_uuid, "chest.pack")
+                     && (!isLocked || ownerUuid == player_uuid);
     auto&                textService  = TextService::getInstance();
 
     if (isLocked) {
@@ -215,6 +218,18 @@ void showChestLockForm(
                     showChestSettingsForm(p, pos, dimId, region, chestType);
                 }
             );
+
+            if (canPackChest) {
+                fm.appendButton(
+                    textService.getMessage("form.button_pack_chest"),
+                    "textures/ui/icon_import",
+                    "path",
+                    [pos, dimId](Player& p) {
+                        auto& region = p.getDimensionBlockSource();
+                        packChestForPlayer(p, pos, dimId, region);
+                    }
+                );
+            }
 
         } else {
             // 当前玩家不是主人
@@ -380,13 +395,25 @@ void showChestLockForm(
                 createChestHandler(p, pos, dimId, player_uuid, ChestType::AdminRecycle, 0.0);
             }
         );
+
+        if (canPackChest) {
+            fm.appendButton(
+                textService.getMessage("form.button_pack_chest"),
+                "textures/ui/icon_import",
+                "path",
+                [pos, dimId](Player& p) {
+                    auto& region = p.getDimensionBlockSource();
+                    packChestForPlayer(p, pos, dimId, region);
+                }
+            );
+        }
     }
 
     fm.appendButton(
         textService.getMessage("form.button_cancel"),
         "textures/ui/cancel",
         "path",
-        [player_uuid](Player& p) { logger.debug("玩家 {} 取消了操作。", player_uuid); }
+        [player_uuid](Player&) { logger.debug("玩家 {} 取消了操作。", player_uuid); }
     );
 
     fm.sendTo(player);

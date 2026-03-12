@@ -3,18 +3,14 @@
 #include "compat/PermissionCompat.h"
 #include "Config/ConfigManager.h"
 #include "Utils/ChestTypeUtils.h"
-#include "Utils/NbtUtils.h"
 #include "command/command.h"
 #include "compat/PLandCompat.h"
 #include "form/LockForm.h"
 #include "form/RecycleForm.h"
 #include "form/ShopForm.h"
 #include "logger.h"
-#include "mc/nbt/CompoundTagVariant.h"
-#include "mc/nbt/ListTag.h"
 #include "mc/world/level/block/BlockChangeContext.h"
-#include "mc/world/level/block/actor/ChestBlockActor.h"
-#include "repository/ChestRepository.h"
+#include "service/ChestPackService.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
 
@@ -87,94 +83,7 @@ bool tryHandlePackChestMode(Player& player, BlockPos originalPos, int dimId, Blo
     }
 
     setPackChestMode(playerUuid, false);
-
-    auto& txt = TextService::getInstance();
-
-    if (!PermissionCompat::hasPermission(playerUuid, "chest.pack")) {
-        player.sendMessage(txt.getMessage("command.no_permission"));
-        return true;
-    }
-
-    // Packing removes the original chest block, so destroy permission is required.
-    if (!PLandCompat::getInstance().canDestroy(player, originalPos)) {
-        player.sendMessage(txt.getMessage("chest.land_no_permission_pack"));
-        return true;
-    }
-
-    // 检查是否为大箱子，禁止打包大箱子
-    auto* blockActor = region.getBlockEntity(originalPos);
-    if (blockActor && blockActor->mType == BlockActorType::Chest) {
-        auto* chest = static_cast<ChestBlockActor*>(blockActor);
-        if (chest->mLargeChestPaired) {
-            player.sendMessage(txt.getMessage("chest.pack_large_chest_forbidden"));
-            return true;
-        }
-    }
-
-    auto& chestService = ChestService::getInstance();
-    auto  mainPos      = chestService.getMainChestPos(originalPos, region);
-
-    // 若是特殊箱子（有配置），仅允许主人打包
-    auto chestInfo = chestService.getChestInfo(mainPos, dimId, region);
-    if (chestInfo.has_value()) {
-        if (chestInfo->ownerUuid != playerUuid) {
-            player.sendMessage(txt.getMessage("chest.pack_not_owner"));
-            return true;
-        }
-    }
-
-    if (!blockActor) {
-        player.sendMessage(txt.getMessage("chest.pack_entity_fail"));
-        return true;
-    }
-
-    auto chestNbt = NbtUtils::getBlockEntityNbt(blockActor);
-    if (!chestNbt || !chestNbt->contains("Items")) {
-        player.sendMessage(txt.getMessage("chest.pack_empty"));
-        return true;
-    }
-
-    CompoundTag itemNbt;
-    itemNbt["Name"]        = StringTag(region.getBlock(originalPos).getTypeName());
-    itemNbt["Count"]       = ByteTag(1);
-    itemNbt["Damage"]      = ShortTag(0);
-    itemNbt["WasPickedUp"] = ByteTag(0);
-
-    CompoundTag tagNbt;
-    tagNbt["Items"] = chestNbt->at("Items").get<ListTag>();
-
-    // 如果有配置，打包到数据库并只存储 packed_id
-    if (chestInfo.has_value()) {
-        int64_t packedId = ChestRepository::getInstance().packChest(mainPos, dimId);
-        if (packedId < 0) {
-            player.sendMessage(txt.getMessage("chest.pack_config_fail"));
-            return true;
-        }
-
-        CompoundTag ctData;
-        ctData["packedId"]     = Int64Tag(packedId);
-        tagNbt["ChestTrading"] = std::move(ctData);
-    }
-
-    itemNbt["tag"] = std::move(tagNbt);
-
-    auto chestItem = NbtUtils::createItemFromNbt(itemNbt);
-    if (!chestItem) {
-        player.sendMessage(txt.getMessage("chest.pack_item_fail"));
-        return true;
-    }
-
-    if (!player.addAndRefresh(*chestItem)) {
-        player.sendMessage(txt.getMessage("chest.pack_inventory_full"));
-        return true;
-    }
-
-    auto* chestActor = static_cast<ChestBlockActor*>(blockActor);
-    chestActor->clearInventory(0);
-
-    region.removeBlock(originalPos, BlockChangeContext{});
-
-    player.sendMessage(txt.getMessage("chest.pack_success"));
+    packChestForPlayer(player, originalPos, dimId, region);
     return true;
 }
 

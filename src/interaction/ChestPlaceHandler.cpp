@@ -8,11 +8,14 @@
 #include "logger.h"
 #include "mc/nbt/CompoundTag.h"
 #include "mc/nbt/CompoundTagVariant.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 #include "repository/ChestRepository.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
 
 
+#include <chrono>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 
@@ -22,6 +25,14 @@ namespace {
 // 缓存放置前的 packed_id（玩家UUID -> packed_id）
 std::unordered_map<std::string, int64_t> gPendingPackedId;
 std::mutex                               gPendingMutex;
+
+void runAfterTicks(int ticks, std::function<void()> task) {
+    if (ticks <= 0) {
+        ll::thread::ServerThreadExecutor::getDefault().execute(std::move(task));
+        return;
+    }
+    ll::thread::ServerThreadExecutor::getDefault().executeAfter(std::move(task), std::chrono::milliseconds(ticks * 50));
+}
 } // namespace
 
 void handlePlayerPlacingBlock(ll::event::PlayerPlacingBlockEvent& ev) {
@@ -130,15 +141,26 @@ void handlePlayerPlacedBlock(ll::event::PlayerPlacedBlockEvent& ev) {
         // 更新悬浮字
         auto chestInfo = ChestRepository::getInstance().findByPosition(pos, dimId);
         if (chestInfo) {
-            FloatingTextManager::getInstance().addOrUpdateFloatingText(
+            auto& ftm = FloatingTextManager::getInstance();
+            ftm.addOrUpdateFloatingText(
                 pos,
                 dimId,
                 chestInfo->ownerUuid,
                 TextService::getInstance().generateChestText(chestInfo->type, chestInfo->ownerUuid),
                 chestInfo->type
             );
-            if (chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::RecycleShop) {
-                FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, chestInfo->type);
+
+            bool isShopType = (chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::RecycleShop
+                               || chestInfo->type == ChestType::AdminShop || chestInfo->type == ChestType::AdminRecycle);
+
+            ftm.setChestFakeItemEnabled(pos, dimId, chestInfo->enableFakeItem);
+            ftm.setFloatingTextVisible(pos, dimId, chestInfo->enableFloatingText);
+
+            if (isShopType) {
+                // 放置事件触发时，箱子物品可能尚未完全恢复到方块实体；延迟刷新可避免把库存误判为空。
+                runAfterTicks(2, [pos, dimId, type = chestInfo->type]() {
+                    FloatingTextManager::getInstance().updateShopFloatingText(pos, dimId, type);
+                });
             }
         }
 
