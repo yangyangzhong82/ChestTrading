@@ -43,7 +43,8 @@ public:
         const std::string& itemNbt,
         double             price,
         int                initialCount,
-        BlockSource&       region
+        BlockSource&       region,
+        const std::string& actorUuid = ""
     );
 
     bool removeItem(BlockPos pos, int dimId, int itemId, BlockSource& region);

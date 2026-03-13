@@ -7,6 +7,7 @@
 #include "TextService.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/ScopeGuard.h"
+#include "Utils/TradeRestrictionUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "form/FormUtils.h"
@@ -29,11 +30,25 @@ SetPriceResult ShopService::setItemPrice(
     const std::string& itemNbt,
     double             price,
     int                initialCount,
-    BlockSource&       region
+    BlockSource&       region,
+    const std::string& actorUuid
 ) {
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     auto& txt = TextService::getInstance();
+
+    const std::string normalizedItemTypeName = TradeRestrictionUtils::extractNormalizedItemTypeNameFromItemNbt(itemNbt);
+    if (!TradeRestrictionUtils::canBypassRestrictions(actorUuid)
+        && TradeRestrictionUtils::isItemBlockedForShop(normalizedItemTypeName)) {
+        return {
+            false,
+            txt.getMessage(
+                "shop.item_blocked",
+                {{"item", normalizedItemTypeName.empty() ? txt.getMessage("shop.unknown_item") : normalizedItemTypeName}}
+            ),
+            -1
+        };
+    }
 
     // 获取或创建物品ID
     int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbt);

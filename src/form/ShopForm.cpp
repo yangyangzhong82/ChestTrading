@@ -431,7 +431,15 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                 int         dbCount    = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
 
                 auto priceResult =
-                    ShopService::getInstance().setItemPrice(pos, dimId, itemNbtStr, price, dbCount, region);
+                    ShopService::getInstance().setItemPrice(
+                        pos,
+                        dimId,
+                        itemNbtStr,
+                        price,
+                        dbCount,
+                        region,
+                        p.getUuid().asString()
+                    );
                 p.sendMessage(priceResult.message);
             } catch (const std::exception& e) {
                 p.sendMessage(txt.getMessage("input.invalid_number"));

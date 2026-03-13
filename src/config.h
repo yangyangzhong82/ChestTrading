@@ -72,6 +72,11 @@ struct ShopNameRestrictions {
     std::vector<std::string> blockedKeywords = {}; // 禁止出现在商店名称中的关键词，按子串匹配
 };
 
+struct TradeRestrictionSettings {
+    std::vector<std::string> blockedShopItems    = {}; // 禁止上架的物品命名空间 ID
+    std::vector<std::string> blockedRecycleItems = {}; // 禁止设置回收委托的物品命名空间 ID
+};
+
 struct CommandSettings {
     std::string mainCommand           = "ct";            // 主命令
     std::string adminCommand          = "ctadmin";       // 管理员菜单命令
@@ -107,5 +112,6 @@ struct Config {
     InteractionSettings  interactionSettings;                          // 交互相关设置
     SalesRankingSettings salesRankingSettings;                         // 销量榜单设置
     ShopNameRestrictions shopNameRestrictions;                         // 商店名称限制
+    TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
     CommandSettings      commandSettings;                              // 命令名称配置
 };

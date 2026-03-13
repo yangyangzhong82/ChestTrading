@@ -1321,7 +1321,8 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     minDurability,
                     enchantsJsonStr,
                     maxRecycleCount,
-                    requiredAuxValue
+                    requiredAuxValue,
+                    p.getUuid().asString()
                 );
 
                 if (result.success) {

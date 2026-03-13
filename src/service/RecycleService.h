@@ -50,7 +50,8 @@ public:
         int                minDurability,
         const std::string& requiredEnchants,
         int                maxRecycleCount,
-        int                requiredAuxValue = -1
+        int                requiredAuxValue = -1,
+        const std::string& actorUuid = ""
     );
 
     bool removeCommission(BlockPos pos, int dimId, int itemId, BlockSource& region);

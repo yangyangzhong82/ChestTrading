@@ -7,6 +7,7 @@
 #include "TextService.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/ScopeGuard.h"
+#include "Utils/TradeRestrictionUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -39,10 +40,25 @@ SetCommissionResult RecycleService::setCommission(
     int                minDurability,
     const std::string& requiredEnchants,
     int                maxRecycleCount,
-    int                requiredAuxValue
+    int                requiredAuxValue,
+    const std::string& actorUuid
 ) {
     auto& itemRepo = ItemRepository::getInstance();
     auto& txt      = TextService::getInstance();
+
+    const std::string normalizedItemTypeName = TradeRestrictionUtils::extractNormalizedItemTypeNameFromItemNbt(itemNbt);
+    if (!TradeRestrictionUtils::canBypassRestrictions(actorUuid)
+        && TradeRestrictionUtils::isItemBlockedForRecycle(normalizedItemTypeName)) {
+        return {
+            false,
+            txt.getMessage(
+                "recycle.item_blocked",
+                {{"item", normalizedItemTypeName.empty() ? txt.getMessage("shop.unknown_item") : normalizedItemTypeName}}
+            ),
+            -1
+        };
+    }
+
     int   itemId   = itemRepo.getOrCreateItemId(itemNbt);
     if (itemId < 0) {
         return {false, txt.getMessage("shop.item_def_fail"), -1};

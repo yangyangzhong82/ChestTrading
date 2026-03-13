@@ -132,6 +132,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `interactionSettings`：管理工具、交互防抖、是否要求下蹲
 - `salesRankingSettings`：排行榜显示数量
 - `shopNameRestrictions`：商店名称限制
+- `tradeRestrictionSettings`：禁止上架 / 禁止回收委托的物品列表
 
 示例：
 
@@ -158,6 +159,15 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
       "管理",
       "test"
     ]
+  },
+  "tradeRestrictionSettings": {
+    "blockedShopItems": [
+      "minecraft:command_block",
+      "barrier"
+    ],
+    "blockedRecycleItems": [
+      "minecraft:bedrock"
+    ]
   }
 }
 ```
@@ -166,6 +176,13 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 
 - `maxLength`：按 UTF-8 字符数限制最大长度，`<= 0` 表示不限制
 - `blockedKeywords`：按子串匹配，命中任意关键词时拒绝修改名称
+
+交易物品限制说明：
+
+- `blockedShopItems`：禁止设置为商店商品的物品 ID，按命名空间 ID 精确匹配
+- `blockedRecycleItems`：禁止设置为回收委托的物品 ID，按命名空间 ID 精确匹配
+- 配置里可写 `diamond_sword`，插件会自动按 `minecraft:diamond_sword` 处理
+- 拥有 `chest.admin` 的管理员不受这些限制
 
 ## 数据与存储
 
