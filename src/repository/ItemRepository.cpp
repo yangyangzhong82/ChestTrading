@@ -13,16 +13,14 @@ ItemRepository& ItemRepository::getInstance() {
 int ItemRepository::getOrCreateItemId(const std::string& itemNbt) {
     auto& db = Sqlite3Wrapper::getInstance();
 
+    if (!db.execute("INSERT OR IGNORE INTO item_definitions (item_nbt) VALUES (?);", itemNbt)) {
+        logger.error("ItemRepository: Failed to upsert item definition");
+        return -1;
+    }
+
     auto results = db.query("SELECT item_id FROM item_definitions WHERE item_nbt = ?;", itemNbt);
     if (auto id = parseSingleRow<int>(results, 1, [](DbRowParser r) { return r.getInt(0); })) {
         return *id;
-    }
-
-    if (db.execute("INSERT INTO item_definitions (item_nbt) VALUES (?);", itemNbt)) {
-        auto idResults = db.query("SELECT last_insert_rowid();");
-        if (auto id = parseSingleRow<int>(idResults, 1, [](DbRowParser r) { return r.getInt(0); })) {
-            return *id;
-        }
     }
 
     logger.error("ItemRepository: Failed to get or create item_id for NBT");

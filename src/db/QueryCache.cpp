@@ -86,6 +86,22 @@ size_t QueryCache::generateKey(const std::string& sql, const std::vector<Value>&
 bool QueryCache::shouldSkip(const std::string& sql) {
     std::string lowerSql = sql;
     std::transform(lowerSql.begin(), lowerSql.end(), lowerSql.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    auto firstNonSpace = lowerSql.find_first_not_of(" \t\r\n");
+    if (firstNonSpace == std::string::npos) {
+        return true;
+    }
+    lowerSql.erase(0, firstNonSpace);
+
+    const bool cacheableRead = lowerSql.rfind("select", 0) == 0 || lowerSql.rfind("with", 0) == 0;
+    if (!cacheableRead) {
+        return true;
+    }
+
+    if (lowerSql.rfind("pragma", 0) == 0 || lowerSql.find("last_insert_rowid") != std::string::npos) {
+        return true;
+    }
+
     return lowerSql.find("chests") != std::string::npos || lowerSql.find("shared_chests") != std::string::npos
         || lowerSql.find("recycle_shop_items") != std::string::npos || lowerSql.find("shop_items") != std::string::npos;
 }

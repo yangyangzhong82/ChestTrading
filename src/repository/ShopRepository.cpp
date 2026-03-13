@@ -199,13 +199,20 @@ std::vector<PurchaseRecordData> ShopRepository::getPurchaseRecords(BlockPos pos,
 std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const std::string& playerUuid, int limit) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
-        "SELECT p.id, p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id, p.buyer_uuid, "
-         "p.purchase_count, p.total_price, p.timestamp, d.item_nbt "
-         "FROM purchase_records p "
-         "JOIN item_definitions d ON p.item_id = d.item_id "
-         "WHERE p.buyer_uuid = ? "
-         "GROUP BY p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id "
-         "ORDER BY MAX(p.timestamp) DESC LIMIT ?;",
+        "WITH ranked_records AS ("
+        "  SELECT p.id, p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id, p.buyer_uuid, "
+        "         p.purchase_count, p.total_price, p.timestamp, d.item_nbt, "
+        "         ROW_NUMBER() OVER ("
+        "             PARTITION BY p.dim_id, p.pos_x, p.pos_y, p.pos_z, p.item_id "
+        "             ORDER BY p.timestamp DESC, p.id DESC"
+        "         ) AS rn "
+        "  FROM purchase_records p "
+        "  JOIN item_definitions d ON p.item_id = d.item_id "
+        "  WHERE p.buyer_uuid = ?"
+        ") "
+        "SELECT id, dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, total_price, timestamp, item_nbt "
+        "FROM ranked_records WHERE rn = 1 "
+        "ORDER BY timestamp DESC, id DESC LIMIT ?;",
         playerUuid,
         limit
     );
@@ -250,6 +257,28 @@ std::optional<PurchaseRecordData> ShopRepository::getLatestPurchaseRecord(const 
             r.getString(10)
         };
     });
+}
+
+std::vector<std::string> ShopRepository::getDistinctTradeActorUuids() {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT actor_uuid FROM ("
+        "  SELECT buyer_uuid AS actor_uuid FROM purchase_records "
+        "  UNION "
+        "  SELECT recycler_uuid AS actor_uuid FROM recycle_records"
+        ") "
+        "WHERE actor_uuid <> '' "
+        "ORDER BY actor_uuid;"
+    );
+
+    std::vector<std::string> actorUuids;
+    actorUuids.reserve(results.size());
+    for (const auto& row : results) {
+        if (!row.empty()) {
+            actorUuids.push_back(row[0]);
+        }
+    }
+    return actorUuids;
 }
 
 std::vector<TradeRecordData> ShopRepository::getTradeRecords(const TradeRecordQuery& query) {

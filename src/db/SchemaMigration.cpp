@@ -18,6 +18,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV8,
         migrateToV9,
         migrateToV10,
+        migrateToV11,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -318,6 +319,35 @@ bool SchemaMigration::migrateToV10(Sqlite3Wrapper& db) {
         "ON purchase_records(dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_item_recycler_time "
         "ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, timestamp DESC);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV11(Sqlite3Wrapper& db) {
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS packed_dynamic_pricing ("
+        "packed_id INTEGER NOT NULL, item_id INTEGER NOT NULL, is_shop INTEGER NOT NULL, "
+        "price_tiers TEXT NOT NULL, stop_threshold INTEGER NOT NULL DEFAULT -1, "
+        "current_count INTEGER NOT NULL DEFAULT 0, reset_interval_hours INTEGER NOT NULL DEFAULT 24, "
+        "last_reset_time INTEGER NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, "
+        "PRIMARY KEY (packed_id, item_id, is_shop), "
+        "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE, "
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id) ON DELETE CASCADE);",
+
+        "CREATE TABLE IF NOT EXISTS packed_player_limits ("
+        "packed_id INTEGER NOT NULL, player_uuid TEXT NOT NULL DEFAULT '', item_id INTEGER NOT NULL DEFAULT 0, "
+        "limit_count INTEGER NOT NULL, limit_seconds INTEGER NOT NULL, is_shop INTEGER NOT NULL, "
+        "PRIMARY KEY (packed_id, player_uuid, is_shop, item_id), "
+        "FOREIGN KEY (packed_id) REFERENCES packed_chests(packed_id) ON DELETE CASCADE);",
+
+        "CREATE INDEX IF NOT EXISTS idx_packed_dynamic_pricing_packed_id "
+        "ON packed_dynamic_pricing(packed_id);",
+        "CREATE INDEX IF NOT EXISTS idx_packed_player_limits_packed_id "
+        "ON packed_player_limits(packed_id);"
     };
 
     for (const char* sql : sqls) {

@@ -273,9 +273,8 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
     }
 
     // 获取 packed_id
-    auto result = db.query("SELECT last_insert_rowid();");
-    if (result.empty() || result[0].empty()) return -1;
-    int64_t packedId = std::stoll(result[0][0]);
+    int64_t packedId = db.getLastInsertRowId();
+    if (packedId <= 0) return -1;
 
     // 复制商店商品
     if (!db.execute(
@@ -321,6 +320,36 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
         return -1;
     }
 
+    if (!db.execute(
+        "INSERT INTO packed_dynamic_pricing "
+        "(packed_id, item_id, is_shop, price_tiers, stop_threshold, current_count, reset_interval_hours, "
+        "last_reset_time, enabled) "
+        "SELECT ?, item_id, is_shop, price_tiers, stop_threshold, current_count, reset_interval_hours, "
+        "last_reset_time, enabled FROM dynamic_pricing "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        packedId,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    )) {
+        return -1;
+    }
+
+    if (!db.execute(
+        "INSERT INTO packed_player_limits "
+        "(packed_id, player_uuid, item_id, limit_count, limit_seconds, is_shop) "
+        "SELECT ?, player_uuid, item_id, limit_count, limit_seconds, is_shop FROM player_limits "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        packedId,
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    )) {
+        return -1;
+    }
+
     // 删除原箱子数据（级联删除会清理关联表）
     if (!remove(pos, dimId)) {
         return -1;
@@ -345,6 +374,17 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     );
     if (result.empty()) return false;
 
+    auto occupied = db.query(
+        "SELECT 1 FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? LIMIT 1;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z
+    );
+    if (!occupied.empty()) {
+        return false;
+    }
+
     Transaction txn(db);
     if (!txn.isActive()) {
         return false;
@@ -352,7 +392,7 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
 
     // 恢复箱子主表
     if (!db.execute(
-            "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
+            "INSERT INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
             "enable_floating_text, enable_fake_item, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
             result[0][0], // player_uuid
             newDimId,
@@ -372,6 +412,35 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     if (!db.execute(
         "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, db_count, slot) "
         "SELECT ?, ?, ?, ?, item_id, price, db_count, slot FROM packed_shop_items WHERE packed_id = ?;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z,
+        packedId
+    )) {
+        return false;
+    }
+
+    if (!db.execute(
+        "INSERT INTO dynamic_pricing "
+        "(dim_id, pos_x, pos_y, pos_z, item_id, is_shop, price_tiers, stop_threshold, current_count, "
+        "reset_interval_hours, last_reset_time, enabled) "
+        "SELECT ?, ?, ?, ?, item_id, is_shop, price_tiers, stop_threshold, current_count, "
+        "reset_interval_hours, last_reset_time, enabled FROM packed_dynamic_pricing WHERE packed_id = ?;",
+        newDimId,
+        newPos.x,
+        newPos.y,
+        newPos.z,
+        packedId
+    )) {
+        return false;
+    }
+
+    if (!db.execute(
+        "INSERT INTO player_limits "
+        "(dim_id, pos_x, pos_y, pos_z, player_uuid, item_id, limit_count, limit_seconds, is_shop) "
+        "SELECT ?, ?, ?, ?, player_uuid, item_id, limit_count, limit_seconds, is_shop "
+        "FROM packed_player_limits WHERE packed_id = ?;",
         newDimId,
         newPos.x,
         newPos.y,

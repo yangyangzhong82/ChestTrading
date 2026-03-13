@@ -26,6 +26,7 @@
 #include <cctype>
 #include <limits>
 #include <map>
+#include <unordered_map>
 
 
 namespace CT {
@@ -44,59 +45,55 @@ static bool fuzzyMatch(const std::string& text, const std::string& keyword) {
     return toLower(text).find(toLower(keyword)) != std::string::npos;
 }
 
-// 检查商店是否包含匹配的物品（从Repository查询，已优化避免N+1）
-static bool shopContainsItem(const ChestData& shop, const std::string& keyword) {
-    logger.debug(
-        "shopContainsItem: 搜索商店 ({},{},{}) dim={} 关键词: {}",
-        shop.pos.x,
-        shop.pos.y,
-        shop.pos.z,
-        shop.dimId,
-        keyword
-    );
+static std::string buildChestSalesKey(int dimId, const BlockPos& pos);
 
-    // findAllItems/findAllRecycleItems 已经 JOIN 了 item_definitions，直接使用 itemNbt 字段
-    if (shop.type == ChestType::Shop || shop.type == ChestType::AdminShop) {
-        auto items = ShopRepository::getInstance().findAllItems(shop.pos, shop.dimId);
-        logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
-        for (const auto& item : items) {
-            if (item.dbCount <= 0) continue;
-            if (item.itemNbt.empty()) continue;
-            auto nbt = CT::NbtUtils::parseSNBT(item.itemNbt);
-            if (nbt) {
-                (*nbt)["Count"] = ByteTag(1);
-                auto itemPtr    = CT::NbtUtils::createItemFromNbt(*nbt);
-                if (itemPtr && !itemPtr->isNull()) {
-                    std::string itemName = itemPtr->getName();
-                    std::string typeName = itemPtr->getTypeName();
-                    if (itemName.empty()) itemName = typeName;
-                    if (fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword)) {
-                        return true;
-                    }
-                }
-            }
-        }
-    } else if (shop.type == ChestType::RecycleShop || shop.type == ChestType::AdminRecycle) {
-        auto items = ShopRepository::getInstance().findAllRecycleItems(shop.pos, shop.dimId);
-        logger.debug("shopContainsItem: 查询到 {} 个物品", items.size());
-        for (const auto& item : items) {
-            if (item.itemNbt.empty()) continue;
-            auto nbt = CT::NbtUtils::parseSNBT(item.itemNbt);
-            if (nbt) {
-                (*nbt)["Count"] = ByteTag(1);
-                auto itemPtr    = CT::NbtUtils::createItemFromNbt(*nbt);
-                if (itemPtr && !itemPtr->isNull()) {
-                    std::string itemName = itemPtr->getName();
-                    std::string typeName = itemPtr->getTypeName();
-                    if (itemName.empty()) itemName = typeName;
-                    if (fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword)) {
-                        return true;
-                    }
-                }
-            }
+struct PublicChestItemSummary {
+    std::unordered_map<std::string, int>  activeEntryCountByChest;
+    std::unordered_map<std::string, bool> keywordMatchByChest;
+};
+
+static bool itemNbtMatchesKeyword(const std::string& itemNbt, const std::string& keyword) {
+    if (keyword.empty() || itemNbt.empty()) {
+        return false;
+    }
+
+    auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbt);
+    if (!itemPtr || itemPtr->isNull()) {
+        return false;
+    }
+
+    std::string itemName = itemPtr->getName();
+    std::string typeName = itemPtr->getTypeName();
+    if (itemName.empty()) {
+        itemName = typeName;
+    }
+    return fuzzyMatch(itemName, keyword) || fuzzyMatch(typeName, keyword);
+}
+
+template <typename ItemData>
+static void populatePublicChestItemSummary(
+    const std::vector<ItemData>& items,
+    const std::string&           keyword,
+    PublicChestItemSummary&      summary
+) {
+    for (const auto& item : items) {
+        std::string chestKey = buildChestSalesKey(item.dimId, item.pos);
+        ++summary.activeEntryCountByChest[chestKey];
+
+        if (!keyword.empty() && itemNbtMatchesKeyword(item.itemNbt, keyword)) {
+            summary.keywordMatchByChest[chestKey] = true;
         }
     }
-    return false;
+}
+
+static PublicChestItemSummary buildPublicChestItemSummary(bool isRecycle, const std::string& keyword) {
+    PublicChestItemSummary summary;
+    if (isRecycle) {
+        populatePublicChestItemSummary(ShopRepository::getInstance().findAllPublicRecycleItems(), keyword, summary);
+    } else {
+        populatePublicChestItemSummary(ShopRepository::getInstance().findAllPublicShopItems(), keyword, summary);
+    }
+    return summary;
 }
 
 // 商店列表的 i18n key 配置
@@ -166,24 +163,6 @@ static std::map<std::string, int> buildLatestChestRankMap() {
     return rankMap;
 }
 
-static int countActiveEntriesForChest(const ChestData& chest, bool isRecycle) {
-    if (isRecycle) {
-        auto commissions = ShopRepository::getInstance().findAllRecycleItems(chest.pos, chest.dimId);
-        int  validCount  = 0;
-        for (const auto& commission : commissions) {
-            if (commission.maxRecycleCount <= 0 || commission.currentRecycledCount < commission.maxRecycleCount) {
-                ++validCount;
-            }
-        }
-        return validCount;
-    }
-
-    auto items = ShopRepository::getInstance().findAllItems(chest.pos, chest.dimId);
-    return static_cast<int>(std::count_if(items.begin(), items.end(), [](const ShopItemData& item) {
-        return item.dbCount > 0;
-    }));
-}
-
 static std::string buildPreviewTeleportCostText() {
     double teleportCost = ConfigManager::getInstance().get().teleportSettings.teleportCost;
     if (teleportCost <= 0.0) {
@@ -221,6 +200,7 @@ static void showShopListFormImpl(
     ll::form::SimpleForm fm;
     fm.setTitle(i18n.get(keys.listTitle));
     bool isRecycle = (targetType == ChestType::RecycleShop);
+    auto chestItemSummary = buildPublicChestItemSummary(isRecycle, searchType == "item" ? searchKeyword : "");
 
     auto allChests = ChestService::getInstance().getAllPublicChests();
 
@@ -240,8 +220,11 @@ static void showShopListFormImpl(
         activeRecycleChests.reserve(filteredChests.size());
 
         for (const auto& chest : filteredChests) {
-            std::string chestKey   = buildChestSalesKey(chest.dimId, chest.pos);
-            int         activeCount = countActiveEntriesForChest(chest, true);
+            std::string chestKey = buildChestSalesKey(chest.dimId, chest.pos);
+            int         activeCount =
+                chestItemSummary.activeEntryCountByChest.count(chestKey)
+                ? chestItemSummary.activeEntryCountByChest[chestKey]
+                : 0;
             activeEntryCountCache[chestKey] = activeCount;
             if (activeCount > 0) {
                 activeRecycleChests.push_back(chest);
@@ -289,8 +272,10 @@ static void showShopListFormImpl(
             if (searchType == "owner") {
                 if (!fuzzyMatch(ownerName, searchKeyword)) continue;
             } else if (searchType == "item") {
-                bool itemMatched = std::any_of(shops.begin(), shops.end(), [&searchKeyword](const ChestData& shop) {
-                    return shopContainsItem(shop, searchKeyword);
+                bool itemMatched = std::any_of(shops.begin(), shops.end(), [&chestItemSummary](const ChestData& shop) {
+                    std::string chestKey = buildChestSalesKey(shop.dimId, shop.pos);
+                    auto        it       = chestItemSummary.keywordMatchByChest.find(chestKey);
+                    return it != chestItemSummary.keywordMatchByChest.end() && it->second;
                 });
                 if (!itemMatched) continue;
             }
@@ -305,9 +290,12 @@ static void showShopListFormImpl(
             auto salesIt = salesMap.find(chestKey);
             if (salesIt != salesMap.end()) totalSalesCount += salesIt->second;
 
-            auto        activeIt = activeEntryCountCache.find(chestKey);
+            auto activeIt = activeEntryCountCache.find(chestKey);
             if (activeIt == activeEntryCountCache.end()) {
-                int activeCount = countActiveEntriesForChest(shop, isRecycle);
+                int activeCount =
+                    chestItemSummary.activeEntryCountByChest.count(chestKey)
+                    ? chestItemSummary.activeEntryCountByChest[chestKey]
+                    : 0;
                 activeEntryCountCache[chestKey] = activeCount;
                 activeEntryCount += activeCount;
             } else {
@@ -805,6 +793,7 @@ void showPlayerShopsForm(
         {{"name", ownerName}}
     ));
 
+    auto chestItemSummary = buildPublicChestItemSummary(isRecycle, "");
     auto allChests = ChestService::getInstance().getAllPublicChests();
 
     ChestType targetType = isRecycle ? ChestType::RecycleShop : ChestType::Shop;
@@ -885,7 +874,10 @@ void showPlayerShopsForm(
             // 获取销量
             std::string salesKey = buildChestSalesKey(shop.dimId, shop.pos);
             int sales = salesMap.count(salesKey) ? salesMap[salesKey] : 0;
-            int activeEntryCount = countActiveEntriesForChest(shop, isRecycle);
+            int activeEntryCount =
+                chestItemSummary.activeEntryCountByChest.count(salesKey)
+                ? chestItemSummary.activeEntryCountByChest[salesKey]
+                : 0;
 
             std::string buttonText = officialTag + "§b" + shopDisplayName + "§r\n"
                                    + i18n.get(

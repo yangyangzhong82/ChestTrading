@@ -369,24 +369,16 @@ std::vector<PlayerLookupCandidate> findFuzzyPlayerLookupCandidates(const std::st
         return candidates;
     }
 
-    TradeRecordQuery query;
-    auto             records = ShopRepository::getInstance().getTradeRecords(query);
-    if (records.empty()) {
+    auto actorUuids = ShopRepository::getInstance().getDistinctTradeActorUuids();
+    if (actorUuids.empty()) {
         return candidates;
     }
 
-    std::vector<std::string> actorUuids;
-    actorUuids.reserve(records.size());
-    for (const auto& record : records) {
-        actorUuids.push_back(record.actorUuid);
-    }
-
     auto nameCache = FormUtils::getPlayerNameCache(actorUuids);
-    std::unordered_set<std::string> seen;
     const std::string               unknownOwner = I18nService::getInstance().get("public_shop.unknown_owner");
 
     for (const auto& actorUuid : actorUuids) {
-        if (actorUuid.empty() || !seen.insert(actorUuid).second) {
+        if (actorUuid.empty()) {
             continue;
         }
 
@@ -668,20 +660,56 @@ void showTradeRecordListForm(Player& player, TradeRecordListState state) {
         query.officialOnly = state.officialFilter == OfficialFilter::Official;
     }
 
-    auto allRecords    = ShopRepository::getInstance().getTradeRecords(query);
-    auto displayRecords = resolveTradeRecords(allRecords);
+    auto allRecords = ShopRepository::getInstance().getTradeRecords(query);
 
-    std::vector<DisplayTradeRecord> filteredRecords;
-    filteredRecords.reserve(displayRecords.size());
-    for (const auto& record : displayRecords) {
-        if (!matchesKeyword(record, state)) continue;
-        filteredRecords.push_back(record);
-    }
-
-    int totalRecords = static_cast<int>(filteredRecords.size());
+    std::vector<DisplayTradeRecord> pageRecords;
+    int                             totalRecords = 0;
     int totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
     if (totalPages == 0) totalPages = 1;
     state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
+    int startIndex    = 0;
+    int endIndex      = 0;
+
+    if (state.keyword.empty()) {
+        totalRecords = static_cast<int>(allRecords.size());
+        totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
+        if (totalPages == 0) totalPages = 1;
+        state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
+
+        startIndex = state.currentPage * RECORDS_PER_PAGE;
+        endIndex   = std::min(startIndex + RECORDS_PER_PAGE, totalRecords);
+
+        if (startIndex < endIndex) {
+            std::vector<TradeRecordData> pageRawRecords;
+            pageRawRecords.reserve(endIndex - startIndex);
+            pageRawRecords.insert(
+                pageRawRecords.end(),
+                allRecords.begin() + startIndex,
+                allRecords.begin() + endIndex
+            );
+            pageRecords = resolveTradeRecords(pageRawRecords);
+        }
+    } else {
+        auto displayRecords = resolveTradeRecords(allRecords);
+
+        std::vector<DisplayTradeRecord> filteredRecords;
+        filteredRecords.reserve(displayRecords.size());
+        for (const auto& record : displayRecords) {
+            if (!matchesKeyword(record, state)) continue;
+            filteredRecords.push_back(record);
+        }
+
+        totalRecords = static_cast<int>(filteredRecords.size());
+        totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
+        if (totalPages == 0) totalPages = 1;
+        state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
+
+        startIndex = state.currentPage * RECORDS_PER_PAGE;
+        endIndex   = std::min(startIndex + RECORDS_PER_PAGE, totalRecords);
+        if (startIndex < endIndex) {
+            pageRecords.assign(filteredRecords.begin() + startIndex, filteredRecords.begin() + endIndex);
+        }
+    }
 
     fm.appendButton(
         i18n.get("trade_records.button_search_filter"),
@@ -690,17 +718,14 @@ void showTradeRecordListForm(Player& player, TradeRecordListState state) {
         [state](Player& p) { showTradeRecordSearchForm(p, state); }
     );
 
-    if (filteredRecords.empty()) {
+    if (totalRecords == 0) {
         fm.setContent(i18n.get("trade_records.no_records"));
     } else {
         std::string content = buildListContent(state, totalRecords, state.currentPage, totalPages);
         content += "\n\n";
 
-        int startIndex = state.currentPage * RECORDS_PER_PAGE;
-        int endIndex   = std::min(startIndex + RECORDS_PER_PAGE, totalRecords);
-        for (int i = startIndex; i < endIndex; ++i) {
-            const auto& record = filteredRecords[i];
-            content += buildAnnouncementEntry(record, i + 1);
+        for (int i = 0; i < static_cast<int>(pageRecords.size()); ++i) {
+            content += buildAnnouncementEntry(pageRecords[i], startIndex + i + 1);
             content += "\n\n";
         }
         fm.setContent(content);

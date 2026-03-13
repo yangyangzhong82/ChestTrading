@@ -91,6 +91,9 @@ public:
     void setCacheTimeout(int seconds) { mQueryCache.setTimeout(seconds); }
     void enableCache(bool enable) { mQueryCache.setEnabled(enable); }
 
+    // 获取主连接最近一次插入的 rowid。该调用不会进入查询缓存。
+    long long getLastInsertRowId();
+
     // 检查列是否存在
     bool isColumnExists(const std::string& tableName, const std::string& columnName);
 

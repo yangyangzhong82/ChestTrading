@@ -138,6 +138,14 @@ void Sqlite3Wrapper::close() {
     mClosing = false;
 }
 
+long long Sqlite3Wrapper::getLastInsertRowId() {
+    std::lock_guard<std::recursive_mutex> lock(mDbMutex);
+    if (!db) {
+        return 0;
+    }
+    return static_cast<long long>(sqlite3_last_insert_rowid(db));
+}
+
 // === 读连接池实现 ===
 
 bool Sqlite3Wrapper::initReadConnPool() {

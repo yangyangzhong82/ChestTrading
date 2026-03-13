@@ -705,7 +705,9 @@ std::vector<ChestData> ChestService::getAllPublicChests() {
     auto                   allChests = ChestRepository::getInstance().findAll();
     std::vector<ChestData> publicChests;
     for (const auto& chest : allChests) {
-        if (chest.isPublic && (chest.type == ChestType::Shop || chest.type == ChestType::RecycleShop)) {
+        if (chest.isPublic
+            && (chest.type == ChestType::Shop || chest.type == ChestType::RecycleShop
+                || chest.type == ChestType::AdminShop || chest.type == ChestType::AdminRecycle)) {
             publicChests.push_back(chest);
         }
     }
