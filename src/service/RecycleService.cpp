@@ -76,6 +76,22 @@ bool RecycleService::updateCommission(BlockPos pos, int dimId, int itemId, doubl
     return false;
 }
 
+bool RecycleService::removeCommission(BlockPos pos, int dimId, int itemId, BlockSource& region) {
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
+    bool     success = ShopRepository::getInstance().removeRecycleItem(mainPos, dimId, itemId);
+    if (!success) {
+        logger.error("删除回收委托失败: itemId={}", itemId);
+        return false;
+    }
+
+    ChestType chestType = ChestType::RecycleShop;
+    if (auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region)) {
+        chestType = chestInfo->type;
+    }
+    FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, chestType);
+    return true;
+}
+
 std::vector<RecycleItemData> RecycleService::getCommissions(BlockPos pos, int dimId) {
     return ShopRepository::getInstance().findAllRecycleItems(pos, dimId);
 }
@@ -94,7 +110,8 @@ bool RecycleService::executeDbUpdate(
     int      dimId,
     int      itemId,
     int      quantity,
-    double   totalPrice
+    double   totalPrice,
+    bool     removeCommissionAfterTrade
 ) {
     auto& shopRepo = ShopRepository::getInstance();
     auto& db       = Sqlite3Wrapper::getInstance();
@@ -102,11 +119,6 @@ bool RecycleService::executeDbUpdate(
     Transaction txn(db);
     if (!txn.isActive()) {
         logger.error("回收数据库更新失败: 无法开始事务");
-        return false;
-    }
-
-    if (!shopRepo.incrementRecycledCount(pos, dimId, itemId, quantity)) {
-        logger.error("回收数据库更新失败: 无法更新回收计数, itemId={}, quantity={}", itemId, quantity);
         return false;
     }
 
@@ -120,6 +132,16 @@ bool RecycleService::executeDbUpdate(
 
     if (!shopRepo.addRecycleRecord(record)) {
         logger.error("回收数据库更新失败: 无法添加回收记录, itemId={}", itemId);
+        return false;
+    }
+
+    if (removeCommissionAfterTrade) {
+        if (!shopRepo.removeRecycleItem(pos, dimId, itemId)) {
+            logger.error("回收数据库更新失败: 无法删除已完成委托, itemId={}", itemId);
+            return false;
+        }
+    } else if (!shopRepo.incrementRecycledCount(pos, dimId, itemId, quantity)) {
+        logger.error("回收数据库更新失败: 无法更新回收计数, itemId={}, quantity={}", itemId, quantity);
         return false;
     }
 
@@ -482,8 +504,11 @@ RecycleResult RecycleService::executeFullRecycle(
     // 添加回滚操作：扣除回收者金钱（LIFO 顺序：先回滚金钱，再回滚物品）
     rollbackGuard.addRollback([&]() { Economy::reduceMoney(recycler, recyclerGain); });
 
+    const bool removeCommissionAfterTrade =
+        maxRecycleCount > 0 && (currentRecycledCount + quantity) >= maxRecycleCount;
+
     // 11. 更新数据库（事务）
-    if (!executeDbUpdate(recycler, mainPos, dimId, itemId, quantity, totalPrice)) {
+    if (!executeDbUpdate(recycler, mainPos, dimId, itemId, quantity, totalPrice, removeCommissionAfterTrade)) {
         return {false, txt.getMessage("recycle.db_fail"), 0, 0.0};
         // rollbackGuard 析构时会自动回滚金钱和物品
     }
@@ -495,6 +520,8 @@ RecycleResult RecycleService::executeFullRecycle(
     if (isAdminRecycle) {
         DynamicPricingService::getInstance().recordTrade(mainPos, dimId, itemId, false, quantity);
     }
+
+    FloatingTextManager::getInstance().updateShopFloatingText(mainPos, dimId, chestInfo->type);
 
     recycler.refreshInventory();
     return {true, "", quantity, totalPrice};

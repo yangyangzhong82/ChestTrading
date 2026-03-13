@@ -458,6 +458,18 @@ bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
     );
 }
 
+bool ShopRepository::removeRecycleItem(BlockPos pos, int dimId, int itemId) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    return db.execute(
+        "DELETE FROM recycle_shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        itemId
+    );
+}
+
 bool ShopRepository::updateRecycleItem(BlockPos pos, int dimId, int itemId, double price, int maxCount) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(

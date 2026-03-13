@@ -168,6 +168,7 @@ public:
     std::vector<RecycleItemData>   findAllRecycleItems(BlockPos pos, int dimId);
     std::optional<RecycleItemData> findRecycleItem(BlockPos pos, int dimId, int itemId);
     bool                           upsertRecycleItem(const RecycleItemData& item);
+    bool                           removeRecycleItem(BlockPos pos, int dimId, int itemId);
     bool                           updateRecycleItem(BlockPos pos, int dimId, int itemId, double price, int maxCount);
     bool                           incrementRecycledCount(BlockPos pos, int dimId, int itemId, int amount);
     bool                           addRecycleRecord(const RecycleRecordData& record);

@@ -353,6 +353,7 @@ void FloatingTextManager::loadAllChests() {
                  "SELECT rsi.dim_id, rsi.pos_x, rsi.pos_y, rsi.pos_z, id.item_nbt, 'recycle' as source "
                  "FROM recycle_shop_items rsi "
                  "JOIN item_definitions id ON rsi.item_id = id.item_id "
+                 "WHERE rsi.max_recycle_count <= 0 OR rsi.current_recycled_count < rsi.max_recycle_count "
                  "ORDER BY dim_id, pos_x, pos_y, pos_z;");
 
     // 按位置分组物品数据，key = "dimId:x:y:z", value = vector<item_nbt>
@@ -741,7 +742,8 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         } else { // RecycleShop or AdminRecycle
             itemResults = db.query(
                 "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id "
-                "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ?;",
+                "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ? "
+                "AND (rsi.max_recycle_count <= 0 OR rsi.current_recycled_count < rsi.max_recycle_count);",
                 dimId,
                 pos.x,
                 pos.y,

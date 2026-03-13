@@ -261,6 +261,7 @@ ChestService::createChest(const std::string& playerUuid, BlockPos pos, int dimId
     data.dimId     = dimId;
     data.pos       = mainPos;
     data.type      = type;
+    data.enableFloatingText = (type != ChestType::Locked && type != ChestType::Public);
 
     if (!repo.insert(data)) {
         return {false, txt.getMessage("chest.set_fail"), std::nullopt};
@@ -276,8 +277,12 @@ ChestService::createChest(const std::string& playerUuid, BlockPos pos, int dimId
         ChestCacheManager::getInstance().invalidateCache(pairedChestPos, dimId);
     }
 
-    // 更新悬浮字
-    updateFloatingText(mainPos, dimId, playerUuid, type);
+    // 上锁箱子/公共箱子默认关闭悬浮字，需由玩家手动开启。
+    if (data.enableFloatingText) {
+        updateFloatingText(mainPos, dimId, playerUuid, type);
+    } else {
+        FloatingTextManager::getInstance().removeFloatingText(mainPos, dimId);
+    }
 
     // 如果是大箱子，移除另一个方块的悬浮字
     if (isLargeChest) {

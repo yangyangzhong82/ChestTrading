@@ -1007,6 +1007,24 @@ void showCommissionDetailsForm(
                 showEditCommissionForm(p, mainPos, dimId, region, commissionNbtStr);
             });
 
+            fm.appendButton(txt.getMessage("form.button_remove_commission"), [mainPos, dimId, commissionNbtStr](Player& p) {
+                auto& region = p.getDimensionBlockSource();
+                auto& txt    = TextService::getInstance();
+                int   itemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
+                if (itemId < 0) {
+                    p.sendMessage(txt.getMessage("recycle.item_id_fail"));
+                    showCommissionDetailsForm(p, mainPos, dimId, region, commissionNbtStr);
+                    return;
+                }
+
+                if (RecycleService::getInstance().removeCommission(mainPos, dimId, itemId, region)) {
+                    p.sendMessage(txt.getMessage("recycle.commission_removed"));
+                } else {
+                    p.sendMessage(txt.getMessage("recycle.commission_remove_fail"));
+                }
+                showViewRecycleCommissionsForm(p, mainPos, dimId, region);
+            });
+
             int limitItemId = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
             if (limitItemId > 0) {
                 fm.appendButton(

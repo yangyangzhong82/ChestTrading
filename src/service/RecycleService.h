@@ -53,6 +53,8 @@ public:
         int                requiredAuxValue = -1
     );
 
+    bool removeCommission(BlockPos pos, int dimId, int itemId, BlockSource& region);
+
     bool updateCommission(BlockPos pos, int dimId, int itemId, double price, int maxRecycleCount);
 
     std::vector<RecycleItemData> getCommissions(BlockPos pos, int dimId);
@@ -79,7 +81,15 @@ private:
     RecycleService() = default;
 
     // 内部方法：执行数据库更新（在事务中）
-    bool executeDbUpdate(Player& recycler, BlockPos pos, int dimId, int itemId, int quantity, double totalPrice);
+    bool executeDbUpdate(
+        Player& recycler,
+        BlockPos pos,
+        int dimId,
+        int itemId,
+        int quantity,
+        double totalPrice,
+        bool removeCommissionAfterTrade
+    );
 };
 
 } // namespace CT
