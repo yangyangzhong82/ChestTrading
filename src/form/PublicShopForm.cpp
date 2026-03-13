@@ -224,7 +224,8 @@ static void showShopListFormImpl(
     }
     auto ownerNameCache = CT::FormUtils::getPlayerNameCache(ownerUuids);
 
-    auto                       salesRanking = ShopRepository::getInstance().getChestSalesRanking(10000);
+    auto                       salesRanking = isRecycle ? ShopRepository::getInstance().getRecycleChestSalesRanking(10000)
+                                                        : ShopRepository::getInstance().getChestSalesRanking(10000);
     std::map<std::string, int> salesMap;
     for (const auto& sale : salesRanking) {
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
@@ -781,7 +782,8 @@ void showPlayerShopsForm(
     }
 
     // 获取销量数据并按销量排序
-    auto salesRanking = ShopRepository::getInstance().getChestSalesRanking(10000);
+    auto salesRanking = isRecycle ? ShopRepository::getInstance().getRecycleChestSalesRanking(10000)
+                                  : ShopRepository::getInstance().getChestSalesRanking(10000);
     std::map<std::string, int> salesMap;
     for (const auto& sale : salesRanking) {
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;

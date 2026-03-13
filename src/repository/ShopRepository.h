@@ -179,6 +179,7 @@ public:
 
     // === 销量统计 ===
     std::vector<ChestSalesData> getChestSalesRanking(int limit = 50);
+    std::vector<ChestSalesData> getRecycleChestSalesRanking(int limit = 50);
     std::vector<PlayerSalesData> getPlayerSalesRanking(int limit = 50);
 
 private:

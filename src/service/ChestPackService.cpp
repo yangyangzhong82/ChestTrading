@@ -13,7 +13,70 @@
 #include "service/ChestService.h"
 #include "service/TextService.h"
 
+#include <optional>
+#include <vector>
+
 namespace CT {
+
+namespace {
+
+std::string escapeSnbtString(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+
+    return escaped;
+}
+
+std::unique_ptr<CompoundTag> buildPackedChestDisplayTag(TextService& txt, const std::optional<ChestData>& chestInfo) {
+    std::vector<std::string> loreLines{
+        txt.getMessage("chest.pack_item_lore")
+    };
+
+    if (chestInfo.has_value()) {
+        loreLines.push_back(txt.getMessage(
+            "chest.pack_item_type_lore",
+            {
+                {"type", txt.getChestTypeName(chestInfo->type)}
+            }
+        ));
+    }
+
+    std::string snbt = "{Lore:[";
+    for (size_t i = 0; i < loreLines.size(); ++i) {
+        if (i > 0) {
+            snbt += ",";
+        }
+        snbt += "\"" + escapeSnbtString(loreLines[i]) + "\"";
+    }
+    snbt += "]}";
+
+    return NbtUtils::parseSNBT(snbt);
+}
+
+} // namespace
 
 bool packChestForPlayer(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     auto        playerUuid   = player.getUuid().asString();
@@ -67,6 +130,9 @@ bool packChestForPlayer(Player& player, BlockPos pos, int dimId, BlockSource& re
 
     CompoundTag tagNbt;
     tagNbt["Items"] = chestNbt->at("Items").get<ListTag>();
+    if (auto displayTag = buildPackedChestDisplayTag(txt, chestInfo)) {
+        tagNbt["display"] = *displayTag;
+    }
 
     if (chestInfo.has_value()) {
         int64_t packedId = ChestRepository::getInstance().packChest(mainPos, dimId);

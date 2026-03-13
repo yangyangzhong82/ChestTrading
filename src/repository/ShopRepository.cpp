@@ -615,6 +615,36 @@ std::vector<ChestSalesData> ShopRepository::getChestSalesRanking(int limit) {
     });
 }
 
+std::vector<ChestSalesData> ShopRepository::getRecycleChestSalesRanking(int limit) {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, "
+        "COALESCE(SUM(r.recycle_count), 0) as total_count, "
+        "COALESCE(SUM(r.total_price), 0) as total_revenue, "
+        "MAX(r.timestamp) as last_sale "
+        "FROM chests c "
+        "LEFT JOIN recycle_records r ON c.dim_id = r.dim_id AND c.pos_x = r.pos_x "
+        "AND c.pos_y = r.pos_y AND c.pos_z = r.pos_z "
+        "WHERE c.type IN (3, 6) "
+        "GROUP BY c.dim_id, c.pos_x, c.pos_y, c.pos_z "
+        "ORDER BY total_revenue DESC, total_count DESC "
+        "LIMIT ?;",
+        limit
+    );
+
+    return parseRows<ChestSalesData>(results, 9, [](DbRowParser r) {
+        return ChestSalesData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            r.getString(4),
+            r.getString(5),
+            r.getInt(6),
+            r.getDouble(7),
+            r.getString(8)
+        };
+    });
+}
+
 std::vector<PlayerSalesData> ShopRepository::getPlayerSalesRanking(int limit) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(

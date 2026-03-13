@@ -958,15 +958,15 @@ void showCommissionDetailsForm(
                             {"count", std::to_string(maxRecycleCount)}
                     }
                     );
-                    content += txt.getMessage(
-                        "form.current_recycled_count_label",
-                        {
-                            {"count", std::to_string(currentRecycledCount)}
-                    }
-                    );
                 } else {
                     content += txt.getMessage("form.max_recycle_unlimited");
                 }
+                content += txt.getMessage(
+                    "form.current_recycled_count_label",
+                    {
+                        {"count", std::to_string(currentRecycledCount)}
+                }
+                );
             }
 
             if (records.empty()) {
@@ -1063,7 +1063,12 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
             if (!itemPtr) continue;
             ItemStack item = *itemPtr;
 
-            std::string progress = txt.getMessage("form.unlimited_label");
+            std::string progress = txt.getMessage(
+                "form.current_recycled_inline_label",
+                {
+                    {"count", std::to_string(commission.currentRecycledCount)}
+            }
+            );
             if (commission.maxRecycleCount > 0) {
                 progress = "§a[" + std::to_string(commission.currentRecycledCount) + " / "
                          + std::to_string(commission.maxRecycleCount) + "]§r";

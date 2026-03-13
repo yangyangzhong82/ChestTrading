@@ -514,6 +514,10 @@ void FloatingTextManager::loadAllChests() {
                     );
                 } else {
                     ft.text = TextService::getInstance().generateEmptyShopText(chestType);
+                    if (ft.debugText) {
+                        ft.debugText->setText(ft.text);
+                        ft.debugText->update();
+                    }
                     logger.debug(
                         "箱子 ({}, {}, {}) in dim {} 是商店/回收商店，但未加载任何物品名称。",
                         pos.x,
@@ -1037,7 +1041,7 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
     {
         std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
         for (const auto& [key, ft] : mFloatingTexts) {
-            if (ft.isDynamic && !ft.itemNbts.empty()) {
+            if (ft.isDynamic) {
                 fakeItemsByDim[ft.dimId].emplace_back(key);
             }
         }
