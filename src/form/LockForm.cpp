@@ -18,6 +18,19 @@
 
 namespace CT {
 
+namespace {
+
+std::string buildChestSetupButtonText(TextService& textService, const std::string& buttonKey, double cost) {
+    std::string text = textService.getMessage(buttonKey);
+    if (cost <= 0.0) {
+        return text;
+    }
+
+    return text + "\n" + textService.getMessage("form.button_cost_line", {{"price", MoneyFormat::format(cost)}});
+}
+
+} // namespace
+
 void showChestLockForm(
     Player&            player,
     BlockPos           pos,
@@ -314,7 +327,11 @@ void showChestLockForm(
             };
 
         fm.appendButton(
-            textService.getMessage("form.button_lock_normal"),
+            buildChestSetupButtonText(
+                textService,
+                "form.button_lock_normal",
+                ConfigManager::getInstance().get().chestCosts.lockedChestCost
+            ),
             "textures/ui/lock_color",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
@@ -330,7 +347,11 @@ void showChestLockForm(
         );
 
         fm.appendButton(
-            textService.getMessage("form.button_set_recycle"),
+            buildChestSetupButtonText(
+                textService,
+                "form.button_set_recycle",
+                ConfigManager::getInstance().get().chestCosts.recycleShopCost
+            ),
             "textures/ui/trade_icon",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
@@ -346,7 +367,11 @@ void showChestLockForm(
         );
 
         fm.appendButton(
-            textService.getMessage("form.button_set_shop"),
+            buildChestSetupButtonText(
+                textService,
+                "form.button_set_shop",
+                ConfigManager::getInstance().get().chestCosts.shopCost
+            ),
             "textures/ui/store_home_icon",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
@@ -362,7 +387,11 @@ void showChestLockForm(
         );
 
         fm.appendButton(
-            textService.getMessage("form.button_set_public"),
+            buildChestSetupButtonText(
+                textService,
+                "form.button_set_public",
+                ConfigManager::getInstance().get().chestCosts.publicChestCost
+            ),
             "textures/ui/world_glyph_color_2x",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
@@ -379,7 +408,7 @@ void showChestLockForm(
 
         // 官方商店按钮（需要权限）
         fm.appendButton(
-            textService.getMessage("form.button_set_admin_shop"),
+            buildChestSetupButtonText(textService, "form.button_set_admin_shop", 0.0),
             "textures/ui/permissions_op_crown",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {
@@ -388,7 +417,7 @@ void showChestLockForm(
         );
 
         fm.appendButton(
-            textService.getMessage("form.button_set_admin_recycle"),
+            buildChestSetupButtonText(textService, "form.button_set_admin_recycle", 0.0),
             "textures/ui/permissions_op_crown",
             "path",
             [pos, dimId, player_uuid, createChestHandler](Player& p) {

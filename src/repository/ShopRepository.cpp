@@ -580,6 +580,7 @@ std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
                              "r.pos_y AND c.pos_z = r.pos_z "
                              "JOIN item_definitions d ON r.item_id = d.item_id "
                              "WHERE c.is_public = 1 AND c.type IN (3, 6) "
+                             "AND (r.max_recycle_count <= 0 OR r.current_recycled_count < r.max_recycle_count) "
                              "ORDER BY c.shop_name, c.player_uuid;");
 
     return parseRows<PublicRecycleItemData>(results, 10, [](DbRowParser r) {

@@ -184,6 +184,28 @@ static int countActiveEntriesForChest(const ChestData& chest, bool isRecycle) {
     }));
 }
 
+static std::string buildPreviewTeleportCostText() {
+    double teleportCost = ConfigManager::getInstance().get().teleportSettings.teleportCost;
+    if (teleportCost <= 0.0) {
+        return {};
+    }
+
+    return I18nService::getInstance().get(
+        "public_shop.preview_teleport_cost",
+        {{"cost", CT::MoneyFormat::format(teleportCost)}}
+    );
+}
+
+static std::string buildRecyclePreviewCountText(const RecycleItemData& item) {
+    auto& i18n = I18nService::getInstance();
+    if (item.maxRecycleCount <= 0) {
+        return i18n.get("public_shop.preview_recycle_unlimited");
+    }
+
+    int remaining = std::max(0, item.maxRecycleCount - item.currentRecycledCount);
+    return i18n.get("public_shop.preview_recycle_remaining", {{"count", std::to_string(remaining)}});
+}
+
 static void showShopListFormImpl(
     Player&                 player,
     int                     currentPage,
@@ -212,6 +234,23 @@ static void showShopListFormImpl(
         filteredChests.push_back(chest);
     }
 
+    std::map<std::string, int> activeEntryCountCache;
+    if (isRecycle) {
+        std::vector<ChestData> activeRecycleChests;
+        activeRecycleChests.reserve(filteredChests.size());
+
+        for (const auto& chest : filteredChests) {
+            std::string chestKey   = buildChestSalesKey(chest.dimId, chest.pos);
+            int         activeCount = countActiveEntriesForChest(chest, true);
+            activeEntryCountCache[chestKey] = activeCount;
+            if (activeCount > 0) {
+                activeRecycleChests.push_back(chest);
+            }
+        }
+
+        filteredChests = std::move(activeRecycleChests);
+    }
+
     std::map<std::string, std::vector<ChestData>> ownerShops;
     for (const auto& chest : filteredChests) {
         ownerShops[chest.ownerUuid].push_back(chest);
@@ -231,8 +270,6 @@ static void showShopListFormImpl(
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
     auto latestRankMap = buildLatestChestRankMap();
-
-    std::map<std::string, int> activeEntryCountCache;
 
     struct PlayerAggregateInfo {
         std::string ownerUuid;
@@ -609,6 +646,7 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
             {"z",   std::to_string(shop.pos.z)              }
     }
     );
+    content += buildPreviewTeleportCostText();
 
     if (items.empty()) {
         content += i18n.get("public_shop.preview_no_items");
@@ -702,6 +740,7 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
             {"z",   std::to_string(shop.pos.z)              }
     }
     );
+    content += buildPreviewTeleportCostText();
 
     if (items.empty()) {
         content += i18n.get("public_shop.preview_no_recycle");
@@ -714,8 +753,9 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
                 content += i18n.get(
                     "public_shop.preview_recycle_entry",
                     {
-                        {"name",  std::string(itemPtr->getName())    },
-                        {"price", CT::MoneyFormat::format(item.price)}
+                        {"name",  std::string(itemPtr->getName())        },
+                        {"price", CT::MoneyFormat::format(item.price)    },
+                        {"count", buildRecyclePreviewCountText(item)}
                 }
                 );
             }
