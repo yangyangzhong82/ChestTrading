@@ -146,9 +146,15 @@ static std::string buildChestSalesKey(int dimId, const BlockPos& pos) {
          + std::to_string(pos.z);
 }
 
-static std::map<std::string, int> buildLatestChestRankMap() {
-    auto& db   = Sqlite3Wrapper::getInstance();
-    auto  rows = db.query("SELECT dim_id, pos_x, pos_y, pos_z FROM chests ORDER BY rowid DESC;");
+static std::map<std::string, int> buildLatestChestRankMap(bool isRecycle) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    auto  rows = db.query(
+        isRecycle
+            ? "SELECT dim_id, pos_x, pos_y, pos_z FROM recycle_shop_items "
+              "GROUP BY dim_id, pos_x, pos_y, pos_z ORDER BY MAX(rowid) DESC;"
+            : "SELECT dim_id, pos_x, pos_y, pos_z FROM shop_items "
+              "GROUP BY dim_id, pos_x, pos_y, pos_z ORDER BY MAX(rowid) DESC;"
+    );
 
     std::map<std::string, int> rankMap;
     int                        rank = 0;
@@ -216,9 +222,6 @@ static void showShopListFormImpl(
 
     std::map<std::string, int> activeEntryCountCache;
     if (isRecycle) {
-        std::vector<ChestData> activeRecycleChests;
-        activeRecycleChests.reserve(filteredChests.size());
-
         for (const auto& chest : filteredChests) {
             std::string chestKey = buildChestSalesKey(chest.dimId, chest.pos);
             int         activeCount =
@@ -226,12 +229,7 @@ static void showShopListFormImpl(
                 ? chestItemSummary.activeEntryCountByChest[chestKey]
                 : 0;
             activeEntryCountCache[chestKey] = activeCount;
-            if (activeCount > 0) {
-                activeRecycleChests.push_back(chest);
-            }
         }
-
-        filteredChests = std::move(activeRecycleChests);
     }
 
     std::map<std::string, std::vector<ChestData>> ownerShops;
@@ -252,7 +250,7 @@ static void showShopListFormImpl(
     for (const auto& sale : salesRanking) {
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
-    auto latestRankMap = buildLatestChestRankMap();
+    auto latestRankMap = buildLatestChestRankMap(isRecycle);
 
     struct PlayerAggregateInfo {
         std::string ownerUuid;
@@ -596,7 +594,7 @@ void showPublicRecycleShopListForm(
 }
 
 // 商店预览表单（只能预览物品，不能购买，可传送到箱子位置）
-void showShopPreviewForm(Player& player, const ChestData& shop) {
+void showShopPreviewForm(Player& player, const ChestData& shop, std::function<void(Player&)> onBack) {
     auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
 
@@ -682,15 +680,24 @@ void showShopPreviewForm(Player& player, const ChestData& shop) {
         }
     );
 
-    fm.appendButton(i18n.get("public_shop.button_back_list"), "textures/ui/arrow_left", "path", [](Player& p) {
-        showPublicShopListForm(p);
-    });
+    fm.appendButton(
+        i18n.get("public_shop.button_back_list"),
+        "textures/ui/arrow_left",
+        "path",
+        [onBack](Player& p) {
+            if (onBack) {
+                onBack(p);
+            } else {
+                showPublicShopListForm(p);
+            }
+        }
+    );
 
     fm.sendTo(player);
 }
 
 // 回收商店预览表单（只能预览物品，不能回收，可传送到箱子位置）
-void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
+void showRecycleShopPreviewForm(Player& player, const ChestData& shop, std::function<void(Player&)> onBack) {
     auto&                i18n = I18nService::getInstance();
     ll::form::SimpleForm fm;
 
@@ -764,9 +771,18 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop) {
         }
     );
 
-    fm.appendButton(i18n.get("public_shop.button_back_list"), "textures/ui/arrow_left", "path", [](Player& p) {
-        showPublicRecycleShopListForm(p);
-    });
+    fm.appendButton(
+        i18n.get("public_shop.button_back_list"),
+        "textures/ui/arrow_left",
+        "path",
+        [onBack](Player& p) {
+            if (onBack) {
+                onBack(p);
+            } else {
+                showPublicRecycleShopListForm(p);
+            }
+        }
+    );
 
     fm.sendTo(player);
 }
@@ -817,7 +833,7 @@ void showPlayerShopsForm(
     for (const auto& sale : salesRanking) {
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
-    auto latestRankMap = buildLatestChestRankMap();
+    auto latestRankMap = buildLatestChestRankMap(isRecycle);
 
     std::sort(shops.begin(), shops.end(), [&salesMap, &latestRankMap, sortMode](const ChestData& a, const ChestData& b) {
         std::string keyA = buildChestSalesKey(a.dimId, a.pos);

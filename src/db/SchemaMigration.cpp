@@ -19,6 +19,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV9,
         migrateToV10,
         migrateToV11,
+        migrateToV12,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -88,8 +89,7 @@ bool SchemaMigration::migrateToV1(Sqlite3Wrapper& db) {
         "id INTEGER PRIMARY KEY AUTOINCREMENT, dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, "
         "pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, "
         "purchase_count INTEGER NOT NULL, total_price REAL NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES shop_items(dim_id, pos_x, pos_y, pos_z, "
-        "item_id) ON DELETE CASCADE);",
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id));",
 
         "CREATE TABLE IF NOT EXISTS recycle_shop_items ("
         "dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, "
@@ -103,8 +103,7 @@ bool SchemaMigration::migrateToV1(Sqlite3Wrapper& db) {
         "id INTEGER PRIMARY KEY AUTOINCREMENT, dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, "
         "pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, "
         "recycle_count INTEGER NOT NULL, total_price REAL NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
-        "FOREIGN KEY (dim_id, pos_x, pos_y, pos_z, item_id) REFERENCES recycle_shop_items(dim_id, pos_x, pos_y, pos_z, "
-        "item_id) ON DELETE CASCADE);",
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id));",
 
         "CREATE INDEX IF NOT EXISTS idx_chests_position ON chests(dim_id, pos_x, pos_y, pos_z);",
         "CREATE INDEX IF NOT EXISTS idx_shared_chests_position ON shared_chests(dim_id, pos_x, pos_y, pos_z);",
@@ -348,6 +347,62 @@ bool SchemaMigration::migrateToV11(Sqlite3Wrapper& db) {
         "ON packed_dynamic_pricing(packed_id);",
         "CREATE INDEX IF NOT EXISTS idx_packed_player_limits_packed_id "
         "ON packed_player_limits(packed_id);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV12(Sqlite3Wrapper& db) {
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS purchase_records_v12 ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, "
+        "pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, item_id INTEGER NOT NULL, buyer_uuid TEXT NOT NULL, "
+        "purchase_count INTEGER NOT NULL, total_price REAL NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id));",
+
+        "INSERT INTO purchase_records_v12 "
+        "(id, dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, total_price, timestamp) "
+        "SELECT id, dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, purchase_count, total_price, timestamp "
+        "FROM purchase_records;",
+
+        "DROP TABLE purchase_records;",
+        "ALTER TABLE purchase_records_v12 RENAME TO purchase_records;",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_position ON purchase_records(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_timestamp ON purchase_records(timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_buyer ON purchase_records(buyer_uuid);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_time "
+        "ON purchase_records(dim_id, pos_x, pos_y, pos_z, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_buyer_time "
+        "ON purchase_records(dim_id, pos_x, pos_y, pos_z, buyer_uuid, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_purchase_records_pos_item_buyer_time "
+        "ON purchase_records(dim_id, pos_x, pos_y, pos_z, item_id, buyer_uuid, timestamp DESC);",
+
+        "CREATE TABLE IF NOT EXISTS recycle_records_v12 ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, dim_id INTEGER NOT NULL, pos_x INTEGER NOT NULL, "
+        "pos_y INTEGER NOT NULL, pos_z INTEGER NOT NULL, item_id INTEGER NOT NULL, recycler_uuid TEXT NOT NULL, "
+        "recycle_count INTEGER NOT NULL, total_price REAL NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "FOREIGN KEY (item_id) REFERENCES item_definitions(item_id));",
+
+        "INSERT INTO recycle_records_v12 "
+        "(id, dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, total_price, timestamp) "
+        "SELECT id, dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, recycle_count, total_price, timestamp "
+        "FROM recycle_records;",
+
+        "DROP TABLE recycle_records;",
+        "ALTER TABLE recycle_records_v12 RENAME TO recycle_records;",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_position ON recycle_records(dim_id, pos_x, pos_y, pos_z);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_timestamp ON recycle_records(timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_recycler ON recycle_records(recycler_uuid);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_item_time "
+        "ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_recycler_time "
+        "ON recycle_records(dim_id, pos_x, pos_y, pos_z, recycler_uuid, timestamp DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_item_recycler_time "
+        "ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, timestamp DESC);"
     };
 
     for (const char* sql : sqls) {

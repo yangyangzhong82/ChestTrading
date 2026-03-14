@@ -103,6 +103,26 @@ int getDropdownIndex(const ll::form::CustomFormResult& result, const std::string
     return fallback;
 }
 
+int getDropdownIndex(
+    const ll::form::CustomFormResult& result,
+    const std::string&                key,
+    const std::vector<std::string>&   options,
+    int                               fallback
+) {
+    if (!result.has_value()) return fallback;
+    auto it = result->find(key);
+    if (it == result->end()) return fallback;
+    if (auto* val = std::get_if<uint64>(&it->second)) return static_cast<int>(*val);
+    if (auto* val = std::get_if<double>(&it->second)) return static_cast<int>(*val);
+    if (auto* val = std::get_if<std::string>(&it->second)) {
+        auto found = std::find(options.begin(), options.end(), *val);
+        if (found != options.end()) {
+            return static_cast<int>(std::distance(options.begin(), found));
+        }
+    }
+    return fallback;
+}
+
 std::string getTradeTypeLabel(TradeRecordKind kind) {
     auto& i18n = I18nService::getInstance();
     return i18n.get(kind == TradeRecordKind::Purchase ? "trade_records.type_purchase" : "trade_records.type_recycle");
@@ -335,7 +355,7 @@ std::string buildAnnouncementEntry(const DisplayTradeRecord& record, int index) 
     );
 }
 
-void teleportToLastPurchase(Player& player) {
+void showLastPurchasePreviewForm(Player& player, std::function<void(Player&)> onBack) {
     auto& i18n = I18nService::getInstance();
     auto  lastRecord = ShopRepository::getInstance().getLatestPurchaseRecord(player.getUuid().asString());
     if (!lastRecord) {
@@ -343,9 +363,14 @@ void teleportToLastPurchase(Player& player) {
         return;
     }
 
-    if (FormUtils::teleportToShop(player, lastRecord->pos, lastRecord->dimId)) {
-        player.sendMessage(i18n.get("public_shop.teleport_hint"));
+    auto chestInfo = ChestRepository::getInstance().findByPosition(lastRecord->pos, lastRecord->dimId);
+    if (!chestInfo
+        || (chestInfo->type != ChestType::Shop && chestInfo->type != ChestType::AdminShop)) {
+        player.sendMessage(i18n.get("trade_records.last_purchase_shop_missing"));
+        return;
     }
+
+    showShopPreviewForm(player, *chestInfo, onBack);
 }
 
 void showTradeRecordListForm(Player& player, TradeRecordListState state);
@@ -507,6 +532,16 @@ void showTradeRecordSearchForm(Player& player, TradeRecordListState state) {
 
     auto keywordFields = getAllowedKeywordFields(state);
     auto keywordLabels = getKeywordFieldLabels(keywordFields);
+    std::vector<std::string> tradeTypeLabels = {
+        i18n.get("trade_records.filter_all_types"),
+        i18n.get("trade_records.filter_purchase_only"),
+        i18n.get("trade_records.filter_recycle_only")
+    };
+    std::vector<std::string> officialTypeLabels = {
+        i18n.get("trade_records.official_all"),
+        i18n.get("trade_records.official_only"),
+        i18n.get("trade_records.player_only")
+    };
     int  keywordIndex  = 0;
     for (size_t i = 0; i < keywordFields.size(); ++i) {
         if (keywordFields[i] == state.keywordField) {
@@ -518,11 +553,7 @@ void showTradeRecordSearchForm(Player& player, TradeRecordListState state) {
     fm.appendDropdown(
         "trade_type",
         i18n.get("trade_records.search_trade_type"),
-        {
-            i18n.get("trade_records.filter_all_types"),
-            i18n.get("trade_records.filter_purchase_only"),
-            i18n.get("trade_records.filter_recycle_only")
-        },
+        tradeTypeLabels,
         static_cast<int>(state.typeFilter)
     );
     fm.appendDropdown("keyword_type", i18n.get("trade_records.search_keyword_type"), keywordLabels, keywordIndex);
@@ -532,24 +563,28 @@ void showTradeRecordSearchForm(Player& player, TradeRecordListState state) {
         fm.appendDropdown(
             "official_type",
             i18n.get("trade_records.search_official_type"),
-            {
-                i18n.get("trade_records.official_all"),
-                i18n.get("trade_records.official_only"),
-                i18n.get("trade_records.player_only")
-            },
+            officialTypeLabels,
             static_cast<int>(state.officialFilter)
         );
     }
 
-    fm.sendTo(player, [state, keywordFields](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) mutable {
+    fm.sendTo(
+        player,
+        [state, keywordFields, keywordLabels, tradeTypeLabels, officialTypeLabels](
+            Player& p,
+            const ll::form::CustomFormResult& result,
+            ll::form::FormCancelReason
+        ) mutable {
         if (!result.has_value() || result->empty()) {
             showTradeRecordListForm(p, state);
             return;
         }
 
         state.currentPage  = 0;
-        state.typeFilter   = static_cast<TradeRecordTypeFilter>(getDropdownIndex(result, "trade_type", static_cast<int>(state.typeFilter)));
-        int keywordIndex   = getDropdownIndex(result, "keyword_type", 0);
+        state.typeFilter   = static_cast<TradeRecordTypeFilter>(
+            getDropdownIndex(result, "trade_type", tradeTypeLabels, static_cast<int>(state.typeFilter))
+        );
+        int keywordIndex   = getDropdownIndex(result, "keyword_type", keywordLabels, 0);
         if (keywordIndex >= 0 && keywordIndex < static_cast<int>(keywordFields.size())) {
             state.keywordField = keywordFields[static_cast<size_t>(keywordIndex)];
         }
@@ -563,12 +598,13 @@ void showTradeRecordSearchForm(Player& player, TradeRecordListState state) {
 
         if (state.allowOfficialFilter) {
             state.officialFilter = static_cast<OfficialFilter>(
-                getDropdownIndex(result, "official_type", static_cast<int>(state.officialFilter))
+                getDropdownIndex(result, "official_type", officialTypeLabels, static_cast<int>(state.officialFilter))
             );
         }
 
         showTradeRecordListForm(p, state);
-    });
+        }
+    );
 }
 
 void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, const std::string& initialKeyword) {
@@ -576,6 +612,7 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, c
     ll::form::CustomForm fm;
     fm.setTitle(i18n.get("trade_records.lookup_title"));
     auto onlinePlayers = getOnlinePlayerLookupCandidates();
+    std::vector<std::string> playerOptions;
     fm.appendInput(
         "player_name",
         i18n.get("trade_records.lookup_player_name"),
@@ -583,7 +620,6 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, c
         initialKeyword
     );
     if (!onlinePlayers.empty()) {
-        std::vector<std::string> playerOptions;
         playerOptions.reserve(onlinePlayers.size() + 1);
         playerOptions.push_back(i18n.get("trade_records.lookup_online_placeholder"));
         for (const auto& onlinePlayer : onlinePlayers) {
@@ -592,56 +628,59 @@ void showPlayerLookupForm(Player& player, std::function<void(Player&)> onBack, c
         fm.appendDropdown("online_player", i18n.get("trade_records.lookup_online_player"), playerOptions, 0);
     }
 
-    fm.sendTo(player, [onBack, onlinePlayers](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
-        auto& i18n = I18nService::getInstance();
-        if (!result.has_value() || result->empty()) {
-            if (onBack) onBack(p);
-            return;
-        }
-
-        std::string playerName;
-        auto        it = result->find("player_name");
-        if (it != result->end()) {
-            if (auto* value = std::get_if<std::string>(&it->second)) {
-                playerName = *value;
+    fm.sendTo(
+        player,
+        [onBack, onlinePlayers, playerOptions](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason) {
+            auto& i18n = I18nService::getInstance();
+            if (!result.has_value() || result->empty()) {
+                if (onBack) onBack(p);
+                return;
             }
+
+            std::string playerName;
+            auto        it = result->find("player_name");
+            if (it != result->end()) {
+                if (auto* value = std::get_if<std::string>(&it->second)) {
+                    playerName = *value;
+                }
+            }
+            playerName = trimCopy(playerName);
+
+            int selectedOnlineIndex = getDropdownIndex(result, "online_player", playerOptions, 0);
+            if (playerName.empty() && selectedOnlineIndex > 0
+                && selectedOnlineIndex <= static_cast<int>(onlinePlayers.size())) {
+                openPlayerTradeRecords(p, onlinePlayers[static_cast<size_t>(selectedOnlineIndex - 1)], onBack);
+                return;
+            }
+
+            if (playerName.empty()) {
+                p.sendMessage(i18n.get("trade_records.player_not_found"));
+                if (onBack) onBack(p);
+                return;
+            }
+
+            auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(playerName);
+
+            if (playerInfo) {
+                openPlayerTradeRecords(p, {playerInfo->uuid.asString(), playerInfo->name}, onBack);
+                return;
+            }
+
+            auto candidates = findFuzzyPlayerLookupCandidates(playerName);
+            if (candidates.empty()) {
+                p.sendMessage(i18n.get("trade_records.player_not_found"));
+                if (onBack) onBack(p);
+                return;
+            }
+
+            if (candidates.size() == 1) {
+                openPlayerTradeRecords(p, candidates.front(), onBack);
+                return;
+            }
+
+            showPlayerLookupCandidateForm(p, std::move(candidates), onBack, playerName);
         }
-        playerName = trimCopy(playerName);
-
-        int selectedOnlineIndex = getDropdownIndex(result, "online_player", 0);
-        if (playerName.empty() && selectedOnlineIndex > 0
-            && selectedOnlineIndex <= static_cast<int>(onlinePlayers.size())) {
-            openPlayerTradeRecords(p, onlinePlayers[static_cast<size_t>(selectedOnlineIndex - 1)], onBack);
-            return;
-        }
-
-        if (playerName.empty()) {
-            p.sendMessage(i18n.get("trade_records.player_not_found"));
-            if (onBack) onBack(p);
-            return;
-        }
-
-        auto playerInfo = ll::service::PlayerInfo::getInstance().fromName(playerName);
-
-        if (playerInfo) {
-            openPlayerTradeRecords(p, {playerInfo->uuid.asString(), playerInfo->name}, onBack);
-            return;
-        }
-
-        auto candidates = findFuzzyPlayerLookupCandidates(playerName);
-        if (candidates.empty()) {
-            p.sendMessage(i18n.get("trade_records.player_not_found"));
-            if (onBack) onBack(p);
-            return;
-        }
-
-        if (candidates.size() == 1) {
-            openPlayerTradeRecords(p, candidates.front(), onBack);
-            return;
-        }
-
-        showPlayerLookupCandidateForm(p, std::move(candidates), onBack, playerName);
-    });
+    );
 }
 
 void showTradeRecordListForm(Player& player, TradeRecordListState state) {
@@ -793,8 +832,13 @@ void showTradeRecordMenuForm(Player& player, std::function<void(Player&)> onBack
     });
 
     if (showLastPurchase) {
-        fm.appendButton(i18n.get("trade_records.button_last_purchase"), [](Player& p) {
-            teleportToLastPurchase(p);
+        fm.appendButton(i18n.get("trade_records.button_last_purchase"), [onBack, showLastPurchase](Player& p) {
+            showLastPurchasePreviewForm(
+                p,
+                [onBack, showLastPurchase](Player& backPlayer) {
+                    showTradeRecordMenuForm(backPlayer, onBack, showLastPurchase);
+                }
+            );
         });
     }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include "repository/ChestRepository.h"
@@ -40,10 +41,10 @@ void showPublicRecycleShopListForm(
 );
 
 // 显示商店预览表单（只能预览，不能购买，可传送）
-void showShopPreviewForm(Player& player, const ChestData& shop);
+void showShopPreviewForm(Player& player, const ChestData& shop, std::function<void(Player&)> onBack = {});
 
 // 显示回收商店预览表单（只能预览，不能回收，可传送）
-void showRecycleShopPreviewForm(Player& player, const ChestData& shop);
+void showRecycleShopPreviewForm(Player& player, const ChestData& shop, std::function<void(Player&)> onBack = {});
 
 // 显示指定玩家的商店列表
 void showPlayerShopsForm(
