@@ -57,6 +57,21 @@ Player* findAnyOnlinePlayerInDimension(Level& level, int dimId) {
     });
     return target;
 }
+
+bool shouldDisplayFakeItemToPlayer(const Player& player, const ChestFloatingText& ft) {
+    int maxDistance = CT::ConfigManager::getInstance().get().floatingText.fakeItemVisibleDistance;
+    if (maxDistance <= 0) {
+        return true;
+    }
+
+    auto playerPos = player.getPosition();
+    double dx      = playerPos.x - (static_cast<double>(ft.pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET);
+    double dy      = playerPos.y - (static_cast<double>(ft.pos.y) + FloatingTextConstants::ITEM_HEIGHT_OFFSET);
+    double dz      = playerPos.z - (static_cast<double>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET);
+    double distSq  = dx * dx + dy * dy + dz * dz;
+    double maxSq   = static_cast<double>(maxDistance) * static_cast<double>(maxDistance);
+    return distSq <= maxSq;
+}
 } // namespace
 
 // 获取单例实例
@@ -127,19 +142,19 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
             debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText); // 从所有客户端移除
         }
         // 移除所有玩家的假物品
-        if (!ft.playerFakeItemIds.empty()) {
+        if (!ft.playerFakeItemStates.empty()) {
             auto level = ll::service::getLevel();
             if (level) {
                 level->forEachPlayer([&ft](Player& player) {
-                    auto it = ft.playerFakeItemIds.find(player.getUuid().asString());
-                    if (it != ft.playerFakeItemIds.end()) {
-                        RemoveFakeitem(player, it->second);
-                        ft.playerFakeItemIds.erase(it);
+                    auto it = ft.playerFakeItemStates.find(player.getUuid().asString());
+                    if (it != ft.playerFakeItemStates.end()) {
+                        RemoveFakeitem(player, it->second.actorId);
+                        ft.playerFakeItemStates.erase(it);
                     }
                     return true;
                 });
             }
-            ft.playerFakeItemIds.clear();
+            ft.playerFakeItemStates.clear();
         }
         mFloatingTexts.erase(key);
         logger.debug("已移除箱子 ({}, {}, {}) in dim {} 的悬浮字。", pos.x, pos.y, pos.z, dimId);
@@ -189,13 +204,13 @@ void FloatingTextManager::setChestFakeItemEnabled(BlockPos pos, int dimId, bool 
         ft.enableFakeItem = enable;
 
         if (!enable) {
-            if (!ft.playerFakeItemIds.empty()) {
+            if (!ft.playerFakeItemStates.empty()) {
                 auto level = ll::service::getLevel();
                 if (level) {
-                    for (const auto& [playerUuid, fakeItemId] : ft.playerFakeItemIds) {
+                    for (const auto& [playerUuid, fakeItemState] : ft.playerFakeItemStates) {
                         auto* playerPtr = findOnlinePlayerByUuidString(*level, playerUuid);
                         if (playerPtr) {
-                            RemoveFakeitem(*playerPtr, fakeItemId);
+                            RemoveFakeitem(*playerPtr, fakeItemState.actorId);
                         }
                     }
                 }
@@ -657,6 +672,8 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
             }
         } // 快速释放写锁
 
+        bool shouldRefreshFakeItems = updateText && !toUpdate.empty();
+
         if (!updateText) {
             // 与箱子真实库存同步，处理“手动取出物品”导致的展示残留。
             std::vector<std::tuple<BlockPos, int, ChestType>> shopsToRefresh;
@@ -670,14 +687,16 @@ ll::coro::CoroTask<> FloatingTextManager::dynamicTextUpdateCoroutine() {
                 }
             }
             for (const auto& [shopPos, shopDimId, shopType] : shopsToRefresh) {
-                updateShopFloatingText(shopPos, shopDimId, shopType);
+                shouldRefreshFakeItems =
+                    updateShopFloatingText(shopPos, shopDimId, shopType, false) || shouldRefreshFakeItems;
             }
 
             // 检查并重置过期的动态价格计数器
             DynamicPricingService::getInstance().checkAndResetCounters();
         }
-        // 每轮都刷新一次假物品，让假物品与悬浮字同帧生效。
-        updateFakeItemsForAllPlayers();
+        if (shouldRefreshFakeItems) {
+            updateFakeItemsForAllPlayers();
+        }
         updateText = !updateText; // 交替
 
         co_await ll::coro::SleepAwaiter(
@@ -700,11 +719,11 @@ void FloatingTextManager::stopDynamicTextUpdateLoop() {
 }
 
 // 更新商店/回收商店的悬浮字物品列表
-void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestType type) {
+bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestType type, bool refreshFakeItems) {
     if (type != ChestType::Shop && type != ChestType::RecycleShop && type != ChestType::AdminShop
         && type != ChestType::AdminRecycle) {
         logger.warn("updateShopFloatingText: 尝试更新非商店/回收商店类型的悬浮字物品列表，操作无效。");
-        return;
+        return false;
     }
 
     logger.debug(
@@ -863,6 +882,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
     }
 
     bool shouldUpdateFakeItems = false;
+    bool changed               = false;
     {
         std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
         auto                                key = std::make_pair(dimId, pos);
@@ -875,7 +895,7 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 pos.z,
                 dimId
             );
-            return;
+            return false;
         }
 
         auto& ft = it->second;
@@ -908,21 +928,21 @@ void FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         }
         ft.text = newText;
 
-        bool changed = (oldItemNames != ft.itemNames) || (oldItemNbts != ft.itemNbts) || (oldText != ft.text);
+        changed = (oldItemNames != ft.itemNames) || (oldItemNbts != ft.itemNbts) || (oldText != ft.text);
 
         if (changed && ft.debugText) {
             ft.debugText->setText(ft.text);
             ft.debugText->update(); // 立即更新所有客户端
         }
 
-        // 始终触发一次假物品刷新：即使本轮文本无变化，也可重试清理客户端残留实体。
-        shouldUpdateFakeItems = true;
+        shouldUpdateFakeItems = refreshFakeItems && changed;
     } // 写锁在此释放
 
     // 在写锁释放后更新假物品，避免死锁
     if (shouldUpdateFakeItems) {
         updateFakeItemsForAllPlayers();
     }
+    return changed;
 }
 
 
@@ -933,15 +953,23 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         || !ft.enableFakeItem)
         return;
 
+    if (!shouldDisplayFakeItemToPlayer(player, ft)) {
+        removeFakeItemFromPlayer(player, ft);
+        return;
+    }
+
     // 边界检查
     if (ft.currentFakeItemIndex >= ft.itemNbts.size()) {
         ft.currentFakeItemIndex = 0;
     }
 
+    const auto& currentNbt    = ft.itemNbts[ft.currentFakeItemIndex];
+    size_t      currentNbtHash = std::hash<std::string>{}(currentNbt);
     std::string playerUuid = player.getUuid().asString();
-
-    // 先移除旧的假物品
-    removeFakeItemFromPlayer(player, ft);
+    auto        existing   = ft.playerFakeItemStates.find(playerUuid);
+    if (existing != ft.playerFakeItemStates.end() && existing->second.itemHash == currentNbtHash) {
+        return;
+    }
 
     // 发送新的假物品（使用常量定义的位置偏移）
     Vec3 itemPos(
@@ -950,8 +978,7 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         static_cast<float>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
     );
 
-    const auto& currentNbt = ft.itemNbts[ft.currentFakeItemIndex];
-    auto        nbt        = CT::NbtUtils::parseSNBT(currentNbt);
+    auto nbt = CT::NbtUtils::parseSNBT(currentNbt);
     if (!nbt) {
         logger.warn("sendFakeItemToPlayer: failed to parse item nbt: {}", currentNbt);
         return;
@@ -963,17 +990,19 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         return;
     }
 
-    auto id                          = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), *itemPtr);
-    ft.playerFakeItemIds[playerUuid] = id;
+    removeFakeItemFromPlayer(player, ft);
+
+    auto id = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), *itemPtr);
+    ft.playerFakeItemStates[playerUuid] = {id, currentNbtHash};
 }
 
 // 移除玩家的假物品
 void FloatingTextManager::removeFakeItemFromPlayer(Player& player, ChestFloatingText& ft) {
     std::string playerUuid = player.getUuid().asString();
-    auto        it         = ft.playerFakeItemIds.find(playerUuid);
-    if (it != ft.playerFakeItemIds.end()) {
-        RemoveFakeitem(player, it->second);
-        ft.playerFakeItemIds.erase(it);
+    auto        it         = ft.playerFakeItemStates.find(playerUuid);
+    if (it != ft.playerFakeItemStates.end()) {
+        RemoveFakeitem(player, it->second.actorId);
+        ft.playerFakeItemStates.erase(it);
     }
 }
 
@@ -1025,10 +1054,10 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
         level->forEachPlayer([this](Player& player) {
             std::string playerUuid = player.getUuid().asString();
             for (auto& [_, ft] : mFloatingTexts) {
-                auto it = ft.playerFakeItemIds.find(playerUuid);
-                if (it != ft.playerFakeItemIds.end()) {
-                    RemoveFakeitem(player, it->second);
-                    ft.playerFakeItemIds.erase(it);
+                auto it = ft.playerFakeItemStates.find(playerUuid);
+                if (it != ft.playerFakeItemStates.end()) {
+                    RemoveFakeitem(player, it->second.actorId);
+                    ft.playerFakeItemStates.erase(it);
                 }
             }
             return true;
@@ -1066,7 +1095,7 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
             auto& ft = it->second;
             // 再次检查条件（可能在锁释放期间被修改）
             if (ft.isDynamic && ft.dimId == playerDimId) {
-                if (!ft.enableFakeItem || ft.itemNbts.empty()) {
+                if (!ft.enableFakeItem || ft.itemNbts.empty() || !shouldDisplayFakeItemToPlayer(player, ft)) {
                     removeFakeItemFromPlayer(player, ft);
                 } else {
                     sendFakeItemToPlayer(player, ft);
@@ -1227,7 +1256,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
 /**
  * @brief 清理指定玩家的所有假物品记录
  *
- * 当玩家离线时调用此方法，从所有悬浮字的 playerFakeItemIds 中移除该玩家的记录。
+ * 当玩家离线时调用此方法，从所有悬浮字的 playerFakeItemStates 中移除该玩家的记录。
  * 这可以防止长期运行时的内存泄漏。
  *
  * @param playerUuid 玩家的 UUID
@@ -1237,9 +1266,9 @@ void FloatingTextManager::cleanupPlayerFakeItems(const std::string& playerUuid) 
 
     size_t totalRemoved = 0;
     for (auto& [key, ft] : mFloatingTexts) {
-        auto it = ft.playerFakeItemIds.find(playerUuid);
-        if (it != ft.playerFakeItemIds.end()) {
-            ft.playerFakeItemIds.erase(it);
+        auto it = ft.playerFakeItemStates.find(playerUuid);
+        if (it != ft.playerFakeItemStates.end()) {
+            ft.playerFakeItemStates.erase(it);
             totalRemoved++;
         }
     }
@@ -1271,9 +1300,9 @@ void FloatingTextManager::cleanupOfflinePlayerFakeItems() {
     size_t                              totalRemoved = 0;
 
     for (auto& [key, ft] : mFloatingTexts) {
-        for (auto it = ft.playerFakeItemIds.begin(); it != ft.playerFakeItemIds.end();) {
+        for (auto it = ft.playerFakeItemStates.begin(); it != ft.playerFakeItemStates.end();) {
             if (onlinePlayerUuids.find(it->first) == onlinePlayerUuids.end()) {
-                it = ft.playerFakeItemIds.erase(it); // 离线玩家，清理
+                it = ft.playerFakeItemStates.erase(it); // 离线玩家，清理
                 totalRemoved++;
             } else {
                 ++it;

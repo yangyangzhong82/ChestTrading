@@ -11,6 +11,7 @@
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/dimension/Dimension.h"
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -40,6 +41,11 @@ namespace FloatingTextConstants {
 
 // 存储每个箱子的悬浮字信息
 struct ChestFloatingText {
+    struct FakeItemDisplayState {
+        ActorUniqueID actorId{};
+        size_t        itemHash = 0;
+    };
+
     BlockPos                                 pos;
     int                                      dimId;
     std::string                              ownerUuid;
@@ -53,8 +59,8 @@ struct ChestFloatingText {
     size_t                                   currentFakeItemIndex = 0; // 假物品独立索引
 
     // 假物品相关
-    std::vector<std::string>             itemNbts;          // 存储物品NBT字符串
-    std::map<std::string, ActorUniqueID> playerFakeItemIds; // 玩家UUID -> 假物品ID
+    std::vector<std::string>                    itemNbts;             // 存储物品NBT字符串
+    std::map<std::string, FakeItemDisplayState> playerFakeItemStates; // 玩家UUID -> 假物品显示状态
 
     // 构造函数
     ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct, bool fakeItem = true)
@@ -128,7 +134,7 @@ public:
     void loadAllChests();
 
     // 更新商店/回收商店的悬浮字物品列表
-    void updateShopFloatingText(BlockPos pos, int dimId, ChestType type);
+    bool updateShopFloatingText(BlockPos pos, int dimId, ChestType type, bool refreshFakeItems = true);
 
     // 假物品相关方法
     void setChestFakeItemEnabled(BlockPos pos, int dimId, bool enable);

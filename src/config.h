@@ -14,11 +14,12 @@ enum class EconomyType { LLMoney = 0, CzMoney = 1 };
 } // namespace CT
 
 struct FloatingTextSettings {
-    bool enableLockedChest = true; // 是否开启上锁箱子的悬浮字显示
-    bool enablePublicChest = true; // 是否开启公共箱子的悬浮字显示
-    bool enableRecycleShop = true; // 是否开启回收商店的悬浮字显示
-    bool enableShopChest   = true; // 是否开启商店箱子的悬浮字显示
-    bool enableFakeItem    = true; // 是否开启假掉落物显示
+    bool enableLockedChest       = true; // 是否开启上锁箱子的悬浮字显示
+    bool enablePublicChest       = true; // 是否开启公共箱子的悬浮字显示
+    bool enableRecycleShop       = true; // 是否开启回收商店的悬浮字显示
+    bool enableShopChest         = true; // 是否开启商店箱子的悬浮字显示
+    bool enableFakeItem          = true; // 是否开启假掉落物显示
+    int  fakeItemVisibleDistance = 36;   // 假掉落物对玩家可见的最大距离（格），<=0 表示不限制
 };
 
 struct ChestLimits {
@@ -68,7 +69,7 @@ struct SalesRankingSettings {
 };
 
 struct ShopNameRestrictions {
-    int                      maxLength       = 32; // 商店名称最大长度，按 UTF-8 字符数计算，<=0 表示不限制
+    int maxLength = 32; // 商店名称最大长度，按 UTF-8 字符数计算，<=0 表示不限制
     std::vector<std::string> blockedKeywords = {}; // 禁止出现在商店名称中的关键词，按子串匹配
 };
 
@@ -78,20 +79,20 @@ struct TradeRestrictionSettings {
 };
 
 struct CommandSettings {
-    std::string mainCommand           = "ct";            // 主命令
-    std::string adminCommand          = "ctadmin";       // 管理员菜单命令
-    std::string reloadCommand         = "ctreload";      // 重载配置命令
-    std::string publicShopCommand     = "shop";          // 公开商店列表命令
-    std::string publicRecycleCommand  = "recycle";       // 公开回收商店列表命令
-    std::string publicItemsCommand    = "items";         // 公开商店物品列表命令
-    std::string recycleItemsCommand   = "recycleitems";  // 公开回收商店物品列表命令
-    std::string rankingCommand        = "ranking";       // 销量榜命令
+    std::string mainCommand           = "ct";             // 主命令
+    std::string adminCommand          = "ctadmin";        // 管理员菜单命令
+    std::string reloadCommand         = "ctreload";       // 重载配置命令
+    std::string publicShopCommand     = "shop";           // 公开商店列表命令
+    std::string publicRecycleCommand  = "recycle";        // 公开回收商店列表命令
+    std::string publicItemsCommand    = "items";          // 公开商店物品列表命令
+    std::string recycleItemsCommand   = "recycleitems";   // 公开回收商店物品列表命令
+    std::string rankingCommand        = "ranking";        // 销量榜命令
     std::string recyclePlayersCommand = "recycleplayers"; // 按玩家浏览回收商店命令
-    std::string recordsCommand        = "records";       // 交易记录命令
-    std::string packChestCommand      = "packchest";     // 箱子打包模式命令
-    std::string chestUiCommand        = "ctchestui";     // ChestUI 测试命令
-    std::string limitResetCommand     = "ctlimitreset";  // 限购重置命令
-    std::string testCommand           = "cttest";        // 自动化测试命令
+    std::string recordsCommand        = "records";        // 交易记录命令
+    std::string packChestCommand      = "packchest";      // 箱子打包模式命令
+    std::string chestUiCommand        = "ctchestui";      // ChestUI 测试命令
+    std::string limitResetCommand     = "ctlimitreset";   // 限购重置命令
+    std::string testCommand           = "cttest";         // 自动化测试命令
 };
 
 struct Config {
@@ -101,17 +102,17 @@ struct Config {
     int  floatingTextUpdateIntervalSeconds = 1;                        // 悬浮字更新间隔，单位秒
     int  databaseThreadPoolSize            = 4;                        // 数据库线程池线程数量
     int  databaseCacheTimeoutSec           = 60;                       // 数据库查询缓存超时时间（秒）
-    ll::io::LogLevel     logLevel          = ll::io::LogLevel::Info;   // 日志等级
-    CT::EconomyType      economyType       = CT::EconomyType::CzMoney; // 经济类型
-    FloatingTextSettings floatingText;                                 // 悬浮字相关设置
-    ChestLimits          chestLimits;                                  // 箱子数量限制
-    ChestCreationCosts   chestCosts;                                   // 箱子创建费用
-    TeleportSettings     teleportSettings;                             // 传送相关设置
-    TaxSettings          taxSettings;                                  // 税率设置
-    ResourcePaths        resourcePaths;                                // 数据库/贴图等路径配置
-    InteractionSettings  interactionSettings;                          // 交互相关设置
-    SalesRankingSettings salesRankingSettings;                         // 销量榜单设置
-    ShopNameRestrictions shopNameRestrictions;                         // 商店名称限制
+    ll::io::LogLevel         logLevel      = ll::io::LogLevel::Info;   // 日志等级
+    CT::EconomyType          economyType   = CT::EconomyType::CzMoney; // 经济类型
+    FloatingTextSettings     floatingText;                             // 悬浮字相关设置
+    ChestLimits              chestLimits;                              // 箱子数量限制
+    ChestCreationCosts       chestCosts;                               // 箱子创建费用
+    TeleportSettings         teleportSettings;                         // 传送相关设置
+    TaxSettings              taxSettings;                              // 税率设置
+    ResourcePaths            resourcePaths;                            // 数据库/贴图等路径配置
+    InteractionSettings      interactionSettings;                      // 交互相关设置
+    SalesRankingSettings     salesRankingSettings;                     // 销量榜单设置
+    ShopNameRestrictions     shopNameRestrictions;                     // 商店名称限制
     TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
-    CommandSettings      commandSettings;                              // 命令名称配置
+    CommandSettings          commandSettings;                          // 命令名称配置
 };
