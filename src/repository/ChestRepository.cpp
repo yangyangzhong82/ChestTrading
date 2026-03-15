@@ -125,6 +125,28 @@ std::vector<ChestData> ChestRepository::findAll() {
     });
 }
 
+std::vector<ChestData> ChestRepository::findAllPublicShops() {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query(
+        "SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, "
+        "enable_fake_item, is_public FROM chests "
+        "WHERE is_public = 1 AND type IN (2, 3, 5, 6) ORDER BY player_uuid, dim_id;"
+    );
+
+    return parseRows<ChestData>(results, 10, [](DbRowParser r) {
+        return ChestData{
+            r.getInt(0),
+            BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
+            r.getString(4),
+            static_cast<ChestType>(r.getInt(5)),
+            r.getString(6),
+            r.getBool(7),
+            r.getBool(8),
+            r.getBool(9)
+        };
+    });
+}
+
 int ChestRepository::countByOwnerAndType(const std::string& ownerUuid, ChestType type) {
     auto& db = Sqlite3Wrapper::getInstance();
     auto  results =

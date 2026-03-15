@@ -18,6 +18,7 @@
 #include <optional>
 #include <shared_mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 
@@ -78,6 +79,8 @@ public:
     // 使用 map 存储悬浮字，键为 (dimId, BlockPos)
     std::map<std::pair<int, BlockPos>, ChestFloatingText> mFloatingTexts;
     mutable std::shared_mutex                             mFloatingTextsMutex; // 保护 mFloatingTexts 的读写锁
+    std::unordered_map<std::string, int>                  mPlayerVisibleDimensions;
+    mutable std::mutex                                    mPlayerVisibleDimensionsMutex;
     std::optional<ll::coro::CoroTask<>>                   mUpdateTask; // 用于更新悬浮字的协程任务
     bool              mIsLoaded = false;        // 标志，指示是否已从数据库加载悬浮字
     std::atomic<bool> mShouldStopUpdate{false}; // 控制协程停止
@@ -145,6 +148,7 @@ public:
     // 内存管理方法
     void cleanupPlayerFakeItems(const std::string& playerUuid);
     void cleanupOfflinePlayerFakeItems();
+    void syncFloatingTextsForOnlinePlayers();
 };
 
 void registerPlayerConnectionListener();

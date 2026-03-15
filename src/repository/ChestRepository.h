@@ -47,6 +47,7 @@ public:
     std::optional<ChestData> findByPosition(BlockPos pos, int dimId);
     std::vector<ChestData>   findByOwner(const std::string& ownerUuid);
     std::vector<ChestData>   findAll();
+    std::vector<ChestData>   findAllPublicShops();
     int                      countByOwnerAndType(const std::string& ownerUuid, ChestType type);
 
     // === 分享管理 ===

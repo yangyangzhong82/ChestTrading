@@ -443,9 +443,24 @@ bool ShopService::syncDbStockWithChest(
         items        = &fetchedItems;
     }
 
+    if (items->empty()) return false;
+
+    // 获取一次箱子 actor
+    auto* chest = getChestActor(region, pos);
+    if (!chest) return false;
+
+    // 收集所有 itemNbt，一次性批量统计
+    std::vector<std::string> nbtList;
+    nbtList.reserve(items->size());
+    for (const auto& item : *items) {
+        nbtList.push_back(item.itemNbt);
+    }
+    auto countMap = countAllMatchingItems(chest, nbtList);
+
     bool changed = false;
     for (auto& item : *items) {
-        int actualCount = countItemsInChest(region, pos, dimId, item.itemNbt);
+        auto it          = countMap.find(item.itemNbt);
+        int  actualCount = (it != countMap.end()) ? it->second : 0;
         if (actualCount == item.dbCount) continue;
 
         if (ShopRepository::getInstance().updateDbCount(pos, dimId, item.itemId, actualCount)) {

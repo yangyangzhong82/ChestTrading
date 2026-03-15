@@ -1,4 +1,5 @@
 #include "PublicItemsForm.h"
+#include "Config/ConfigManager.h"
 #include "FormUtils.h"
 #include "ShopForm.h"
 #include "TradeRecordForm.h"
@@ -26,8 +27,20 @@ static std::string toLower(const std::string& str) {
     return result;
 }
 
-static bool fuzzyMatch(const std::string& text, const std::string& keyword) {
-    return toLower(text).find(toLower(keyword)) != std::string::npos;
+static bool fuzzyMatch(const std::string& text, const std::string& lowerKeyword) {
+    return toLower(text).find(lowerKeyword) != std::string::npos;
+}
+
+static std::string buildDetailTeleportCostText() {
+    double teleportCost = ConfigManager::getInstance().get().teleportSettings.teleportCost;
+    if (teleportCost <= 0.0) {
+        return {};
+    }
+
+    return I18nService::getInstance().get(
+        "public_shop.preview_teleport_cost",
+        {{"cost", CT::MoneyFormat::format(teleportCost)}}
+    );
 }
 
 static void showSearchForm(Player& player);
@@ -42,14 +55,15 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
 
     // 筛选物品
     std::vector<PublicShopItemData> filteredItems;
+    std::string lowerKeyword = searchKeyword.empty() ? std::string{} : toLower(searchKeyword);
     for (const auto& item : allItems) {
         if (item.dbCount <= 0) continue;
-        if (!searchKeyword.empty()) {
+        if (!lowerKeyword.empty()) {
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (!itemPtr) continue;
             std::string itemName = itemPtr->getName();
             std::string typeName = itemPtr->getTypeName();
-            if (!fuzzyMatch(itemName, searchKeyword) && !fuzzyMatch(typeName, searchKeyword)) {
+            if (!fuzzyMatch(itemName, lowerKeyword) && !fuzzyMatch(typeName, lowerKeyword)) {
                 continue;
             }
         }
@@ -194,13 +208,14 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
     auto allItems = ShopRepository::getInstance().findAllPublicRecycleItems();
 
     std::vector<PublicRecycleItemData> filteredItems;
+    std::string lowerKeyword = searchKeyword.empty() ? std::string{} : toLower(searchKeyword);
     for (const auto& item : allItems) {
-        if (!searchKeyword.empty()) {
+        if (!lowerKeyword.empty()) {
             auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
             if (!itemPtr) continue;
             std::string itemName = itemPtr->getName();
             std::string typeName = itemPtr->getTypeName();
-            if (!fuzzyMatch(itemName, searchKeyword) && !fuzzyMatch(typeName, searchKeyword)) {
+            if (!fuzzyMatch(itemName, lowerKeyword) && !fuzzyMatch(typeName, lowerKeyword)) {
                 continue;
             }
         }
@@ -356,6 +371,9 @@ static void showItemDetailFormImpl(
 
     auto        ownerNameCache  = CT::FormUtils::getPlayerNameCache({ownerUuid});
     std::string ownerName       = ownerNameCache[ownerUuid];
+    if (ownerName.empty()) {
+        ownerName = i18n.get("public_shop.unknown_owner");
+    }
     std::string ownerShopKey    = isRecycle ? "public_shop.owner_recycle_shop" : "public_shop.owner_shop";
     std::string shopDisplayName = shopName.empty() ? i18n.get(
                                                          ownerShopKey,
@@ -377,6 +395,12 @@ static void showItemDetailFormImpl(
     }
     );
     content += i18n.get(
+        "public_shop.preview_owner",
+        {
+            {"owner", ownerName}
+    }
+    );
+    content += i18n.get(
         "public_items.item_shop",
         {
             {"shop", shopDisplayName}
@@ -391,6 +415,7 @@ static void showItemDetailFormImpl(
             {"z",   std::to_string(pos.z)              }
     }
     );
+    content += buildDetailTeleportCostText();
     if (isOfficial) {
         content += i18n.get("public_items.item_official");
     }

@@ -702,16 +702,7 @@ int ChestService::getPlayerChestCount(const std::string& playerUuid, ChestType t
 }
 
 std::vector<ChestData> ChestService::getAllPublicChests() {
-    auto                   allChests = ChestRepository::getInstance().findAll();
-    std::vector<ChestData> publicChests;
-    for (const auto& chest : allChests) {
-        if (chest.isPublic
-            && (chest.type == ChestType::Shop || chest.type == ChestType::RecycleShop
-                || chest.type == ChestType::AdminShop || chest.type == ChestType::AdminRecycle)) {
-            publicChests.push_back(chest);
-        }
-    }
-    return publicChests;
+    return ChestRepository::getInstance().findAllPublicShops();
 }
 
 std::string ChestService::generateFloatingText(ChestType type, const std::string& ownerName) {

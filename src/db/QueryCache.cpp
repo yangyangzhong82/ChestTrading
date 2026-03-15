@@ -1,5 +1,7 @@
 #include "QueryCache.h"
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 
 void QueryCache::clear() {
     std::lock_guard<std::mutex> lock(mMutex);
@@ -83,25 +85,50 @@ size_t QueryCache::generateKey(const std::string& sql, const std::vector<Value>&
     return hash;
 }
 
+namespace {
+
+// 大小写不敏感前缀匹配（避免全量 toLower）
+bool startsWithCI(const char* str, const char* prefix) {
+    while (*prefix) {
+        if (std::tolower(static_cast<unsigned char>(*str)) != static_cast<unsigned char>(*prefix)) return false;
+        ++str;
+        ++prefix;
+    }
+    return true;
+}
+
+// 大小写不敏感子串搜索
+bool containsCI(const std::string& haystack, const char* needle) {
+    size_t needleLen = std::strlen(needle);
+    if (needleLen > haystack.size()) return false;
+    for (size_t i = 0; i <= haystack.size() - needleLen; ++i) {
+        if (startsWithCI(haystack.data() + i, needle)) return true;
+    }
+    return false;
+}
+
+} // namespace
+
 bool QueryCache::shouldSkip(const std::string& sql) {
-    std::string lowerSql = sql;
-    std::transform(lowerSql.begin(), lowerSql.end(), lowerSql.begin(), [](unsigned char c) { return std::tolower(c); });
-
-    auto firstNonSpace = lowerSql.find_first_not_of(" \t\r\n");
-    if (firstNonSpace == std::string::npos) {
-        return true;
+    // 跳过前导空白
+    size_t firstNonSpace = 0;
+    while (firstNonSpace < sql.size()
+           && (sql[firstNonSpace] == ' ' || sql[firstNonSpace] == '\t' || sql[firstNonSpace] == '\r'
+               || sql[firstNonSpace] == '\n')) {
+        ++firstNonSpace;
     }
-    lowerSql.erase(0, firstNonSpace);
+    if (firstNonSpace >= sql.size()) return true;
 
-    const bool cacheableRead = lowerSql.rfind("select", 0) == 0 || lowerSql.rfind("with", 0) == 0;
-    if (!cacheableRead) {
-        return true;
-    }
+    const char* start = sql.data() + firstNonSpace;
 
-    if (lowerSql.rfind("pragma", 0) == 0 || lowerSql.find("last_insert_rowid") != std::string::npos) {
-        return true;
-    }
+    // 仅缓存 SELECT / WITH 开头的查询
+    bool cacheableRead = startsWithCI(start, "select") || startsWithCI(start, "with");
+    if (!cacheableRead) return true;
 
-    return lowerSql.find("chests") != std::string::npos || lowerSql.find("shared_chests") != std::string::npos
-        || lowerSql.find("recycle_shop_items") != std::string::npos || lowerSql.find("shop_items") != std::string::npos;
+    // 排除 PRAGMA 和 last_insert_rowid
+    if (startsWithCI(start, "pragma") || containsCI(sql, "last_insert_rowid")) return true;
+
+    // 排除频繁变动的表
+    return containsCI(sql, "chests") || containsCI(sql, "shared_chests") || containsCI(sql, "recycle_shop_items")
+        || containsCI(sql, "shop_items");
 }

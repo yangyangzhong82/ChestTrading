@@ -5,6 +5,8 @@
 #include "mc/world/level/BlockSource.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace CT {
 
@@ -25,6 +27,10 @@ protected:
 
     // 计算箱子中匹配物品的数量
     static int countMatchingItems(ChestBlockActor* chest, const std::string& itemNbt);
+
+    // 批量计算箱子中多种物品的数量（单次遍历）
+    static std::unordered_map<std::string, int>
+    countAllMatchingItems(ChestBlockActor* chest, const std::vector<std::string>& itemNbtList);
 };
 
 } // namespace CT
