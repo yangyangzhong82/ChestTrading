@@ -206,6 +206,19 @@ PurchaseResult ShopService::purchaseItem(
     const std::string& itemNbt
 ) {
     auto&    txt     = TextService::getInstance();
+    if (static_cast<int>(region.getDimensionId()) != dimId) {
+        logger.warn(
+            "purchaseItem: region dimension mismatch, expected={}, actual={}, pos=({}, {}, {}) buyer={}",
+            dimId,
+            static_cast<int>(region.getDimensionId()),
+            pos.x,
+            pos.y,
+            pos.z,
+            buyer.getRealName()
+        );
+        return {false, txt.getMessage("shop.purchase_chest_fail")};
+    }
+
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     // 获取商品信息
@@ -265,9 +278,9 @@ PurchaseResult ShopService::purchaseItem(
         return {false, limitCheck.message};
     }
 
-    // 获取箱子实体
-    auto* chest = getChestActor(region, mainPos);
-    if (!chest) {
+    // 获取箱子容器（大箱子会返回合并后的容器）
+    auto* container = getChestContainer(region, mainPos);
+    if (!container) {
         return {false, txt.getMessage("shop.purchase_chest_fail")};
     }
 
@@ -278,7 +291,7 @@ PurchaseResult ShopService::purchaseItem(
     bool stockCorrected = false;
     if (!isAdminShop) {
         // 检查箱子库存
-        int actualAvailable = countMatchingItems(chest, itemNbt);
+        int actualAvailable = countMatchingItems(container, itemNbt);
         if (actualAvailable != itemOpt->dbCount) {
             int oldDbCount = itemOpt->dbCount;
             if (ShopRepository::getInstance().updateDbCount(mainPos, dimId, itemId, actualAvailable)) {
@@ -317,16 +330,16 @@ PurchaseResult ShopService::purchaseItem(
         }
 
         // 从箱子移除物品
-        int actualRemoved = removeItemsFromChest(chest, itemNbt, quantity);
+        int actualRemoved = removeItemsFromChest(container, itemNbt, quantity);
         if (actualRemoved < quantity) {
             // 放回已移除的物品
             if (actualRemoved > 0) {
-                addItemsToChest(chest, itemNbt, actualRemoved);
+                addItemsToChest(container, itemNbt, actualRemoved);
             }
             return {false, txt.getMessage("shop.purchase_chest_fail")};
         }
         // 添加回滚操作：放回物品
-        rollbackGuard.addRollback([chest, itemNbt, quantity]() { addItemsToChest(chest, itemNbt, quantity); });
+        rollbackGuard.addRollback([container, itemNbt, quantity]() { addItemsToChest(container, itemNbt, quantity); });
     }
 
     // 扣钱（金额为0时跳过）
@@ -350,7 +363,7 @@ PurchaseResult ShopService::purchaseItem(
     // 官方商店不更新库存
     if (!isAdminShop) {
         // 使用箱子实时剩余量回写数据库，避免 db_count 漂移。
-        int remainingAfterPurchase = countMatchingItems(chest, itemNbt);
+        int remainingAfterPurchase = countMatchingItems(container, itemNbt);
         if (!ShopRepository::getInstance().updateDbCount(mainPos, dimId, itemId, remainingAfterPurchase)) {
             txn.rollback();
             return {false, txt.getMessage("shop.purchase_db_fail")};
@@ -427,8 +440,8 @@ PurchaseResult ShopService::purchaseItem(
 }
 
 int ShopService::countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& itemNbt) {
-    auto* chest = getChestActor(region, pos);
-    return countMatchingItems(chest, itemNbt);
+    auto* container = getChestContainer(region, pos);
+    return countMatchingItems(container, itemNbt);
 }
 
 bool ShopService::syncDbStockWithChest(
@@ -445,9 +458,9 @@ bool ShopService::syncDbStockWithChest(
 
     if (items->empty()) return false;
 
-    // 获取一次箱子 actor
-    auto* chest = getChestActor(region, pos);
-    if (!chest) return false;
+    // 获取一次箱子容器
+    auto* container = getChestContainer(region, pos);
+    if (!container) return false;
 
     // 收集所有 itemNbt，一次性批量统计
     std::vector<std::string> nbtList;
@@ -455,7 +468,7 @@ bool ShopService::syncDbStockWithChest(
     for (const auto& item : *items) {
         nbtList.push_back(item.itemNbt);
     }
-    auto countMap = countAllMatchingItems(chest, nbtList);
+    auto countMap = countAllMatchingItems(container, nbtList);
 
     bool changed = false;
     for (auto& item : *items) {

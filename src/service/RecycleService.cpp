@@ -180,6 +180,19 @@ RecycleResult RecycleService::executeFullRecycle(
 ) {
     auto& txt      = TextService::getInstance();
     auto& shopRepo = ShopRepository::getInstance();
+    if (static_cast<int>(region.getDimensionId()) != dimId) {
+        logger.warn(
+            "executeFullRecycle: region dimension mismatch, expected={}, actual={}, pos=({}, {}, {}) recycler={}",
+            dimId,
+            static_cast<int>(region.getDimensionId()),
+            pos.x,
+            pos.y,
+            pos.z,
+            recycler.getRealName()
+        );
+        return {false, txt.getMessage("recycle.chest_entity_fail"), 0, 0.0};
+    }
+
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     // 1. 获取箱子信息
@@ -236,9 +249,9 @@ RecycleResult RecycleService::executeFullRecycle(
         }
     };
 
-    // 3. 获取箱子实体
-    auto* chest = getChestActor(region, mainPos);
-    if (!chest) {
+    // 3. 获取箱子容器（大箱子会返回合并后的容器）
+    auto* container = getChestContainer(region, mainPos);
+    if (!container) {
         refundOwner();
         return {false, txt.getMessage("recycle.chest_entity_fail"), 0, 0.0};
     }
@@ -375,8 +388,8 @@ RecycleResult RecycleService::executeFullRecycle(
     if (!isAdminRecycle) {
         // 检查箱子空间
         int chestAvailableSpace = 0;
-        for (int i = 0; i < chest->getContainerSize(); ++i) {
-            const auto& chestItem = chest->getItem(i);
+        for (int i = 0; i < container->getContainerSize(); ++i) {
+            const auto& chestItem = container->getItem(i);
             if (chestItem.isNull()) {
                 chestAvailableSpace += 64;//空槽位
             } else {
@@ -401,8 +414,8 @@ RecycleResult RecycleService::executeFullRecycle(
         }
 
         // 记录箱子初始状态（每个槽位的物品数量）
-        for (int i = 0; i < chest->getContainerSize(); ++i) {
-            const auto& chestItem = chest->getItem(i);
+        for (int i = 0; i < container->getContainerSize(); ++i) {
+            const auto& chestItem = container->getItem(i);
             if (!chestItem.isNull()) {
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (chestItemNbt) {
@@ -429,7 +442,7 @@ RecycleResult RecycleService::executeFullRecycle(
     if (isAdminRecycle) {
         for (const auto& tr : transferRecords) {
             ItemStack copy = playerInventory.getItem(tr.slot);
-            copy.setStackSize(tr.count);
+            copy.setStackSize(static_cast<unsigned char>(tr.count));
             originalItemsForRollback.push_back(std::move(copy));
         }
     }
@@ -440,12 +453,12 @@ RecycleResult RecycleService::executeFullRecycle(
             // 普通回收商店：物品转移到箱子
             const auto& originalItem  = playerInventory.getItem(tr.slot);
             ItemStack   itemToRecycle = originalItem;
-            itemToRecycle.setStackSize(tr.count);
+            itemToRecycle.setStackSize(static_cast<unsigned char>(tr.count));
 
-            if (!chest->addItem(itemToRecycle)) {
+            if (!container->addItem(itemToRecycle)) {
                 // 转移失败，精确回滚：只移除本次新增的部分
-                for (int i = 0; i < chest->getContainerSize(); ++i) {
-                    const auto& chestItem = chest->getItem(i);
+                for (int i = 0; i < container->getContainerSize(); ++i) {
+                    const auto& chestItem = container->getItem(i);
                     if (chestItem.isNull()) continue;
                     auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                     if (!chestItemNbt) continue;
@@ -460,8 +473,8 @@ RecycleResult RecycleService::executeFullRecycle(
                     int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                     if (addedCount > 0) {
                         ItemStack returnItem = chestItem;
-                        returnItem.setStackSize(addedCount);
-                        chest->removeItem(i, addedCount);
+                        returnItem.setStackSize(static_cast<unsigned char>(addedCount));
+                        removeItemsFromSlot(container, i, addedCount);
                         if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
                     }
                 }
@@ -478,8 +491,8 @@ RecycleResult RecycleService::executeFullRecycle(
     if (!isAdminRecycle) {
         rollbackGuard.addRollback([&]() {
             // 从箱子移除本次新增的物品
-            for (int i = 0; i < chest->getContainerSize(); ++i) {
-                const auto& chestItem = chest->getItem(i);
+            for (int i = 0; i < container->getContainerSize(); ++i) {
+                const auto& chestItem = container->getItem(i);
                 if (chestItem.isNull()) continue;
                 auto chestItemNbt = NbtUtils::getItemNbt(chestItem);
                 if (!chestItemNbt) continue;
@@ -494,8 +507,8 @@ RecycleResult RecycleService::executeFullRecycle(
                 int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                 if (addedCount > 0) {
                     ItemStack returnItem = chestItem;
-                    returnItem.setStackSize(addedCount);
-                    chest->removeItem(i, addedCount);
+                    returnItem.setStackSize(static_cast<unsigned char>(addedCount));
+                    removeItemsFromSlot(container, i, addedCount);
                     if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
                 }
             }

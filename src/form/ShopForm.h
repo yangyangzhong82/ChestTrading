@@ -16,7 +16,14 @@ void showShopChestItemsForm(
     BlockSource&       region,
     const std::string& searchKeyword = ""
 );
-void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
+void showShopItemPriceForm(
+    Player&            player,
+    const ItemStack&   item,
+    const std::string& itemNbtStr,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region
+);
 void showShopItemManageForm(
     Player&            player,
     const std::string& itemNbtStr,

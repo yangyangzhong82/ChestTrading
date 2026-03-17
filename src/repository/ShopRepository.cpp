@@ -1,4 +1,5 @@
 #include "ShopRepository.h"
+#include "Utils/TimeUtils.h"
 #include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
 #include <algorithm>
@@ -35,6 +36,13 @@ bool tradeRecordTimeDesc(const TradeRecordData& a, const TradeRecordData& b) {
     if (a.timestamp != b.timestamp) return a.timestamp > b.timestamp;
     if (a.id != b.id) return a.id > b.id;
     return static_cast<int>(a.kind) < static_cast<int>(b.kind);
+}
+
+template <typename T>
+void localizeRecordTimestamps(std::vector<T>& records) {
+    for (auto& record : records) {
+        record.timestamp = TimeUtils::utcSqliteTimestampToLocal(record.timestamp);
+    }
 }
 
 } // namespace
@@ -181,7 +189,7 @@ std::vector<PurchaseRecordData> ShopRepository::getPurchaseRecords(BlockPos pos,
         limit
     );
 
-    return parseRows<PurchaseRecordData>(results, 7, [&](DbRowParser r) {
+    auto records = parseRows<PurchaseRecordData>(results, 7, [&](DbRowParser r) {
         return PurchaseRecordData{
             r.getInt(0),
             dimId,
@@ -194,6 +202,8 @@ std::vector<PurchaseRecordData> ShopRepository::getPurchaseRecords(BlockPos pos,
             r.getString(6)
         };
     });
+    localizeRecordTimestamps(records);
+    return records;
 }
 
 std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const std::string& playerUuid, int limit) {
@@ -217,7 +227,7 @@ std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const s
         limit
     );
 
-    return parseRows<PurchaseRecordData>(results, 11, [](DbRowParser r) {
+    auto records = parseRows<PurchaseRecordData>(results, 11, [](DbRowParser r) {
         return PurchaseRecordData{
             r.getInt(0),
             r.getInt(1),
@@ -230,6 +240,8 @@ std::vector<PurchaseRecordData> ShopRepository::getPlayerPurchaseHistory(const s
             r.getString(10)
         };
     });
+    localizeRecordTimestamps(records);
+    return records;
 }
 
 std::optional<PurchaseRecordData> ShopRepository::getLatestPurchaseRecord(const std::string& playerUuid) {
@@ -244,7 +256,7 @@ std::optional<PurchaseRecordData> ShopRepository::getLatestPurchaseRecord(const 
         playerUuid
     );
 
-    return parseSingleRow<PurchaseRecordData>(results, 11, [](DbRowParser r) {
+    auto record = parseSingleRow<PurchaseRecordData>(results, 11, [](DbRowParser r) {
         return PurchaseRecordData{
             r.getInt(0),
             r.getInt(1),
@@ -257,6 +269,10 @@ std::optional<PurchaseRecordData> ShopRepository::getLatestPurchaseRecord(const 
             r.getString(10)
         };
     });
+    if (record) {
+        record->timestamp = TimeUtils::utcSqliteTimestampToLocal(record->timestamp);
+    }
+    return record;
 }
 
 std::vector<std::string> ShopRepository::getDistinctTradeActorUuids() {
@@ -402,6 +418,7 @@ std::vector<TradeRecordData> ShopRepository::getTradeRecords(const TradeRecordQu
     }
 
     std::sort(records.begin(), records.end(), tradeRecordTimeDesc);
+    localizeRecordTimestamps(records);
     return records;
 }
 
@@ -558,7 +575,7 @@ std::vector<RecycleRecordData> ShopRepository::getRecycleRecords(BlockPos pos, i
         limit
     );
 
-    return parseRows<RecycleRecordData>(results, 5, [&](DbRowParser r) {
+    auto records = parseRows<RecycleRecordData>(results, 5, [&](DbRowParser r) {
         return RecycleRecordData{
             r.getInt(0),
             dimId,
@@ -570,6 +587,8 @@ std::vector<RecycleRecordData> ShopRepository::getRecycleRecords(BlockPos pos, i
             r.getString(4)
         };
     });
+    localizeRecordTimestamps(records);
+    return records;
 }
 
 std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
@@ -646,7 +665,7 @@ std::vector<ChestSalesData> ShopRepository::getChestSalesRanking(int limit) {
         limit
     );
 
-    return parseRows<ChestSalesData>(results, 9, [](DbRowParser r) {
+    auto records = parseRows<ChestSalesData>(results, 9, [](DbRowParser r) {
         return ChestSalesData{
             r.getInt(0),
             BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
@@ -657,6 +676,10 @@ std::vector<ChestSalesData> ShopRepository::getChestSalesRanking(int limit) {
             r.getString(8)
         };
     });
+    for (auto& record : records) {
+        record.lastSaleTime = TimeUtils::utcSqliteTimestampToLocal(record.lastSaleTime);
+    }
+    return records;
 }
 
 std::vector<ChestSalesData> ShopRepository::getRecycleChestSalesRanking(int limit) {
@@ -676,7 +699,7 @@ std::vector<ChestSalesData> ShopRepository::getRecycleChestSalesRanking(int limi
         limit
     );
 
-    return parseRows<ChestSalesData>(results, 9, [](DbRowParser r) {
+    auto records = parseRows<ChestSalesData>(results, 9, [](DbRowParser r) {
         return ChestSalesData{
             r.getInt(0),
             BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
@@ -687,6 +710,10 @@ std::vector<ChestSalesData> ShopRepository::getRecycleChestSalesRanking(int limi
             r.getString(8)
         };
     });
+    for (auto& record : records) {
+        record.lastSaleTime = TimeUtils::utcSqliteTimestampToLocal(record.lastSaleTime);
+    }
+    return records;
 }
 
 std::vector<PlayerSalesData> ShopRepository::getPlayerSalesRanking(int limit) {
@@ -722,7 +749,7 @@ std::vector<PlayerSalesData> ShopRepository::getPlayerSalesRanking(int limit) {
         limit
     );
 
-    return parseRows<PlayerSalesData>(results, 10, [](DbRowParser r) {
+    auto records = parseRows<PlayerSalesData>(results, 10, [](DbRowParser r) {
         return PlayerSalesData{
             r.getString(0),
             r.getInt(1),
@@ -734,6 +761,10 @@ std::vector<PlayerSalesData> ShopRepository::getPlayerSalesRanking(int limit) {
             r.getDouble(9)
         };
     });
+    for (auto& record : records) {
+        record.lastSaleTime = TimeUtils::utcSqliteTimestampToLocal(record.lastSaleTime);
+    }
+    return records;
 }
 
 } // namespace CT

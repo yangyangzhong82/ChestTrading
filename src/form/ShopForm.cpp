@@ -12,6 +12,7 @@
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
+#include "mc/world/Container.h"
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
@@ -393,7 +394,14 @@ void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> 
     showPlayerTradeRecordsForm(player, onBack);
 }
 
-void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
+void showShopItemPriceForm(
+    Player&            player,
+    const ItemStack&   item,
+    const std::string& itemNbtStr,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region
+) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
     fm.setTitle(txt.getMessage("form.shop_set_price_title"));
@@ -407,7 +415,11 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
 
     fm.sendTo(
         player,
-        [item, pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+        [item, itemNbtStr, pos, dimId](
+            Player&                           p,
+            const ll::form::CustomFormResult& result,
+            ll::form::FormCancelReason        reason
+        ) {
             auto& txt = TextService::getInstance();
             if (!result.has_value()) {
                 p.sendMessage(txt.getMessage("action.cancelled"));
@@ -422,12 +434,6 @@ void showShopItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, 
                 }
 
                 auto& region  = p.getDimensionBlockSource();
-                auto  itemNbt = CT::NbtUtils::getItemNbt(item);
-                if (!itemNbt) {
-                    p.sendMessage(txt.getMessage("input.nbt_fail"));
-                    return;
-                }
-                std::string itemNbtStr = CT::NbtUtils::toSNBT(*CT::NbtUtils::cleanNbtForComparison(*itemNbt));
                 int         dbCount    = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
 
                 auto priceResult =
@@ -469,6 +475,7 @@ void showShopItemManageForm(
         return;
     }
     ItemStack item = *itemPtr;
+    BlockPos  mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     int totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
     int itemId     = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
@@ -478,7 +485,7 @@ void showShopItemManageForm(
         return;
     }
 
-    auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
+    auto itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
 
     std::string content = txt.getMessage(
                               "form.label_managing_item",
@@ -517,9 +524,9 @@ void showShopItemManageForm(
              + "\n";
     fm.setContent(content);
 
-    fm.appendButton(txt.getMessage("form.button_set_price"), [item, pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_set_price"), [item, itemNbtStr, pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showShopItemPriceForm(p, item, pos, dimId, region);
+        showShopItemPriceForm(p, item, itemNbtStr, pos, dimId, region);
     });
 
     fm.appendButton(
@@ -565,6 +572,7 @@ void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& r
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     auto&                txt = TextService::getInstance();
+    BlockPos             mainPos = ChestService::getInstance().getMainChestPos(pos, region);
     fm.setTitle(txt.getMessage("form.shop_manage_title"));
 
     logger.debug(
@@ -589,13 +597,28 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         return;
     }
 
-    auto* chest = static_cast<ChestBlockActor*>(blockActor);
+    auto* chest     = static_cast<ChestBlockActor*>(blockActor);
+    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
+        chest = chest->mLargeChestPaired;
+    }
+    auto* container = chest->getContainer();
+    if (!container) {
+        player.sendMessage(txt.getMessage("chest.entity_fail"));
+        logger.error(
+            "showShopChestManageForm: 无法获取箱子容器在 ({}, {}, {}) dim {}",
+            pos.x,
+            pos.y,
+            pos.z,
+            dimId
+        );
+        return;
+    }
 
     bool                                         isEmpty = true;
     std::map<std::string, ManageShopItemEntry>   aggregatedItems;
 
-    for (int i = 0; i < chest->getContainerSize(); ++i) {
-        const auto& itemInSlot = chest->getItem(i);
+    for (int i = 0; i < container->getContainerSize(); ++i) {
+        const auto& itemInSlot = container->getItem(i);
         if (!itemInSlot.isNull()) {
             isEmpty = false;
             logger.debug(
@@ -610,7 +633,8 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 continue;
             }
 
-            std::string itemNbtStr = CT::NbtUtils::toSNBT(*CT::NbtUtils::cleanNbtForComparison(*itemNbt));
+            std::string itemNbtStr =
+                CT::NbtUtils::toSNBT(*CT::NbtUtils::cleanNbtForComparison(*itemNbt, itemInSlot.isDamageableItem()));
             logger.debug("showShopChestManageForm: 槽位 {} 的物品比较用 NBT: {}", i, itemNbtStr);
 
             if (aggregatedItems.count(itemNbtStr)) {
@@ -625,7 +649,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 bool        soldOut  = false;
                 std::string priceStr = buildManagePriceLabel(txt, std::nullopt, false);
                 if (itemId > 0) {
-                    auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
+                    auto itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
                     if (itemOpt) {
                         soldOut  = itemOpt->dbCount <= 0;
                         priceStr = buildManagePriceLabel(txt, itemOpt->price, soldOut);

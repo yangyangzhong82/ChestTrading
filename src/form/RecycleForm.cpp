@@ -7,6 +7,7 @@
 #include "TradeRecordForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
+#include "Utils/TimeUtils.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/form/CustomForm.h"
@@ -15,6 +16,7 @@
 #include "ll/api/service/PlayerInfo.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include "mc/platform/UUID.h"
+#include "mc/world/Container.h"
 #include "mc/world/actor/player/Inventory.h"
 #include "mc/world/actor/player/PlayerInventory.h"
 #include "mc/world/item/Item.h"
@@ -161,6 +163,90 @@ int countPlayerEligibleRecycleItems(
     }
 
     return totalPlayerCount;
+}
+
+std::string buildDefaultEnchantInput(const ItemStack& item) {
+    if (!item.isEnchanted()) {
+        return {};
+    }
+
+    ItemEnchants enchants    = item.constructItemEnchantsFromUserData();
+    auto         enchantList = enchants.getAllEnchants();
+    if (enchantList.empty()) {
+        return {};
+    }
+
+    std::string result;
+    for (size_t i = 0; i < enchantList.size(); ++i) {
+        if (!result.empty()) {
+            result += ",";
+        }
+        result += std::to_string(static_cast<int>(enchantList[i].mEnchantType));
+        result += ":";
+        result += std::to_string(enchantList[i].mLevel);
+    }
+
+    return result;
+}
+
+Container* getRecycleChestContainer(BlockSource& region, BlockPos pos) {
+    auto* blockActor = region.getBlockEntity(pos);
+    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
+        return nullptr;
+    }
+
+    auto* chest = static_cast<ChestBlockActor*>(blockActor);
+    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
+        chest = chest->mLargeChestPaired;
+    }
+
+    return chest->getContainer();
+}
+
+std::optional<int> countRecycleChestAvailableSpace(
+    BlockSource&       region,
+    BlockPos           pos,
+    const std::string& commissionNbtStr,
+    bool               damageableItem
+) {
+    auto* container = getRecycleChestContainer(region, pos);
+    if (!container) {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> commissionBinKey;
+    if (auto commissionTag = CT::NbtUtils::parseSNBT(commissionNbtStr)) {
+        auto cleaned = CT::NbtUtils::cleanNbtForComparison(*commissionTag, damageableItem);
+        commissionBinKey = CT::NbtUtils::toBinaryNBT(*cleaned);
+    }
+
+    int chestAvailableSpace = 0;
+    for (int i = 0; i < container->getContainerSize(); ++i) {
+        const auto& chestItem = container->getItem(i);
+        if (chestItem.isNull()) {
+            chestAvailableSpace += 64;
+            continue;
+        }
+
+        auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItem);
+        if (!chestItemNbt) {
+            continue;
+        }
+
+        auto cleanedChestNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItem.isDamageableItem());
+        bool matches         = false;
+        if (commissionBinKey) {
+            matches = (CT::NbtUtils::toBinaryNBT(*cleanedChestNbt) == *commissionBinKey);
+        } else {
+            matches = (CT::NbtUtils::toSNBT(*cleanedChestNbt) == commissionNbtStr);
+        }
+
+        if (matches) {
+            chestAvailableSpace += (64 - chestItem.mCount);
+        }
+    }
+
+    return chestAvailableSpace;
 }
 
 } // namespace
@@ -370,6 +456,7 @@ void showRecycleConfirmForm(
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
     fm.setTitle(txt.getMessage("form.recycle_confirm_title"));
+    BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     int itemId           = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     if (itemId < 0) {
@@ -392,6 +479,10 @@ void showRecycleConfirmForm(
     double displayUnitPrice = priceView.unitPrice;
     int totalPlayerCount = countPlayerEligibleRecycleItems(player, item, commissionNbtStr, *commission);
     int maxAllowedCount  = totalPlayerCount;
+    bool isAdminRecycle  = false;
+    if (auto chestInfo = ChestService::getInstance().getChestInfo(mainPos, dimId, region)) {
+        isAdminRecycle = chestInfo->type == ChestType::AdminRecycle;
+    }
 
     int commissionRemaining = getCommissionRemainingCount(*commission);
     if (commissionRemaining == 0) {
@@ -405,6 +496,14 @@ void showRecycleConfirmForm(
     if (priceView.remainingQuantity != -1) {
         maxAllowedCount = std::min(maxAllowedCount, priceView.remainingQuantity);
     }
+    std::optional<int> chestSpaceLimit;
+    if (!isAdminRecycle) {
+        chestSpaceLimit = countRecycleChestAvailableSpace(region, mainPos, commissionNbtStr, item.isDamageableItem());
+        if (chestSpaceLimit.has_value()) {
+            maxAllowedCount = std::min(maxAllowedCount, *chestSpaceLimit);
+        }
+    }
+    maxAllowedCount = std::max(0, maxAllowedCount);
 
     fm.appendLabel(txt.getMessage(
         "form.label_setting_commission",
@@ -430,6 +529,9 @@ void showRecycleConfirmForm(
             {"count", std::to_string(std::max(0, maxAllowedCount))}
         }
     ));
+    if (!isAdminRecycle && chestSpaceLimit.has_value() && *chestSpaceLimit <= 0 && totalPlayerCount > 0) {
+        fm.appendLabel(txt.getMessage("recycle.chest_full"));
+    }
 
     if (item.isDamageableItem()) {
         int maxDamage = item.getItem()->getMaxDamage();
@@ -469,7 +571,7 @@ void showRecycleConfirmForm(
         "recycle_count",
         txt.getMessage("form.input_recycle_count"),
         "1",
-        std::to_string(std::max(1, maxAllowedCount))
+        std::to_string(maxAllowedCount > 0 ? maxAllowedCount : 0)
     );
 
     fm.sendTo(
@@ -985,7 +1087,7 @@ void showCommissionDetailsForm(
                     std::string recyclerUuid = row[0];
                     std::string recycleCount = row[1];
                     std::string totalPrice   = row[2];
-                    std::string timestamp    = row[3];
+                    std::string timestamp    = TimeUtils::utcSqliteTimestampToLocal(row[3]);
 
                     std::string recyclerName = ownerNameCache[recyclerUuid];
 
@@ -1193,6 +1295,14 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
 void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
+    short                currentAuxValue      = item.getAuxValue();
+    std::string          defaultAuxValue      = std::to_string(currentAuxValue);
+    std::string          defaultEnchantInput  = buildDefaultEnchantInput(item);
+    std::string          defaultMinDurability = "0";
+    if (item.isDamageableItem()) {
+        defaultMinDurability = std::to_string(item.getItem()->getMaxDamage());
+    }
+
     fm.setTitle(txt.getMessage("form.recycle_set_price_title"));
     fm.appendLabel(txt.getMessage(
         "form.label_setting_commission",
@@ -1203,20 +1313,24 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
     fm.appendInput("price_input", txt.getMessage("form.input_price"), "0.0");
 
     // 显示当前物品的特殊值
-    short currentAuxValue = item.getAuxValue();
     fm.appendLabel(txt.getMessage(
         "form.label_current_aux",
         {
             {"value", std::to_string(currentAuxValue)}
     }
     ));
-    fm.appendInput("required_aux_value", txt.getMessage("form.input_aux_value"), "-1", std::to_string(currentAuxValue));
+    fm.appendInput("required_aux_value", txt.getMessage("form.input_aux_value"), defaultAuxValue, defaultAuxValue);
 
     if (item.isDamageableItem()) {
-        fm.appendInput("min_durability", txt.getMessage("form.input_min_durability"), "0");
+        fm.appendInput(
+            "min_durability",
+            txt.getMessage("form.input_min_durability"),
+            defaultMinDurability,
+            defaultMinDurability
+        );
     }
 
-    fm.appendInput("required_enchants", txt.getMessage("form.input_enchants"), "");
+    fm.appendInput("required_enchants", txt.getMessage("form.input_enchants"), defaultEnchantInput, defaultEnchantInput);
     fm.appendLabel(txt.getMessage("form.input_enchants_example"));
     fm.appendLabel(txt.getMessage("form.input_enchants_tip"));
     fm.appendInput("max_recycle_count", txt.getMessage("form.input_max_recycle"), "0");
@@ -1243,11 +1357,15 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
                 int minDurability = 0;
                 if (item.isDamageableItem()) {
-                    minDurability = std::stoi(std::get<std::string>(result.value().at("min_durability")));
-                    if (minDurability < 0) {
-                        p.sendMessage(txt.getMessage("input.negative_durability"));
-                        showSetRecycleItemPriceForm(p, item, pos, dimId, region);
-                        return;
+                    int         maxDurability    = item.getItem()->getMaxDamage();
+                    std::string minDurabilityStr = std::get<std::string>(result.value().at("min_durability"));
+                    if (minDurabilityStr.find_first_not_of(" \t\r\n") == std::string::npos) {
+                        minDurability = maxDurability;
+                    } else {
+                        minDurability = std::stoi(minDurabilityStr);
+                        if (minDurability < 0 || minDurability > maxDurability) {
+                            minDurability = maxDurability;
+                        }
                     }
                 }
 
@@ -1292,13 +1410,13 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 }
 
                 // 解析特殊值筛选
-                int         requiredAuxValue = -1;
+                int         requiredAuxValue = item.getAuxValue();
                 std::string auxValueStr      = std::get<std::string>(result.value().at("required_aux_value"));
                 if (!auxValueStr.empty()) {
                     try {
                         requiredAuxValue = std::stoi(auxValueStr);
                     } catch (...) {
-                        requiredAuxValue = -1; // 解析失败则不筛选
+                        requiredAuxValue = item.getAuxValue();
                     }
                 }
 

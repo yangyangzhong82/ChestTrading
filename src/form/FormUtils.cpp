@@ -7,6 +7,7 @@
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
+#include "mc/world/Container.h"
 #include "mc/world/item/Item.h"
 #include "mc/world/item/ResolvedItemIconInfo.h"
 #include "mc/world/item/enchanting/Enchant.h"
@@ -250,14 +251,29 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
         return 0;
     }
 
-    auto* chest = static_cast<ChestBlockActor*>(blockActor);
+    auto* chest     = static_cast<ChestBlockActor*>(blockActor);
+    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
+        chest = chest->mLargeChestPaired;
+    }
+    auto* container = chest->getContainer();
+    if (!container) {
+        logger.error(
+            "countItemsInChest: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
+            pos.x,
+            pos.y,
+            pos.z,
+            dimId
+        );
+        return 0;
+    }
 
-    for (int i = 0; i < chest->getContainerSize(); ++i) {
-        const auto& chestItemInSlot = chest->getItem(i);
+    for (int i = 0; i < container->getContainerSize(); ++i) {
+        const auto& chestItemInSlot = container->getItem(i);
         if (!chestItemInSlot.isNull()) {
             auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
             if (chestItemNbt) {
-                auto        cleanedChestItemNbt = CT::NbtUtils::cleanNbtForComparison(*chestItemNbt);
+                auto        cleanedChestItemNbt =
+                    CT::NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItemInSlot.isDamageableItem());
                 std::string currentItemNbtStr   = CT::NbtUtils::toSNBT(*cleanedChestItemNbt);
                 if (currentItemNbtStr == targetItemNbtStr) {
                     totalCount += chestItemInSlot.mCount;
