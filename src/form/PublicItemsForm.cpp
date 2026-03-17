@@ -4,6 +4,7 @@
 #include "ShopForm.h"
 #include "TradeRecordForm.h"
 #include "Utils/MoneyFormat.h"
+#include "Utils/Pagination.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/PlayerInfo.h"
@@ -43,6 +44,16 @@ static std::string buildDetailTeleportCostText() {
     );
 }
 
+static std::string buildRecycleRemainingText(const PublicRecycleItemData& item) {
+    auto& i18n = I18nService::getInstance();
+    if (item.maxRecycleCount <= 0) {
+        return i18n.get("public_items.recycle_unlimited");
+    }
+
+    int remaining = std::max(0, item.maxRecycleCount - item.currentRecycledCount);
+    return i18n.get("public_items.recycle_remaining", {{"count", std::to_string(remaining)}});
+}
+
 static void showSearchForm(Player& player);
 
 void showPublicItemsForm(Player& player, int currentPage, const std::string& searchKeyword) {
@@ -70,10 +81,10 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
         filteredItems.push_back(item);
     }
 
-    int totalItems = static_cast<int>(filteredItems.size());
-    int totalPages = (totalItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    int  totalItems = static_cast<int>(filteredItems.size());
+    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, ITEMS_PER_PAGE, currentPage);
+    int  totalPages = pageSlice.totalPages;
+    currentPage     = pageSlice.currentPage;
     fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
         showSearchForm(p);
     });
@@ -109,8 +120,8 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
         }
         fm.setContent(contentText);
 
-        int startIdx = currentPage * ITEMS_PER_PAGE;
-        int endIdx   = std::min(startIdx + ITEMS_PER_PAGE, totalItems);
+        int startIdx = pageSlice.startIndex;
+        int endIdx   = pageSlice.endIndex;
 
         // 批量获取店主名称
         std::vector<std::string> uuids;
@@ -222,10 +233,10 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
         filteredItems.push_back(item);
     }
 
-    int totalItems = static_cast<int>(filteredItems.size());
-    int totalPages = (totalItems + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    int  totalItems = static_cast<int>(filteredItems.size());
+    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, ITEMS_PER_PAGE, currentPage);
+    int  totalPages = pageSlice.totalPages;
+    currentPage     = pageSlice.currentPage;
     fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
         showRecycleSearchForm(p);
     });
@@ -263,8 +274,8 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
         }
         fm.setContent(contentText);
 
-        int startIdx = currentPage * ITEMS_PER_PAGE;
-        int endIdx   = std::min(startIdx + ITEMS_PER_PAGE, totalItems);
+        int startIdx = pageSlice.startIndex;
+        int endIdx   = pageSlice.endIndex;
 
         std::vector<std::string> uuids;
         for (int i = startIdx; i < endIdx; ++i) {
@@ -455,17 +466,59 @@ static void showShopItemDetailForm(Player& player, const PublicShopItemData& ite
 }
 
 static void showRecycleItemDetailForm(Player& player, const PublicRecycleItemData& item) {
-    showItemDetailFormImpl(
-        player,
-        item.itemNbt,
-        item.ownerUuid,
-        item.shopName,
-        item.price,
-        item.pos,
-        item.dimId,
-        item.isOfficial,
-        true
+    auto& i18n = I18nService::getInstance();
+
+    auto itemPtr = CT::FormUtils::createItemStackFromNbtString(item.itemNbt);
+    if (!itemPtr) return;
+
+    auto        ownerNameCache  = CT::FormUtils::getPlayerNameCache({item.ownerUuid});
+    std::string ownerName       = ownerNameCache[item.ownerUuid];
+    if (ownerName.empty()) {
+        ownerName = i18n.get("public_shop.unknown_owner");
+    }
+    std::string shopDisplayName = item.shopName.empty()
+        ? i18n.get("public_shop.owner_recycle_shop", {{"owner", ownerName}})
+        : item.shopName;
+
+    ll::form::SimpleForm fm;
+    fm.setTitle(i18n.get("public_items.recycle_detail_title"));
+
+    std::string content  = CT::FormUtils::getItemDisplayString(*itemPtr, 0, true) + "\n\n";
+    content             += i18n.get("public_items.recycle_price", {{"price", CT::MoneyFormat::format(item.price)}});
+    content             += buildRecycleRemainingText(item);
+    content             += i18n.get("public_shop.preview_owner", {{"owner", ownerName}});
+    content             += i18n.get("public_items.item_shop", {{"shop", shopDisplayName}});
+    content             += i18n.get(
+        "public_items.item_location",
+        {
+            {"dim", CT::FormUtils::dimIdToString(item.dimId)},
+            {"x",   std::to_string(item.pos.x)             },
+            {"y",   std::to_string(item.pos.y)             },
+            {"z",   std::to_string(item.pos.z)             }
+        }
     );
+    content += buildDetailTeleportCostText();
+    if (item.isOfficial) {
+        content += i18n.get("public_items.item_official");
+    }
+    content += "\n" + i18n.get("public_shop.preview_recycle_notice");
+    fm.setContent(content);
+
+    fm.appendButton(
+        i18n.get("public_shop.button_teleport"),
+        "textures/ui/flyingascend_pressed",
+        "path",
+        [pos = item.pos, dimId = item.dimId](Player& p) {
+            if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
+                p.sendMessage(I18nService::getInstance().get("public_shop.teleport_recycle_hint"));
+            }
+        }
+    );
+    fm.appendButton(i18n.get("public_shop.button_back_list"), "textures/ui/arrow_left", "path", [](Player& p) {
+        showPublicRecycleItemsForm(p);
+    });
+    fm.appendButton(i18n.get("public_shop.button_close"), "textures/ui/cancel", "path", [](Player&) {});
+    fm.sendTo(player);
 }
 
 } // namespace CT

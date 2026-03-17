@@ -603,7 +603,7 @@ std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
 std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query("SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, c.type, "
-                             "r.item_id, r.price, d.item_nbt "
+                             "r.item_id, r.price, d.item_nbt, r.max_recycle_count, r.current_recycled_count "
                              "FROM chests c "
                              "JOIN recycle_shop_items r ON c.dim_id = r.dim_id AND c.pos_x = r.pos_x AND c.pos_y = "
                              "r.pos_y AND c.pos_z = r.pos_z "
@@ -612,7 +612,7 @@ std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
                              "AND (r.max_recycle_count <= 0 OR r.current_recycled_count < r.max_recycle_count) "
                              "ORDER BY c.shop_name, c.player_uuid;");
 
-    return parseRows<PublicRecycleItemData>(results, 10, [](DbRowParser r) {
+    return parseRows<PublicRecycleItemData>(results, 12, [](DbRowParser r) {
         int chestType = r.getInt(6);
         return PublicRecycleItemData{
             r.getInt(0),
@@ -622,6 +622,8 @@ std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
             r.getInt(7),
             r.getString(9),
             r.getDouble(8),
+            r.getInt(10),
+            r.getInt(11),
             chestType == 6  // AdminRecycle = 6
         };
     });

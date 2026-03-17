@@ -6,6 +6,7 @@
 #include "ShopForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
+#include "Utils/Pagination.h"
 #include "Utils/economy.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/form/CustomForm.h"
@@ -324,10 +325,10 @@ static void showShopListFormImpl(
         return a.ownerName < b.ownerName;
     });
 
-    int totalPlayers = static_cast<int>(players.size());
-    int totalPages   = (totalPlayers + PLAYERS_PER_PAGE - 1) / PLAYERS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    int  totalPlayers = static_cast<int>(players.size());
+    auto pageSlice    = Pagination::makeZeroBasedPageSlice(totalPlayers, PLAYERS_PER_PAGE, currentPage);
+    int  totalPages   = pageSlice.totalPages;
+    currentPage       = pageSlice.currentPage;
 
     if (players.empty()) {
         fm.setContent(searchKeyword.empty() ? i18n.get(isRecycle ? "player_list.no_recycle_players" : "player_list.no_players")
@@ -387,8 +388,8 @@ static void showShopListFormImpl(
                     });
 
     if (!players.empty()) {
-        int startIdx = currentPage * PLAYERS_PER_PAGE;
-        int endIdx   = std::min(startIdx + PLAYERS_PER_PAGE, totalPlayers);
+        int startIdx = pageSlice.startIndex;
+        int endIdx   = pageSlice.endIndex;
         const char* buttonKey =
             isRecycle ? "player_list.player_recycle_stats_button" : "player_list.player_shop_stats_button";
 
@@ -851,10 +852,10 @@ void showPlayerShopsForm(
         return latestA < latestB;
     });
 
-    int totalShops = static_cast<int>(shops.size());
-    int totalPages = (totalShops + SHOPS_PER_PAGE - 1) / SHOPS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    currentPage = std::max(0, std::min(currentPage, totalPages - 1));
+    int  totalShops = static_cast<int>(shops.size());
+    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalShops, SHOPS_PER_PAGE, currentPage);
+    int  totalPages = pageSlice.totalPages;
+    currentPage     = pageSlice.currentPage;
 
     const auto& i18nKeys = isRecycle ? RECYCLE_I18N_KEYS : SHOP_I18N_KEYS;
 
@@ -872,8 +873,8 @@ void showPlayerShopsForm(
     }
 
     if (!shops.empty()) {
-        int startIdx = currentPage * SHOPS_PER_PAGE;
-        int endIdx   = std::min(startIdx + SHOPS_PER_PAGE, totalShops);
+        int startIdx = pageSlice.startIndex;
+        int endIdx   = pageSlice.endIndex;
 
         for (int i = startIdx; i < endIdx; ++i) {
             const auto& shop = shops[i];

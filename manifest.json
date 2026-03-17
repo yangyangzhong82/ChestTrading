@@ -1,11 +1,14 @@
 {
-    "name": "${pluginName}",
-    "entry": "${modFile}",
-    "version": "${modVersion}",
-    "type": "native",
-    "dependencies": [
-        {
-            "name": "LegacyMoney"
-        }
-    ]
+  "name": "${pluginName}",
+  "entry": "${modFile}",
+  "version": "${modVersion}",
+  "type": "native",
+  "dependencies": [
+    {
+      "name": "LegacyMoney"
+    },
+    {
+      "name": "Bedrock-Authority"
+    }
+  ]
 }

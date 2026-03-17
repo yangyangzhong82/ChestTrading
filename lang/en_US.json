@@ -386,6 +386,8 @@
     "item_name": "§eItem: §f{name}\n",
     "item_price": "§ePrice: §6{price}\n",
     "recycle_price": "§eRecycle Price: §6{price}\n",
+    "recycle_remaining": "§eRemaining recyclable: §f{count}\n",
+    "recycle_unlimited": "§eRemaining recyclable: §aUnlimited\n",
     "item_shop": "§eShop: §f{shop}\n",
     "item_location": "§eLocation: §f{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[Official Shop]\n"

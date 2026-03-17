@@ -2,6 +2,7 @@
 #include "FormUtils.h"
 #include "PublicShopForm.h"
 #include "Utils/MoneyFormat.h"
+#include "Utils/Pagination.h"
 #include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
@@ -703,20 +704,17 @@ void showTradeRecordListForm(Player& player, TradeRecordListState state) {
 
     std::vector<DisplayTradeRecord> pageRecords;
     int                             totalRecords = 0;
-    int totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
-    state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
-    int startIndex    = 0;
-    int endIndex      = 0;
+    int                             totalPages   = 1;
+    int                             startIndex   = 0;
+    int                             endIndex     = 0;
 
     if (state.keyword.empty()) {
         totalRecords = static_cast<int>(allRecords.size());
-        totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
-        if (totalPages == 0) totalPages = 1;
-        state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
-
-        startIndex = state.currentPage * RECORDS_PER_PAGE;
-        endIndex   = std::min(startIndex + RECORDS_PER_PAGE, totalRecords);
+        auto pageSlice = Pagination::makeZeroBasedPageSlice(totalRecords, RECORDS_PER_PAGE, state.currentPage);
+        totalPages     = pageSlice.totalPages;
+        state.currentPage = pageSlice.currentPage;
+        startIndex        = pageSlice.startIndex;
+        endIndex          = pageSlice.endIndex;
 
         if (startIndex < endIndex) {
             std::vector<TradeRecordData> pageRawRecords;
@@ -739,12 +737,11 @@ void showTradeRecordListForm(Player& player, TradeRecordListState state) {
         }
 
         totalRecords = static_cast<int>(filteredRecords.size());
-        totalPages   = (totalRecords + RECORDS_PER_PAGE - 1) / RECORDS_PER_PAGE;
-        if (totalPages == 0) totalPages = 1;
-        state.currentPage = std::max(0, std::min(state.currentPage, totalPages - 1));
-
-        startIndex = state.currentPage * RECORDS_PER_PAGE;
-        endIndex   = std::min(startIndex + RECORDS_PER_PAGE, totalRecords);
+        auto pageSlice = Pagination::makeZeroBasedPageSlice(totalRecords, RECORDS_PER_PAGE, state.currentPage);
+        totalPages     = pageSlice.totalPages;
+        state.currentPage = pageSlice.currentPage;
+        startIndex        = pageSlice.startIndex;
+        endIndex          = pageSlice.endIndex;
         if (startIndex < endIndex) {
             pageRecords.assign(filteredRecords.begin() + startIndex, filteredRecords.begin() + endIndex);
         }

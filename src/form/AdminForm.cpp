@@ -1,5 +1,6 @@
 #include "AdminForm.h"
 #include "FormUtils.h"
+#include "Utils/Pagination.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
@@ -144,8 +145,13 @@ void showAdminForm(
     });
 
     const int itemsPerPage = 10;
-    const int totalPages   = (filteredChests.empty()) ? 1 : (filteredChests.size() + itemsPerPage - 1) / itemsPerPage;
-    currentPage            = std::max(1, std::min(currentPage, totalPages));
+    auto      pageSlice    = Pagination::makeOneBasedPageSlice(
+        static_cast<int>(filteredChests.size()),
+        itemsPerPage,
+        currentPage
+    );
+    const int totalPages   = pageSlice.totalPages;
+    currentPage            = pageSlice.currentPage;
 
     fm.appendToggle(
         "confirm_teleport",
@@ -190,8 +196,8 @@ void showAdminForm(
         ));
         fm.appendDivider();
 
-        int startIndex = (currentPage - 1) * itemsPerPage;
-        int endIndex   = std::min(startIndex + itemsPerPage, (int)filteredChests.size());
+        int startIndex = pageSlice.startIndex;
+        int endIndex   = pageSlice.endIndex;
 
         std::vector<ChestData> pagedChests;
         for (const auto& pair : playerChests) {

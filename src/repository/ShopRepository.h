@@ -110,6 +110,8 @@ struct PublicRecycleItemData {
     int         itemId;
     std::string itemNbt;
     double      price;
+    int         maxRecycleCount;
+    int         currentRecycledCount;
     bool        isOfficial;
 };
 

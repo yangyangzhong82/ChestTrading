@@ -386,6 +386,8 @@
     "item_name": "§e物品: §f{name}\n",
     "item_price": "§e售价: §6{price}\n",
     "recycle_price": "§e回收价: §6{price}\n",
+    "recycle_remaining": "§e剩余可回收: §f{count}\n",
+    "recycle_unlimited": "§e剩余可回收: §a无限\n",
     "item_shop": "§e商店: §f{shop}\n",
     "item_location": "§e位置: §f{dim} [{x}, {y}, {z}]\n",
     "item_official": "§6[官方商店]\n"
