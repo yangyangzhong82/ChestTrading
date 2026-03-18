@@ -234,6 +234,14 @@ std::string buildManagePriceLabel(TextService& txt, std::optional<double> price,
     return label;
 }
 
+std::unique_ptr<ItemStack> createDisplayItem(const std::string& itemNbtStr) {
+    auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+    if (itemPtr) {
+        itemPtr->set(1);
+    }
+    return itemPtr;
+}
+
 void showShopItemSearchForm(Player& player, BlockPos pos, int dimId, const std::string& currentKeyword) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
@@ -344,17 +352,17 @@ void showShopChestItemsForm(
                     buttonText,
                     texturePath,
                     "path",
-                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
+                    [pos, dimId, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
+                        showShopItemBuyForm(p, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
                     }
                 );
             } else {
                 fm.appendButton(
                     buttonText,
-                    [pos, dimId, item, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
+                    [pos, dimId, itemNbtStr, unitPrice = shopItem.price, searchKeyword](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showShopItemBuyForm(p, item, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
+                        showShopItemBuyForm(p, pos, dimId, 0, unitPrice, region, itemNbtStr, searchKeyword);
                     }
                 );
             }
@@ -396,7 +404,6 @@ void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> 
 
 void showShopItemPriceForm(
     Player&            player,
-    const ItemStack&   item,
     const std::string& itemNbtStr,
     BlockPos           pos,
     int                dimId,
@@ -404,6 +411,13 @@ void showShopItemPriceForm(
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
+    auto                 itemPtr = createDisplayItem(itemNbtStr);
+    if (!itemPtr) {
+        player.sendMessage(txt.getMessage("shop.item_manage_fail"));
+        showShopChestManageForm(player, pos, dimId, region);
+        return;
+    }
+    const ItemStack& item = *itemPtr;
     fm.setTitle(txt.getMessage("form.shop_set_price_title"));
     fm.appendLabel(txt.getMessage(
         "form.label_setting_price",
@@ -415,10 +429,10 @@ void showShopItemPriceForm(
 
     fm.sendTo(
         player,
-        [item, itemNbtStr, pos, dimId](
+        [itemNbtStr, pos, dimId](
             Player&                           p,
             const ll::form::CustomFormResult& result,
-            ll::form::FormCancelReason        reason
+            ll::form::FormCancelReason
         ) {
             auto& txt = TextService::getInstance();
             if (!result.has_value()) {
@@ -524,9 +538,9 @@ void showShopItemManageForm(
              + "\n";
     fm.setContent(content);
 
-    fm.appendButton(txt.getMessage("form.button_set_price"), [item, itemNbtStr, pos, dimId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_set_price"), [itemNbtStr, pos, dimId](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showShopItemPriceForm(p, item, itemNbtStr, pos, dimId, region);
+        showShopItemPriceForm(p, itemNbtStr, pos, dimId, region);
     });
 
     fm.appendButton(
@@ -764,7 +778,6 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
 
 void showShopItemBuyForm(
     Player&            player,
-    const ItemStack&   item,
     BlockPos           pos,
     int                dimId,
     int                slot,
@@ -775,6 +788,13 @@ void showShopItemBuyForm(
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
+    auto                 itemPtr = createDisplayItem(itemNbtStr);
+    if (!itemPtr) {
+        player.sendMessage(txt.getMessage("shop.data_corrupt"));
+        showShopChestItemsForm(player, pos, dimId, region, searchKeyword);
+        return;
+    }
+    const ItemStack& item = *itemPtr;
     fm.setTitle(txt.getMessage("form.shop_buy_title"));
 
     logger.debug(
@@ -825,10 +845,10 @@ void showShopItemBuyForm(
 
     fm.sendTo(
         player,
-        [item, pos, dimId, slot, unitPrice, itemNbtStr, searchKeyword](
+        [pos, dimId, slot, unitPrice, itemNbtStr, searchKeyword](
             Player&                           p,
             const ll::form::CustomFormResult& result,
-            ll::form::FormCancelReason        reason
+            ll::form::FormCancelReason
         ) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
@@ -857,13 +877,13 @@ void showShopItemBuyForm(
                 if (buyCount <= 0) {
                     p.sendMessage(txt.getMessage("input.invalid_count"));
                     logger.warn("showShopItemBuyForm: 玩家 {} 输入了无效的购买数量 {}。", p.getRealName(), buyCount);
-                    showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
+                    showShopItemBuyForm(p, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
                     return;
                 }
             } catch (const std::exception& e) {
                 p.sendMessage(txt.getMessage("input.invalid_buy_count"));
                 logger.error("showShopItemBuyForm: 解析玩家 {} 的购买数量时出错: {}", p.getRealName(), e.what());
-                showShopItemBuyForm(p, item, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
+                showShopItemBuyForm(p, pos, dimId, slot, unitPrice, region, itemNbtStr, searchKeyword);
                 return;
             }
 

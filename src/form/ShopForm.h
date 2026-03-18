@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mc/world/actor/player/Player.h"
-#include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
 #include <functional>
@@ -18,7 +17,6 @@ void showShopChestItemsForm(
 );
 void showShopItemPriceForm(
     Player&            player,
-    const ItemStack&   item,
     const std::string& itemNbtStr,
     BlockPos           pos,
     int                dimId,
@@ -34,7 +32,6 @@ void showShopItemManageForm(
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showShopItemBuyForm(
     Player&            player,
-    const ItemStack&   item,
     BlockPos           pos,
     int                dimId,
     int                slot,

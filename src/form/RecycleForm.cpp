@@ -249,6 +249,14 @@ std::optional<int> countRecycleChestAvailableSpace(
     return chestAvailableSpace;
 }
 
+std::unique_ptr<ItemStack> createDisplayItem(const std::string& itemNbtStr) {
+    auto itemPtr = CT::FormUtils::createItemStackFromNbtString(itemNbtStr);
+    if (itemPtr) {
+        itemPtr->set(1);
+    }
+    return itemPtr;
+}
+
 } // namespace
 
 
@@ -395,17 +403,17 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                     entry.buttonText,
                     entry.texturePath,
                     "path",
-                    [pos, dimId, item = entry.item, price = entry.displayUnitPrice, commissionNbtStr = entry.commissionNbtStr](Player& p) {
+                    [pos, dimId, price = entry.displayUnitPrice, commissionNbtStr = entry.commissionNbtStr](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showRecycleConfirmForm(p, item, pos, dimId, region, -1, price, commissionNbtStr);
+                        showRecycleConfirmForm(p, pos, dimId, region, -1, price, commissionNbtStr);
                     }
                 );
             } else {
                 fm.appendButton(
                     entry.buttonText,
-                    [pos, dimId, item = entry.item, price = entry.displayUnitPrice, commissionNbtStr = entry.commissionNbtStr](Player& p) {
+                    [pos, dimId, price = entry.displayUnitPrice, commissionNbtStr = entry.commissionNbtStr](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showRecycleConfirmForm(p, item, pos, dimId, region, -1, price, commissionNbtStr);
+                        showRecycleConfirmForm(p, pos, dimId, region, -1, price, commissionNbtStr);
                     }
                 );
             }
@@ -430,7 +438,6 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
 
 void showRecycleFinalConfirmForm(
     Player&            player,
-    const ItemStack&   item,
     BlockPos           pos,
     int                dimId,
     BlockSource&       region,
@@ -445,7 +452,6 @@ double getRecyclePrice(double unitPrice, int count) { return unitPrice * count; 
 
 void showRecycleConfirmForm(
     Player&            player,
-    const ItemStack&   item,
     BlockPos           pos,
     int                dimId,
     BlockSource&       region,
@@ -455,6 +461,13 @@ void showRecycleConfirmForm(
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
+    auto                 itemPtr = createDisplayItem(commissionNbtStr);
+    if (!itemPtr) {
+        player.sendMessage(txt.getMessage("recycle.data_corrupt"));
+        showRecycleForm(player, pos, dimId, region);
+        return;
+    }
+    const ItemStack& item = *itemPtr;
     fm.setTitle(txt.getMessage("form.recycle_confirm_title"));
     BlockPos mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
@@ -576,7 +589,7 @@ void showRecycleConfirmForm(
 
     fm.sendTo(
         player,
-        [item, pos, dimId, actualSlotIndex, itemId, displayUnitPrice, commissionNbtStr, maxAllowedCount](
+        [pos, dimId, actualSlotIndex, itemId, displayUnitPrice, commissionNbtStr, maxAllowedCount](
             Player&                           p,
             const ll::form::CustomFormResult& result,
             ll::form::FormCancelReason
@@ -599,30 +612,12 @@ void showRecycleConfirmForm(
                             {"max", std::to_string(maxAllowedCount)}
                     }
                     ));
-                    showRecycleConfirmForm(
-                        p,
-                        item,
-                        pos,
-                        dimId,
-                        region,
-                        actualSlotIndex,
-                        displayUnitPrice,
-                        commissionNbtStr
-                    );
+                    showRecycleConfirmForm(p, pos, dimId, region, actualSlotIndex, displayUnitPrice, commissionNbtStr);
                     return;
                 }
             } catch (const std::exception&) {
                 p.sendMessage(txt.getMessage("input.invalid_number"));
-                showRecycleConfirmForm(
-                    p,
-                    item,
-                    pos,
-                    dimId,
-                    region,
-                    actualSlotIndex,
-                    displayUnitPrice,
-                    commissionNbtStr
-                );
+                showRecycleConfirmForm(p, pos, dimId, region, actualSlotIndex, displayUnitPrice, commissionNbtStr);
                 return;
             }
 
@@ -639,16 +634,7 @@ void showRecycleConfirmForm(
                         {"remaining", std::to_string(currentPriceView.remainingQuantity)}
                 }
                 ));
-                showRecycleConfirmForm(
-                    p,
-                    item,
-                    pos,
-                    dimId,
-                    region,
-                    actualSlotIndex,
-                    currentPriceView.unitPrice,
-                    commissionNbtStr
-                );
+                showRecycleConfirmForm(p, pos, dimId, region, actualSlotIndex, currentPriceView.unitPrice, commissionNbtStr);
                 return;
             }
 
@@ -656,7 +642,6 @@ void showRecycleConfirmForm(
 
             showRecycleFinalConfirmForm(
                 p,
-                item,
                 pos,
                 dimId,
                 region,
@@ -670,7 +655,6 @@ void showRecycleConfirmForm(
 }
 void showRecycleFinalConfirmForm(
     Player&            player,
-    const ItemStack&   item,
     BlockPos           pos,
     int                dimId,
     BlockSource&       region,
@@ -680,6 +664,13 @@ void showRecycleFinalConfirmForm(
     double             unitPrice
 ) {
     auto& txt             = TextService::getInstance();
+    auto  itemPtr         = createDisplayItem(commissionNbtStr);
+    if (!itemPtr) {
+        player.sendMessage(txt.getMessage("recycle.data_corrupt"));
+        showRecycleForm(player, pos, dimId, region);
+        return;
+    }
+    std::string itemName  = itemPtr->getName();
     int   itemId          = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     int   maxRecycleCount = 0;
     if (itemId >= 0) {
@@ -703,7 +694,7 @@ void showRecycleFinalConfirmForm(
     fm.setContent(txt.getMessage(
         "form.recycle_final_content",
         {
-            {"item",     std::string(item.getName())          },
+            {"item",     itemName                             },
             {"count",    std::to_string(recycleCount)         },
             {"max_info", maxInfo                              },
             {"price",    CT::MoneyFormat::format(recyclePrice)}
@@ -712,7 +703,7 @@ void showRecycleFinalConfirmForm(
 
     fm.appendButton(
         txt.getMessage("form.button_confirm_recycle"),
-        [item, pos, dimId, recycleCount, commissionNbtStr, unitPrice](Player& p) {
+        [itemName, pos, dimId, recycleCount, commissionNbtStr, unitPrice](Player& p) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
 
@@ -735,7 +726,7 @@ void showRecycleFinalConfirmForm(
             p.sendMessage(txt.getMessage(
                 "recycle.success",
                 {
-                    {"item",  std::string(item.getName())          },
+                    {"item",  itemName                             },
                     {"count", std::to_string(recycleCount)         },
                     {"price", CT::MoneyFormat::format(result.totalEarned)}
             }
@@ -744,15 +735,21 @@ void showRecycleFinalConfirmForm(
         }
     );
 
-    fm.appendButton(txt.getMessage("form.button_cancel"), [item, pos, dimId, unitPrice, commissionNbtStr](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_cancel"), [pos, dimId, unitPrice, commissionNbtStr](Player& p) {
         auto& region = p.getDimensionBlockSource();
-        showRecycleConfirmForm(p, item, pos, dimId, region, -1, unitPrice, commissionNbtStr);
+        showRecycleConfirmForm(p, pos, dimId, region, -1, unitPrice, commissionNbtStr);
     });
     fm.sendTo(player);
 }
 
 void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
-void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region);
+void showSetRecycleItemPriceForm(
+    Player&            player,
+    const std::string& itemNbtStr,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region
+);
 void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showCommissionDetailsForm(
     Player&            player,
@@ -1257,19 +1254,24 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
     for (int i = 0; i < inventory.getContainerSize(); ++i) {
         const auto& item = inventory.getItem(i);
         if (!item.isNull()) {
+            auto itemNbt = CT::NbtUtils::getItemNbt(item);
+            if (!itemNbt) {
+                continue;
+            }
+            std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
             std::string buttonText =
                 std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r x" + std::to_string(item.mCount);
             std::string texturePath = CT::FormUtils::getItemTexturePath(item);
 
             if (!texturePath.empty()) {
-                fm.appendButton(buttonText, texturePath, "path", [pos, dimId, item](Player& p) {
+                fm.appendButton(buttonText, texturePath, "path", [pos, dimId, itemNbtStr](Player& p) {
                     auto& region = p.getDimensionBlockSource();
-                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                 });
             } else {
-                fm.appendButton(buttonText, [pos, dimId, item](Player& p) {
+                fm.appendButton(buttonText, [pos, dimId, itemNbtStr](Player& p) {
                     auto& region = p.getDimensionBlockSource();
-                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                 });
             }
         }
@@ -1292,9 +1294,22 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
     fm.sendTo(player);
 }
 
-void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos pos, int dimId, BlockSource& region) {
+void showSetRecycleItemPriceForm(
+    Player&            player,
+    const std::string& itemNbtStr,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region
+) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
+    auto                 itemPtr = createDisplayItem(itemNbtStr);
+    if (!itemPtr) {
+        player.sendMessage(txt.getMessage("recycle.data_corrupt"));
+        showAddItemToRecycleShopForm(player, pos, dimId, region);
+        return;
+    }
+    const ItemStack& item = *itemPtr;
     short                currentAuxValue      = item.getAuxValue();
     std::string          defaultAuxValue      = std::to_string(currentAuxValue);
     std::string          defaultEnchantInput  = buildDefaultEnchantInput(item);
@@ -1338,9 +1353,20 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
     fm.sendTo(
         player,
-        [item, pos, dimId](Player& p, const ll::form::CustomFormResult& result, ll::form::FormCancelReason reason) {
+        [itemNbtStr, pos, dimId](
+            Player&                           p,
+            const ll::form::CustomFormResult& result,
+            ll::form::FormCancelReason
+        ) {
             auto& region = p.getDimensionBlockSource();
             auto& txt    = TextService::getInstance();
+            auto  itemPtr = createDisplayItem(itemNbtStr);
+            if (!itemPtr) {
+                p.sendMessage(txt.getMessage("recycle.data_corrupt"));
+                showAddItemToRecycleShopForm(p, pos, dimId, region);
+                return;
+            }
+            const ItemStack& item = *itemPtr;
             if (!result.has_value()) {
                 p.sendMessage(txt.getMessage("action.cancelled"));
                 showAddItemToRecycleShopForm(p, pos, dimId, region);
@@ -1351,7 +1377,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 double price = std::stod(std::get<std::string>(result.value().at("price_input")));
                 if (price < 0.0) {
                     p.sendMessage(txt.getMessage("input.negative_price"));
-                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                     return;
                 }
 
@@ -1387,7 +1413,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                                 enchantsJson.push_back(enchant);
                             } catch (const std::exception& e) {
                                 p.sendMessage(txt.getMessage("input.invalid_enchant"));
-                                showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                                showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                                 return;
                             }
                         }
@@ -1398,14 +1424,14 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 std::string maxRecycleCountStr = std::get<std::string>(result.value().at("max_recycle_count"));
                 if (maxRecycleCountStr.find_first_not_of(" \t\r\n") == std::string::npos) {
                     p.sendMessage(txt.getMessage("input.empty_max_recycle_count"));
-                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                     return;
                 }
 
                 int maxRecycleCount = std::stoi(maxRecycleCountStr);
                 if (maxRecycleCount < 0) {
                     p.sendMessage(txt.getMessage("input.negative_max_count"));
-                    showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                    showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                     return;
                 }
 
@@ -1427,14 +1453,14 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                 }
 
                 auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt, item.isDamageableItem());
-                std::string itemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
+                std::string cleanedItemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
 
                 logger.info("Setting recycle commission for item '{}'.", item.getName());
 
-                auto result = RecycleService::getInstance().setCommission(
+                auto setCommissionResult = RecycleService::getInstance().setCommission(
                     pos,
                     dimId,
-                    itemNbtStr,
+                    cleanedItemNbtStr,
                     price,
                     minDurability,
                     enchantsJsonStr,
@@ -1443,7 +1469,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
                     p.getUuid().asString()
                 );
 
-                if (result.success) {
+                if (setCommissionResult.success) {
                     p.sendMessage(txt.getMessage(
                         "recycle.commission_set",
                         {
@@ -1457,7 +1483,7 @@ void showSetRecycleItemPriceForm(Player& player, const ItemStack& item, BlockPos
 
             } catch (const std::exception& e) {
                 p.sendMessage(txt.getMessage("input.invalid_number"));
-                showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+                showSetRecycleItemPriceForm(p, itemNbtStr, pos, dimId, region);
                 return;
             }
             auto info = ChestService::getInstance().getChestInfo(pos, dimId, region);
@@ -1521,7 +1547,13 @@ void showAddItemByIdForm(Player& player, BlockPos pos, int dimId, BlockSource& r
             }
 
             // 跳转到设置价格表单
-            showSetRecycleItemPriceForm(p, item, pos, dimId, region);
+            auto itemNbt = CT::NbtUtils::getItemNbt(item);
+            if (!itemNbt) {
+                p.sendMessage(txt.getMessage("input.nbt_fail"));
+                showAddItemByIdForm(p, pos, dimId, region);
+                return;
+            }
+            showSetRecycleItemPriceForm(p, CT::NbtUtils::toSNBT(*itemNbt), pos, dimId, region);
         }
     );
 }
