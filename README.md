@@ -9,6 +9,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - 支持商店、回收商店、上锁箱子、公共箱子等多种箱子类型
 - 支持公开商店列表、公开商品列表、按玩家浏览店铺
 - 支持商品搜索、玩家搜索、交易记录查询和全服交易动态
+- 支持交易记录自动清理，可按总条数和保留天数裁剪
 - 支持销量统计与排行榜
 - 支持官方商店 / 官方回收商店
 - 支持店铺打包与恢复，方便迁移和调整布局
@@ -133,6 +134,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `salesRankingSettings`：排行榜显示数量
 - `shopNameRestrictions`：商店名称限制
 - `tradeRestrictionSettings`：禁止上架 / 禁止回收委托的物品列表
+- `tradeRecordCleanupSettings`：交易记录自动清理
 
 示例：
 
@@ -168,6 +170,10 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
     "blockedRecycleItems": [
       "minecraft:bedrock"
     ]
+  },
+  "tradeRecordCleanupSettings": {
+    "maxTotalRecords": 5000,
+    "maxRecordAgeDays": 30
   }
 }
 ```
@@ -183,6 +189,12 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `blockedRecycleItems`：禁止设置为回收委托的物品 ID，按命名空间 ID 精确匹配
 - 配置里可写 `diamond_sword`，插件会自动按 `minecraft:diamond_sword` 处理
 - 拥有 `chest.admin` 的管理员不受这些限制
+
+交易记录自动清理说明：
+
+- `maxTotalRecords`：购买记录 + 回收记录的总保留条数，超过后自动删除最旧记录，`< 0` 表示关闭此项清理
+- `maxRecordAgeDays`：自动删除早于指定天数的购买/回收记录，`< 0` 表示关闭此项清理
+- 清理会在插件启动时执行一次，并在每次交易成功后自动再执行一次
 
 ## 数据与存储
 

@@ -8,6 +8,7 @@
 #include "db/Sqlite3Wrapper.h"
 #include "interaction/Event.h"
 #include "ll/api/mod/RegisterHelper.h"
+#include "repository/ShopRepository.h"
 #include "service/I18nService.h"
 
 namespace CT {
@@ -57,6 +58,10 @@ bool Entry::enable() {
         db.enableCache(true);
         db.setCacheTimeout(60);
         getSelf().getLogger().info("Database cache enabled with 60s timeout.");
+
+        if (!ShopRepository::getInstance().cleanupTradeRecords()) {
+            getSelf().getLogger().warn("Trade record cleanup failed during startup.");
+        }
 
         FloatingTextManager::getInstance().loadAllChests(); // 在模组启用时加载所有悬浮字
 

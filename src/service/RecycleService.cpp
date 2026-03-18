@@ -545,6 +545,10 @@ RecycleResult RecycleService::executeFullRecycle(
     // 事务成功提交，取消回滚操作
     rollbackGuard.dismiss();
 
+    if (!ShopRepository::getInstance().cleanupTradeRecords()) {
+        logger.warn("回收成功后清理交易记录失败: recycler={}, itemId={}", recycler.getRealName(), itemId);
+    }
+
     // 官方回收商店记录动态价格交易量
     if (isAdminRecycle) {
         DynamicPricingService::getInstance().recordTrade(mainPos, dimId, itemId, false, quantity);

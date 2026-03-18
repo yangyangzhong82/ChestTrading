@@ -166,6 +166,7 @@ public:
     std::optional<PurchaseRecordData> getLatestPurchaseRecord(const std::string& playerUuid);
     std::vector<TradeRecordData> getTradeRecords(const TradeRecordQuery& query);
     std::vector<std::string> getDistinctTradeActorUuids();
+    bool cleanupTradeRecords();
 
     // === 回收商店 ===
     std::vector<RecycleItemData>   findAllRecycleItems(BlockPos pos, int dimId);

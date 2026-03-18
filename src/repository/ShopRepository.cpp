@@ -1,8 +1,12 @@
 #include "ShopRepository.h"
+#include "Config/ConfigManager.h"
 #include "Utils/TimeUtils.h"
 #include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
 #include <algorithm>
+#include <sstream>
+
+#include "logger.h"
 
 namespace CT {
 
@@ -36,6 +40,82 @@ bool tradeRecordTimeDesc(const TradeRecordData& a, const TradeRecordData& b) {
     if (a.timestamp != b.timestamp) return a.timestamp > b.timestamp;
     if (a.id != b.id) return a.id > b.id;
     return static_cast<int>(a.kind) < static_cast<int>(b.kind);
+}
+
+struct TradeRecordCleanupStats {
+    int expiredPurchase  = 0;
+    int expiredRecycle   = 0;
+    int overflowPurchase = 0;
+    int overflowRecycle  = 0;
+
+    int totalRemoved() const { return expiredPurchase + expiredRecycle + overflowPurchase + overflowRecycle; }
+};
+
+std::string joinIds(const std::vector<int>& ids) {
+    std::ostringstream oss;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        if (i > 0) oss << ", ";
+        oss << ids[i];
+    }
+    return oss.str();
+}
+
+int deleteTradeRecordIds(Sqlite3Wrapper& db, const std::string& tableName, const std::vector<int>& ids) {
+    if (ids.empty()) return 0;
+
+    return db.executeAndGetChanges("DELETE FROM " + tableName + " WHERE id IN (" + joinIds(ids) + ");");
+}
+
+bool cleanupExpiredTradeRecords(Sqlite3Wrapper& db, int maxRecordAgeDays, TradeRecordCleanupStats& stats) {
+    if (maxRecordAgeDays < 0) return true;
+
+    std::string ageLimit = "-" + std::to_string(maxRecordAgeDays) + " days";
+
+    stats.expiredPurchase =
+        db.executeAndGetChanges("DELETE FROM purchase_records WHERE timestamp < datetime('now', ?);", ageLimit);
+    if (stats.expiredPurchase < 0) return false;
+
+    stats.expiredRecycle =
+        db.executeAndGetChanges("DELETE FROM recycle_records WHERE timestamp < datetime('now', ?);", ageLimit);
+    return stats.expiredRecycle >= 0;
+}
+
+bool cleanupOverflowTradeRecords(Sqlite3Wrapper& db, int maxTotalRecords, TradeRecordCleanupStats& stats) {
+    if (maxTotalRecords < 0) return true;
+
+    auto overflowRows = db.query(
+        "SELECT kind, id FROM ("
+        "  SELECT 0 AS kind, id, timestamp FROM purchase_records "
+        "  UNION ALL "
+        "  SELECT 1 AS kind, id, timestamp FROM recycle_records"
+        ") "
+        "ORDER BY timestamp DESC, id DESC, kind ASC "
+        "LIMIT -1 OFFSET ?;",
+        maxTotalRecords
+    );
+
+    std::vector<int> purchaseIds;
+    std::vector<int> recycleIds;
+    purchaseIds.reserve(overflowRows.size());
+    recycleIds.reserve(overflowRows.size());
+
+    for (const auto& row : overflowRows) {
+        if (row.size() < 2) continue;
+
+        int kind = std::stoi(row[0]);
+        int id   = std::stoi(row[1]);
+        if (kind == 0) {
+            purchaseIds.push_back(id);
+        } else {
+            recycleIds.push_back(id);
+        }
+    }
+
+    stats.overflowPurchase = deleteTradeRecordIds(db, "purchase_records", purchaseIds);
+    if (stats.overflowPurchase < 0) return false;
+
+    stats.overflowRecycle = deleteTradeRecordIds(db, "recycle_records", recycleIds);
+    return stats.overflowRecycle >= 0;
 }
 
 template <typename T>
@@ -295,6 +375,61 @@ std::vector<std::string> ShopRepository::getDistinctTradeActorUuids() {
         }
     }
     return actorUuids;
+}
+
+bool ShopRepository::cleanupTradeRecords() {
+    const auto& settings = ConfigManager::getInstance().get().tradeRecordCleanupSettings;
+    if (settings.maxTotalRecords < 0 && settings.maxRecordAgeDays < 0) {
+        return true;
+    }
+
+    auto& db = Sqlite3Wrapper::getInstance();
+    Transaction txn(db);
+    if (!txn.isActive()) {
+        logger.error("交易记录清理失败: 无法开始事务");
+        return false;
+    }
+
+    TradeRecordCleanupStats stats;
+    if (!cleanupExpiredTradeRecords(db, settings.maxRecordAgeDays, stats)) {
+        logger.error(
+            "交易记录清理失败: maxTotalRecords={}, maxRecordAgeDays={}",
+            settings.maxTotalRecords,
+            settings.maxRecordAgeDays
+        );
+        return false;
+    }
+
+    // 当前事务内的删除尚未提交，手动清缓存以确保后续超量裁剪读取到最新结果。
+    db.clearCacheForTable("purchase_records");
+    db.clearCacheForTable("recycle_records");
+
+    if (!cleanupOverflowTradeRecords(db, settings.maxTotalRecords, stats)) {
+        logger.error(
+            "交易记录清理失败: maxTotalRecords={}, maxRecordAgeDays={}",
+            settings.maxTotalRecords,
+            settings.maxRecordAgeDays
+        );
+        return false;
+    }
+
+    if (!txn.commit()) {
+        logger.error("交易记录清理失败: 无法提交事务");
+        return false;
+    }
+
+    if (stats.totalRemoved() > 0) {
+        logger.info(
+            "交易记录清理完成: 过期购买={} 过期回收={} 超量购买={} 超量回收={} 总计={}",
+            stats.expiredPurchase,
+            stats.expiredRecycle,
+            stats.overflowPurchase,
+            stats.overflowRecycle,
+            stats.totalRemoved()
+        );
+    }
+
+    return true;
 }
 
 std::vector<TradeRecordData> ShopRepository::getTradeRecords(const TradeRecordQuery& query) {

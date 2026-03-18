@@ -394,6 +394,10 @@ PurchaseResult ShopService::purchaseItem(
     // 事务成功提交，取消回滚操作
     rollbackGuard.dismiss();
 
+    if (!ShopRepository::getInstance().cleanupTradeRecords()) {
+        logger.warn("购买成功后清理交易记录失败: buyer={}, itemId={}", buyer.getRealName(), itemId);
+    }
+
     // 官方商店记录动态价格交易量
     if (isAdminShop) {
         DynamicPricingService::getInstance().recordTrade(mainPos, dimId, itemId, true, quantity);
