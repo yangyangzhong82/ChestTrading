@@ -12,6 +12,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -41,6 +42,21 @@ std::string getItemTexturePath(const ItemStack& item);
  * @return 创建的ItemStack指针，如果失败则为nullptr。
  */
 std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemNbtStr);
+
+/**
+ * @brief 尝试统计箱子内容；若区块未加载或容器不可读则返回空。
+ * @param region 区块源。
+ * @param pos 箱子的位置。
+ * @param dimId 箱子所在的维度ID。
+ * @param targetItemNbtStr 目标物品的SNBT字符串（已清理）。
+ * @return 匹配物品总数量；若箱子当前不可读则返回 std::nullopt。
+ */
+std::optional<int> tryCountItemsInChest(
+    BlockSource&       region,
+    BlockPos           pos,
+    int                dimId,
+    const std::string& targetItemNbtStr
+);
 
 /**
  * @brief 迭代箱子内容，根据提供的NBT字符串计算匹配物品的总数量。

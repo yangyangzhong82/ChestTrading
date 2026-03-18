@@ -818,10 +818,10 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 continue;
             }
 
-            int         itemId    = -1;
-            int         dbStock   = 0;
-            std::string itemNbt   = isShopType ? itemRow[1] : itemRow[0];
-            int         realStock = -1;
+            int                itemId  = -1;
+            int                dbStock = 0;
+            std::string        itemNbt = isShopType ? itemRow[1] : itemRow[0];
+            std::optional<int> realStock;
 
             if (isShopType) {
                 try {
@@ -833,9 +833,9 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 }
 
                 if (region) {
-                    realStock = CT::FormUtils::countItemsInChest(*region, pos, dimId, itemNbt);
-                    if (type == ChestType::Shop && realStock != dbStock) {
-                        if (ShopRepository::getInstance().updateDbCount(pos, dimId, itemId, realStock)) {
+                    realStock = CT::FormUtils::tryCountItemsInChest(*region, pos, dimId, itemNbt);
+                    if (type == ChestType::Shop && realStock && *realStock != dbStock) {
+                        if (ShopRepository::getInstance().updateDbCount(pos, dimId, itemId, *realStock)) {
                             ++syncedDbCountRows;
                         } else {
                             logger.warn(
@@ -848,7 +848,11 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                             );
                         }
                     }
-                    if (realStock <= 0) {
+                    if (realStock && *realStock <= 0) {
+                        ++filteredByStock;
+                        continue;
+                    }
+                    if (!realStock && type == ChestType::Shop && dbStock <= 0) {
                         ++filteredByStock;
                         continue;
                     }

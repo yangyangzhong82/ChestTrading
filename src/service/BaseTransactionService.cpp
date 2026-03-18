@@ -7,6 +7,10 @@
 namespace CT {
 
 Container* BaseTransactionService::getChestContainer(BlockSource& region, BlockPos pos) {
+    if (!region.hasChunksAt(pos, 0, false)) {
+        return nullptr;
+    }
+
     auto* blockActor = region.getBlockEntity(pos);
     if (!blockActor || blockActor->mType != BlockActorType::Chest) {
         return nullptr;

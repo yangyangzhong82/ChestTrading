@@ -18,6 +18,7 @@
 #include "service/TeleportService.h"
 #include "service/TextService.h"
 #include <limits>
+#include <optional>
 #include <set>
 
 
@@ -230,25 +231,41 @@ std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemN
     return itemPtr;
 }
 
-int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr) {
+std::optional<int> tryCountItemsInChest(
+    BlockSource&       region,
+    BlockPos           pos,
+    int                dimId,
+    const std::string& targetItemNbtStr
+) {
+    if (!region.hasChunksAt(pos, 0, false)) {
+        logger.debug(
+            "tryCountItemsInChest: 箱子所在区块未加载，跳过库存统计 ({}, {}, {}) in dim {}",
+            pos.x,
+            pos.y,
+            pos.z,
+            dimId
+        );
+        return std::nullopt;
+    }
+
     auto* blockActor = region.getBlockEntity(pos);
     int   totalCount = 0;
     if (!blockActor) {
-        logger.debug("countItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
-        return 0;
+        logger.debug("tryCountItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+        return std::nullopt;
     }
 
     // 使用 mType 成员变量进行类型检查
     if (blockActor->mType != BlockActorType::Chest) {
         logger.error(
-            "countItemsInChest: BlockActor 不是箱子类型在 ({}, {}, {}) in dim {}，实际类型: {}",
+            "tryCountItemsInChest: BlockActor 不是箱子类型在 ({}, {}, {}) in dim {}，实际类型: {}",
             pos.x,
             pos.y,
             pos.z,
             dimId,
             static_cast<int>(blockActor->mType)
         );
-        return 0;
+        return std::nullopt;
     }
 
     auto* chest     = static_cast<ChestBlockActor*>(blockActor);
@@ -258,13 +275,13 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
     auto* container = chest->getContainer();
     if (!container) {
         logger.error(
-            "countItemsInChest: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
+            "tryCountItemsInChest: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
             pos.x,
             pos.y,
             pos.z,
             dimId
         );
-        return 0;
+        return std::nullopt;
     }
 
     for (int i = 0; i < container->getContainerSize(); ++i) {
@@ -282,6 +299,10 @@ int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::s
         }
     }
     return totalCount;
+}
+
+int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr) {
+    return tryCountItemsInChest(region, pos, dimId, targetItemNbtStr).value_or(0);
 }
 
 void showSetNameForm(

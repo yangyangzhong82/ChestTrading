@@ -13,9 +13,10 @@ namespace CT {
 void registerEventListener() {
     auto& eventBus = ll::event::EventBus::getInstance();
 
-    eventBus.emplaceListener<ll::event::PlayerInteractBlockEvent>([](ll::event::PlayerInteractBlockEvent& ev) {
-        handlePlayerInteractBlock(ev);
-    });
+    eventBus.emplaceListener<ll::event::PlayerInteractBlockEvent>(
+        [](ll::event::PlayerInteractBlockEvent& ev) { handlePlayerInteractBlock(ev); },
+        ll::event::EventPriority::High
+    );
 
     eventBus.emplaceListener<ll::event::PlayerDestroyBlockEvent>([](ll::event::PlayerDestroyBlockEvent& event) {
         handlePlayerDestroyBlock(event);

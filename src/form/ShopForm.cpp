@@ -342,7 +342,8 @@ void showShopChestItemsForm(
             }
             ++matchedItemCount;
 
-            int         totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
+            int totalCount =
+                CT::FormUtils::tryCountItemsInChest(region, pos, dimId, itemNbtStr).value_or(shopItem.dbCount);
             std::string buttonText =
                 txt.generateShopItemText(item.getName(), shopItem.price, shopItem.dbCount, totalCount);
             std::string texturePath = CT::FormUtils::getItemTexturePath(item);
