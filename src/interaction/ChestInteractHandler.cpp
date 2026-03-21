@@ -129,7 +129,7 @@ bool handleOpenOrForms(
                 return false;
             }
             if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
-                showShopChestItemsForm(player, pos, dimId, region);
+                showShopChestItemsUi(player, pos, dimId, region);
             } else {
                 showRecycleForm(player, pos, dimId, region);
             }
@@ -139,7 +139,7 @@ bool handleOpenOrForms(
     }
 
     if (chestType == ChestType::Shop || chestType == ChestType::AdminShop) {
-        showShopChestItemsForm(player, pos, dimId, region);
+        showShopChestItemsUi(player, pos, dimId, region);
         return true;
     }
 

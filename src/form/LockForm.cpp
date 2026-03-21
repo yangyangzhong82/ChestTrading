@@ -256,7 +256,7 @@ void showChestLockForm(
                     "path",
                     [pos, dimId](Player& p) {
                         auto& region = p.getDimensionBlockSource();
-                        showShopChestItemsForm(p, pos, dimId, region);
+                        showShopChestItemsUi(p, pos, dimId, region);
                     }
                 );
             } else if (chestType == ChestType::RecycleShop || chestType == ChestType::AdminRecycle) {

@@ -3,11 +3,20 @@
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/level/BlockPos.h"
 #include "mc/world/level/BlockSource.h"
+#include <cstddef>
 #include <functional>
 #include <string>
 
 namespace CT {
 
+void showShopChestItemsUi(
+    Player&            player,
+    BlockPos           pos,
+    int                dimId,
+    BlockSource&       region,
+    const std::string& searchKeyword = "",
+    std::size_t        page          = 0
+);
 void showShopChestItemsForm(
     Player&            player,
     BlockPos           pos,
@@ -38,7 +47,9 @@ void showShopItemBuyForm(
     double             unitPrice,
     BlockSource&       region,
     const std::string& itemNbtStr,
-    const std::string& searchKeyword = ""
+    const std::string& searchKeyword = "",
+    bool               returnToChestUi = false,
+    std::size_t        returnPage      = 0
 );
 void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack = {});
 
