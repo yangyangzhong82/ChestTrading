@@ -110,6 +110,8 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 
 - `/ctadmin`：打开管理员菜单
 - `/ctreload`：重载配置
+- `/ctimportshop merge <x> <y> <z> <file>`：合并导入外部官方商店配置到指定官方商店箱子
+- `/ctimportshop replace <x> <y> <z> <file>`：清空后导入外部官方商店配置到指定官方商店箱子
 - `/ctlimitreset ...`：重置限购窗口
 - `/packchest`：进入 / 退出打包箱子模式
 
@@ -131,6 +133,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `teleportSettings`：传送费用和冷却
 - `taxSettings`：商店税率 / 回收税率
 - `interactionSettings`：管理工具、交互防抖、是否要求下蹲
+- `formSettings`：表单分页等显示设置
 - `salesRankingSettings`：排行榜显示数量
 - `shopNameRestrictions`：商店名称限制
 - `tradeRestrictionSettings`：禁止上架 / 禁止回收委托的物品列表
@@ -153,6 +156,9 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
   "interactionSettings": {
     "manageToolItem": "minecraft:stick",
     "requireSneakingForManage": false
+  },
+  "formSettings": {
+    "publicItemsPerPage": 10
   },
   "shopNameRestrictions": {
     "maxLength": 32,
@@ -183,6 +189,10 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `maxLength`：按 UTF-8 字符数限制最大长度，`<= 0` 表示不限制
 - `blockedKeywords`：按子串匹配，命中任意关键词时拒绝修改名称
 
+表单显示配置说明：
+
+- `publicItemsPerPage`：公开商店物品列表 / 公开回收物品列表表单每页显示数量，`<= 0` 时按 `1` 处理
+
 交易物品限制说明：
 
 - `blockedShopItems`：禁止设置为商店商品的物品 ID，按命名空间 ID 精确匹配
@@ -195,6 +205,14 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `maxTotalRecords`：购买记录 + 回收记录的总保留条数，超过后自动删除最旧记录，`< 0` 表示关闭此项清理
 - `maxRecordAgeDays`：自动删除早于指定天数的购买/回收记录，`< 0` 表示关闭此项清理
 - 清理会在插件启动时执行一次，并在每次交易成功后自动再执行一次
+
+官方商店导入说明：
+
+- 支持导入包含 `purchaseItems` 的外部 JSON 配置，例如 `OfficialShop.json`
+- 导入目标必须是当前维度中的“官方商店”箱子
+- `merge` 模式会覆盖同商品价格并保留未出现在文件中的旧商品
+- `replace` 模式会先清空该官方商店现有商品，再导入文件中的商品
+- 路径含空格时请使用英文双引号包裹
 
 ## 数据与存储
 

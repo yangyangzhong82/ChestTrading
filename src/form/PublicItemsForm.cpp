@@ -24,7 +24,6 @@
 
 namespace CT {
 
-static const int ITEMS_PER_PAGE = 10;
 static constexpr size_t ITEMS_CHEST_UI_PER_PAGE = 45;
 static constexpr size_t ITEMS_CHEST_UI_PREV_SLOT = 45;
 static constexpr size_t ITEMS_CHEST_UI_INFO_SLOT = 46;
@@ -55,6 +54,18 @@ static std::string toLower(const std::string& str) {
 
 static bool fuzzyMatch(const std::string& text, const std::string& lowerKeyword) {
     return toLower(text).find(lowerKeyword) != std::string::npos;
+}
+
+static int getPublicItemsPerPage() {
+    return std::max(1, ConfigManager::getInstance().get().formSettings.publicItemsPerPage);
+}
+
+static std::string buildChestUiStockLore(int stock, bool isOfficial) {
+    auto& i18n = I18nService::getInstance();
+    if (isOfficial) {
+        return i18n.get("form.chest_ui_item_stock_unlimited");
+    }
+    return i18n.get("form.chest_ui_item_stock", {{"stock", std::to_string(std::max(stock, 0))}});
 }
 
 static std::string escapeSnbtString(const std::string& value) {
@@ -306,7 +317,7 @@ buildPublicItemsChestUiPage(const std::string& searchKeyword, size_t requestedPa
             : item.shopName;
 
         ItemStack displayItem = *itemPtr;
-        displayItem.set(std::clamp(item.dbCount, 1, 64));
+        displayItem.set(item.isOfficial ? 1 : std::clamp(item.dbCount, 1, 64));
         std::string itemName = std::string(displayItem.getName());
         if (itemName.empty()) {
             itemName = displayItem.getTypeName();
@@ -319,7 +330,7 @@ buildPublicItemsChestUiPage(const std::string& searchKeyword, size_t requestedPa
             itemName,
             {
                 i18n.get("form.chest_ui_item_price", {{"price", CT::MoneyFormat::format(item.price)}}),
-                i18n.get("form.chest_ui_item_stock", {{"stock", std::to_string(item.dbCount)}}),
+                buildChestUiStockLore(item.dbCount, item.isOfficial),
                 trimTrailingNewline(i18n.get("public_shop.preview_owner", {{"owner", ownerName}})),
                 trimTrailingNewline(i18n.get("public_items.item_shop", {{"shop", shopDisplayName}})),
                 i18n.get("form.chest_ui_item_hint")
@@ -514,7 +525,7 @@ void showPublicItemsForm(Player& player, int currentPage, const std::string& sea
     auto filteredItems = filterPublicShopItems(searchKeyword);
 
     int  totalItems = static_cast<int>(filteredItems.size());
-    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, ITEMS_PER_PAGE, currentPage);
+    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, getPublicItemsPerPage(), currentPage);
     int  totalPages = pageSlice.totalPages;
     currentPage     = pageSlice.currentPage;
     fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {
@@ -1275,7 +1286,7 @@ void showPublicRecycleItemsForm(Player& player, int currentPage, const std::stri
     }
 
     int  totalItems = static_cast<int>(filteredItems.size());
-    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, ITEMS_PER_PAGE, currentPage);
+    auto pageSlice  = Pagination::makeZeroBasedPageSlice(totalItems, getPublicItemsPerPage(), currentPage);
     int  totalPages = pageSlice.totalPages;
     currentPage     = pageSlice.currentPage;
     fm.appendButton(i18n.get("public_shop.button_search"), "textures/ui/magnifyingGlass", "path", [](Player& p) {

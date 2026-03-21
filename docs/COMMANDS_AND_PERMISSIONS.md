@@ -14,6 +14,9 @@
 | `/ct` | 无 | 显示插件欢迎信息 | 仅玩家 |
 | `/ctadmin` | 无 | 打开管理员主菜单 | 仅玩家；需要管理员权限 |
 | `/ctreload` | 无 | 重载配置文件 | 可控制台/玩家执行；命令级别为 `GameDirectors` |
+| `/ctimportshop` | 无 | 显示官方商店导入命令用法 | 仅玩家；需要管理员权限 |
+| `/ctimportshop merge <x> <y> <z> <file_path>` | `merge` 子命令 | 合并导入外部官方商店配置到指定官方商店箱子 | 仅玩家；需要管理员权限 |
+| `/ctimportshop replace <x> <y> <z> <file_path>` | `replace` 子命令 | 清空原商品后导入外部官方商店配置到指定官方商店箱子 | 仅玩家；需要管理员权限 |
 | `/shop` | 无 | 打开公开商店列表 | 仅玩家 |
 | `/recycle` | 无 | 打开公开回收商店列表 | 仅玩家 |
 | `/items` | 无 | 打开公开商店物品列表 | 仅玩家 |
@@ -45,7 +48,7 @@
 
 | 权限节点 | 作用 |
 | --- | --- |
-| `chest.admin` | 管理员总权限。用于 `/ctadmin`、`/ctlimitreset`、`/cttest`，并在多处交互流程中识别管理员身份。 |
+| `chest.admin` | 管理员总权限。用于 `/ctadmin`、`/ctimportshop`、`/ctlimitreset`、`/cttest`，并在多处交互流程中识别管理员身份。 |
 | `chest.create.locked` | 允许创建“上锁箱子”。 |
 | `chest.create.public` | 允许创建“公共箱子”。 |
 | `chest.create.recycle` | 允许创建“回收商店”。 |

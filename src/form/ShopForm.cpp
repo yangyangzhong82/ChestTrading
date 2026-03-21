@@ -376,7 +376,7 @@ ItemStack makeChestUiControlItem(
     return item;
 }
 
-void decorateShopChestUiItem(ItemStack& item, double unitPrice, int stock) {
+void decorateShopChestUiItem(ItemStack& item, double unitPrice, int stock, bool unlimitedStock = false) {
     auto&       txt      = TextService::getInstance();
     std::string itemName = stripMinecraftFormatting(std::string(item.getName()));
     if (itemName.empty()) {
@@ -385,7 +385,8 @@ void decorateShopChestUiItem(ItemStack& item, double unitPrice, int stock) {
 
     std::vector<std::string> loreLines{
         txt.getMessage("form.chest_ui_item_price", {{"price", CT::MoneyFormat::format(unitPrice)}}),
-        txt.getMessage("form.chest_ui_item_stock", {{"stock", std::to_string(std::max(stock, 0))}}),
+        unlimitedStock ? txt.getMessage("form.chest_ui_item_stock_unlimited")
+                       : txt.getMessage("form.chest_ui_item_stock", {{"stock", std::to_string(std::max(stock, 0))}}),
         txt.getMessage("form.chest_ui_item_hint")
     };
 
@@ -429,6 +430,8 @@ ShopChestUiPageData buildShopChestUiPage(
 
     auto& txt  = TextService::getInstance();
     auto items = ShopService::getInstance().getShopItems(pos, dimId, region);
+    auto info  = ChestService::getInstance().getChestInfo(pos, dimId, region);
+    bool isAdminShop = info && info->type == ChestType::AdminShop;
 
     struct MatchedItemData {
         ShopChestUiEntry entry;
@@ -452,8 +455,8 @@ ShopChestUiPageData buildShopChestUiPage(
         int actualStock =
             CT::FormUtils::tryCountItemsInChest(region, pos, dimId, itemNbtStr).value_or(shopItem.dbCount);
         ItemStack displayItem = *itemPtr;
-        displayItem.set(getChestUiDisplayCount(actualStock, shopItem.dbCount));
-        decorateShopChestUiItem(displayItem, shopItem.price, actualStock);
+        displayItem.set(isAdminShop ? 1 : getChestUiDisplayCount(actualStock, shopItem.dbCount));
+        decorateShopChestUiItem(displayItem, shopItem.price, actualStock, isAdminShop);
 
         if (!itemMatchesKeyword(displayItem, searchKeyword)) {
             continue;
@@ -1275,12 +1278,17 @@ void showShopItemBuyForm(
     if (itemId > 0) {
         auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
         if (itemOpt) {
-            fm.appendLabel(txt.getMessage(
-                "form.remaining_stock",
-                {
-                    {"stock", std::to_string(itemOpt->dbCount)}
+            auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            if (chestInfo && chestInfo->type == ChestType::AdminShop) {
+                fm.appendLabel(txt.getMessage("form.remaining_stock_unlimited"));
+            } else {
+                fm.appendLabel(txt.getMessage(
+                    "form.remaining_stock",
+                    {
+                        {"stock", std::to_string(itemOpt->dbCount)}
+                }
+                ));
             }
-            ));
         }
     }
 

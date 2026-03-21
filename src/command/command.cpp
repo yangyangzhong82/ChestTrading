@@ -18,6 +18,7 @@
 #include "mc/world/actor/player/Player.h"
 #include "service/ChestService.h"
 #include "service/I18nService.h"
+#include "service/OfficialShopImportService.h"
 #include "service/PlayerLimitService.h"
 #include "test/TestHelper.h"
 #include <mutex>
@@ -107,6 +108,89 @@ void registerCommand() {
             }
         }
     );
+
+    auto& importOfficialShopCmd = registrar.getOrCreateCommand(
+        commands.importOfficialShopCommand,
+        i18n.get("command.import_shop_description"),
+        CommandPermissionLevel::Any
+    );
+
+    struct ImportOfficialShopParam {
+        int         x;
+        int         y;
+        int         z;
+        std::string file_path;
+    };
+
+    auto executeImportOfficialShop = [&i18n](
+                                         CommandOrigin const&           origin,
+                                         CommandOutput&                 output,
+                                         ImportOfficialShopParam const& param,
+                                         bool                           replaceExisting
+                                     ) {
+        auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+        if (!player) {
+            output.error(i18n.get("command.player_only"));
+            return;
+        }
+        if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
+            output.error(i18n.get("command.no_permission"));
+            return;
+        }
+
+        auto result = OfficialShopImportService::getInstance().importPurchaseItems(
+            *player,
+            BlockPos{param.x, param.y, param.z},
+            static_cast<int>(player->getDimensionId()),
+            param.file_path,
+            replaceExisting
+        );
+
+        if (result.success) {
+            output.success(result.message);
+        } else {
+            output.error(result.message);
+        }
+    };
+
+    importOfficialShopCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            if (!PermissionCompat::hasPermission(player->getUuid().asString(), "chest.admin")) {
+                output.error(i18n.get("command.no_permission"));
+                return;
+            }
+            output.success(i18n.get("command.import_shop_usage"));
+        }
+    );
+
+    importOfficialShopCmd.overload<ImportOfficialShopParam>()
+        .text("merge")
+        .required("x")
+        .required("y")
+        .required("z")
+        .required("file_path")
+        .execute(
+            [&executeImportOfficialShop](CommandOrigin const& origin, CommandOutput& output, ImportOfficialShopParam const& param, class Command const&) {
+                executeImportOfficialShop(origin, output, param, false);
+            }
+        );
+
+    importOfficialShopCmd.overload<ImportOfficialShopParam>()
+        .text("replace")
+        .required("x")
+        .required("y")
+        .required("z")
+        .required("file_path")
+        .execute(
+            [&executeImportOfficialShop](CommandOrigin const& origin, CommandOutput& output, ImportOfficialShopParam const& param, class Command const&) {
+                executeImportOfficialShop(origin, output, param, true);
+            }
+        );
 
     // 注册 /shop 命令 - 打开公开商店列表
     auto& shopCmd = registrar.getOrCreateCommand(

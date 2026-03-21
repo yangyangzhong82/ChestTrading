@@ -64,6 +64,10 @@ struct InteractionSettings {
     bool        requireSneakingForManage = false;        // 触发箱子管理时是否必须下蹲
 };
 
+struct FormSettings {
+    int publicItemsPerPage = 10; // 公开物品列表表单每页显示的物品数量，<=0 时按 1 处理
+};
+
 struct SalesRankingSettings {
     int maxDisplayCount = 50; // 销量榜单最多显示数量
 };
@@ -87,6 +91,7 @@ struct CommandSettings {
     std::string mainCommand           = "ct";             // 主命令
     std::string adminCommand          = "ctadmin";        // 管理员菜单命令
     std::string reloadCommand         = "ctreload";       // 重载配置命令
+    std::string importOfficialShopCommand = "ctimportshop"; // 导入外部官方商店配置命令
     std::string publicShopCommand     = "shop";           // 公开商店列表命令
     std::string publicMenuCommand     = "shopmenu";       // 公开商店主菜单命令
     std::string publicRecycleCommand  = "recycle";        // 公开回收商店列表命令
@@ -117,6 +122,7 @@ struct Config {
     TaxSettings              taxSettings;                              // 税率设置
     ResourcePaths            resourcePaths;                            // 数据库/贴图等路径配置
     InteractionSettings      interactionSettings;                      // 交互相关设置
+    FormSettings             formSettings;                             // 表单分页等显示配置
     SalesRankingSettings     salesRankingSettings;                     // 销量榜单设置
     ShopNameRestrictions     shopNameRestrictions;                     // 商店名称限制
     TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
