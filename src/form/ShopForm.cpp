@@ -40,13 +40,13 @@ namespace CT {
 namespace {
 
 constexpr size_t kManageButtonLineWidth = 22;
-constexpr size_t kShopChestUiPageSize   = 21;
-constexpr size_t kShopChestUiPrevSlot   = 21;
-constexpr size_t kShopChestUiInfoSlot   = 22;
-constexpr size_t kShopChestUiNextSlot   = 23;
-constexpr size_t kShopChestUiSearchSlot = 24;
-constexpr size_t kShopChestUiRefreshSlot = 25;
-constexpr size_t kShopChestUiCloseSlot  = 26;
+constexpr size_t kShopChestUiPageSize    = 45;
+constexpr size_t kShopChestUiPrevSlot    = 45;
+constexpr size_t kShopChestUiInfoSlot    = 46;
+constexpr size_t kShopChestUiNextSlot    = 47;
+constexpr size_t kShopChestUiSearchSlot  = 48;
+constexpr size_t kShopChestUiRefreshSlot = 49;
+constexpr size_t kShopChestUiCloseSlot   = 50;
 
 struct ShopChestUiEntry {
     std::string itemNbtStr;
@@ -470,7 +470,7 @@ ShopChestUiPageData buildShopChestUiPage(
     size_t startIndex  = currentPage * kShopChestUiPageSize;
     size_t endIndex    = std::min(startIndex + kShopChestUiPageSize, matchedItems.size());
 
-    std::vector<ItemStack> chestItems(27, ItemStack::EMPTY_ITEM());
+    std::vector<ItemStack> chestItems(54, ItemStack::EMPTY_ITEM());
     matchedEntries.reserve(endIndex > startIndex ? endIndex - startIndex : 0);
 
     for (size_t index = startIndex; index < endIndex; ++index) {

@@ -88,6 +88,7 @@ struct CommandSettings {
     std::string adminCommand          = "ctadmin";        // 管理员菜单命令
     std::string reloadCommand         = "ctreload";       // 重载配置命令
     std::string publicShopCommand     = "shop";           // 公开商店列表命令
+    std::string publicMenuCommand     = "shopmenu";       // 公开商店主菜单命令
     std::string publicRecycleCommand  = "recycle";        // 公开回收商店列表命令
     std::string publicItemsCommand    = "items";          // 公开商店物品列表命令
     std::string recycleItemsCommand   = "recycleitems";   // 公开回收商店物品列表命令

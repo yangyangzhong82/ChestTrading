@@ -44,7 +44,7 @@ namespace CT::ChestUI {
 
 namespace {
 
-constexpr size_t kChestSlotCount = 27;
+constexpr size_t kChestSlotCount = 54;
 
 struct Session {
     ContainerID                           containerId{ContainerID::None};
@@ -53,7 +53,9 @@ struct Session {
     std::chrono::steady_clock::time_point openedAt{};
     uint8                                 reopenAttempts{0};
     BlockPos                              fakePos{};
+    BlockPos                              fakePairPos{};
     uint                                  originalRuntimeId{0};
+    uint                                  originalPairRuntimeId{0};
     std::string                           title;
     std::vector<ItemStack>                items;
     ClickCallback                         onClick;
@@ -129,6 +131,8 @@ auto makeFakePos(Player const& player, uint64 generation) -> BlockPos {
     return {bx + sx, by, bz + sz};
 }
 
+auto makeFakePairPos(BlockPos const& leadPos) -> BlockPos { return {leadPos.x + 1, leadPos.y, leadPos.z}; }
+
 auto getRuntimeId(std::string_view blockName, uint fallback) -> uint {
     auto block = Block::tryGetFromRegistry(blockName);
     if (!block) {
@@ -167,7 +171,13 @@ void sendBlockUpdate(Player& player, BlockPos const& pos, uint runtimeId) {
     );
 }
 
-void sendChestBlockActor(Player& player, BlockPos const& pos, std::string const& title) {
+void sendChestBlockActor(
+    Player&                player,
+    BlockPos const&        pos,
+    std::string const&     title,
+    std::optional<BlockPos> pairedPos = std::nullopt,
+    bool                   pairLead  = false
+) {
     CompoundTag tag;
     tag["Findable"]   = static_cast<char>(0);
     tag["id"]         = "Chest";
@@ -177,6 +187,11 @@ void sendChestBlockActor(Player& player, BlockPos const& pos, std::string const&
     tag["CustomName"] = title;
     tag["isMovable"]  = static_cast<char>(1);
     tag["Items"]      = ListTag{};
+    if (pairedPos.has_value()) {
+        tag["pairlead"] = static_cast<char>(pairLead ? 1 : 0);
+        tag["pairx"]    = pairedPos->x;
+        tag["pairz"]    = pairedPos->z;
+    }
 
     BlockActorDataPacket packet(BlockActorDataPacketPayload(pos, std::move(tag)));
     player.sendNetworkPacket(packet);
@@ -188,6 +203,11 @@ void sendChestBlockActor(Player& player, BlockPos const& pos, std::string const&
         pos.z,
         title
     );
+}
+
+void sendLargeChestBlockActor(Player& player, BlockPos const& leadPos, BlockPos const& pairPos, std::string const& title) {
+    sendChestBlockActor(player, leadPos, title, pairPos, true);
+    sendChestBlockActor(player, pairPos, title, leadPos, false);
 }
 
 void sendContainerOpen(Player& player, ContainerID containerId, BlockPos const& pos) {
@@ -437,6 +457,7 @@ auto takeSession(Player const& player) -> std::optional<Session> {
 
 void closeByClientPacket(Player& player, Session session) {
     sendBlockUpdate(player, session.fakePos, session.originalRuntimeId);
+    sendBlockUpdate(player, session.fakePairPos, session.originalPairRuntimeId);
     if (session.onClose) {
         session.onClose(player);
     }
@@ -449,6 +470,7 @@ void cleanupForReopen(Player& player) {
     }
     auto session = std::move(sessionOpt.value());
     sendBlockUpdate(player, session.fakePos, session.originalRuntimeId);
+    sendBlockUpdate(player, session.fakePairPos, session.originalPairRuntimeId);
     if (session.onClose) {
         session.onClose(player);
     }
@@ -474,8 +496,11 @@ bool open(Player& player, OpenRequest request) {
     session.dynamicContainerId = static_cast<uint>(static_cast<uchar>(session.containerId));
     session.openedAt           = std::chrono::steady_clock::now();
     session.fakePos            = makeFakePos(player, session.generation);
+    session.fakePairPos        = makeFakePairPos(session.fakePos);
     session.originalRuntimeId =
         player.getDimensionBlockSource().getBlock(session.fakePos).computeRawSerializationIdHashForNetwork();
+    session.originalPairRuntimeId =
+        player.getDimensionBlockSource().getBlock(session.fakePairPos).computeRawSerializationIdHashForNetwork();
     session.items        = normalizeItems(request.items);
     session.title        = request.title.empty() ? std::string("Chest") : request.title;
     session.onClick      = std::move(request.onClick);
@@ -499,17 +524,20 @@ bool open(Player& player, OpenRequest request) {
     );
 
     sendBlockUpdate(player, session.fakePos, getChestRuntimeId());
-    sendChestBlockActor(player, session.fakePos, session.title);
+    sendBlockUpdate(player, session.fakePairPos, getChestRuntimeId());
+    sendLargeChestBlockActor(player, session.fakePos, session.fakePairPos, session.title);
 
     auto const openContainerId = session.containerId;
     auto const openGeneration  = session.generation;
     auto const openPos         = session.fakePos;
+    auto const openPairPos     = session.fakePairPos;
+    auto const openTitle       = session.title;
     auto const openItems       = session.items;
     auto const playerKey       = getPlayerKey(player);
     auto const playerUuid      = player.getUuid().asString();
     auto const playerXuid      = player.getXuid();
 
-    runAfterTicks(4, [playerKey, playerUuid, playerXuid, openContainerId, openGeneration, openPos, openItems]() {
+    runAfterTicks(4, [playerKey, playerUuid, playerXuid, openContainerId, openGeneration, openPos, openPairPos, openTitle, openItems]() {
         auto* player = findPlayerByIdentity(playerUuid, playerXuid);
         if (!player) {
             return;
@@ -524,6 +552,9 @@ bool open(Player& player, OpenRequest request) {
             }
         }
 
+        sendBlockUpdate(*player, openPos, getChestRuntimeId());
+        sendBlockUpdate(*player, openPairPos, getChestRuntimeId());
+        sendLargeChestBlockActor(*player, openPos, openPairPos, openTitle);
         sendContainerOpen(*player, openContainerId, openPos);
         sendContainerSlots(*player, openContainerId, openItems);
     });
@@ -536,6 +567,7 @@ bool update(Player& player, UpdateRequest request) {
     std::vector<ItemStack> nextItems;
     ContainerID            containerId{ContainerID::None};
     BlockPos               fakePos{};
+    BlockPos               fakePairPos{};
 
     {
         std::scoped_lock lock(gSessionMutex);
@@ -547,15 +579,25 @@ bool update(Player& player, UpdateRequest request) {
         if (request.title.has_value()) {
             it->second.title = std::move(request.title.value());
         }
+        if (request.onClick.has_value()) {
+            it->second.onClick = std::move(request.onClick.value());
+        }
+        if (request.onClose.has_value()) {
+            it->second.onClose = std::move(request.onClose.value());
+        }
+        if (request.closeOnClick.has_value()) {
+            it->second.closeOnClick = request.closeOnClick.value();
+        }
         it->second.items = normalizeItems(request.items);
 
         nextTitle   = it->second.title;
         nextItems   = it->second.items;
         containerId = it->second.containerId;
         fakePos     = it->second.fakePos;
+        fakePairPos = it->second.fakePairPos;
     }
 
-    sendChestBlockActor(player, fakePos, nextTitle);
+    sendLargeChestBlockActor(player, fakePos, fakePairPos, nextTitle);
     sendContainerSlots(player, containerId, nextItems);
     return true;
 }
@@ -569,6 +611,7 @@ bool close(Player& player) {
 
     sendContainerClose(player, session.containerId, true);
     sendBlockUpdate(player, session.fakePos, session.originalRuntimeId);
+    sendBlockUpdate(player, session.fakePairPos, session.originalPairRuntimeId);
 
     if (session.onClose) {
         session.onClose(player);
@@ -608,6 +651,7 @@ void closeAll() {
         }
         sendContainerClose(*player, session.containerId, true);
         sendBlockUpdate(*player, session.fakePos, session.originalRuntimeId);
+        sendBlockUpdate(*player, session.fakePairPos, session.originalPairRuntimeId);
         if (session.onClose) {
             session.onClose(*player);
         }
@@ -789,7 +833,8 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             }
 
             sendBlockUpdate(*target, snapshot.fakePos, getChestRuntimeId());
-            sendChestBlockActor(*target, snapshot.fakePos, snapshot.title);
+            sendBlockUpdate(*target, snapshot.fakePairPos, getChestRuntimeId());
+            sendLargeChestBlockActor(*target, snapshot.fakePos, snapshot.fakePairPos, snapshot.title);
             sendContainerOpen(*target, snapshot.containerId, snapshot.fakePos);
             sendContainerSlots(*target, snapshot.containerId, snapshot.items);
 

@@ -2,19 +2,23 @@
 #include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
 #include "FormUtils.h"
+#include "PublicItemsForm.h"
 #include "RecycleForm.h"
 #include "ShopForm.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/Pagination.h"
 #include "Utils/economy.h"
+#include "chestui/chestui.h"
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/form/SimpleForm.h"
 #include "ll/api/service/Bedrock.h"
 #include "ll/api/service/PlayerInfo.h"
+#include "ll/api/thread/ServerThreadExecutor.h"
 #include "logger.h"
 #include "mc/platform/UUID.h"
+#include "mc/world/item/ItemStack.h"
 #include "mc/world/level/Level.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
@@ -25,6 +29,8 @@
 #include "service/TextService.h"
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <functional>
 #include <limits>
 #include <map>
 #include <unordered_map>
@@ -33,6 +39,16 @@
 namespace CT {
 
 static const int SHOPS_PER_PAGE = 10;
+static constexpr size_t SHOPS_CHEST_UI_PER_PAGE = 45;
+static constexpr size_t SHOPS_CHEST_UI_PREV_SLOT = 45;
+static constexpr size_t SHOPS_CHEST_UI_INFO_SLOT = 46;
+static constexpr size_t SHOPS_CHEST_UI_NEXT_SLOT = 47;
+static constexpr size_t SHOPS_CHEST_UI_SEARCH_SLOT = 48;
+static constexpr size_t SHOPS_CHEST_UI_SORT_SLOT = 49;
+static constexpr size_t SHOPS_CHEST_UI_FILTER_SLOT = 50;
+static constexpr size_t SHOPS_CHEST_UI_CLOSE_SLOT = 51;
+static constexpr size_t SHOPS_CHEST_UI_BACK_SLOT = 52;
+static constexpr int    SHOPS_CHEST_UI_OPEN_DELAY_TICKS = 4;
 
 // 转换为小写用于模糊搜索
 static std::string toLower(const std::string& str) {
@@ -125,7 +141,140 @@ static const ShopListI18nKeys RECYCLE_I18N_KEYS = {
 // 前向声明
 static void
 showSearchForm(Player& player, bool isRecycle, OfficialFilter currentFilter, PublicListSortMode currentSortMode);
+static void showSearchChestUiForm(
+    Player&            player,
+    const std::string& currentKeyword,
+    const std::string& currentSearchType,
+    OfficialFilter     currentFilter,
+    PublicListSortMode currentSortMode,
+    std::size_t        currentPage,
+    bool               isRecycle,
+    std::function<void(Player&)> onBack
+);
 static const int PLAYERS_PER_PAGE = 10;
+
+struct PlayerAggregateInfo {
+    std::string ownerUuid;
+    std::string ownerName;
+    int         shopCount;
+    int         activeEntryCount;
+    int         totalSalesCount;
+    int         latestRank;
+};
+
+struct PublicShopChestUiPageData {
+    std::string                    title;
+    std::vector<ItemStack>         items;
+    std::vector<PlayerAggregateInfo> entries;
+    std::size_t                    currentPage{0};
+    std::size_t                    totalPages{1};
+};
+
+static std::string escapeSnbtString(const std::string& value) {
+    std::string escaped;
+    escaped.reserve(value.size());
+
+    for (char ch : value) {
+        switch (ch) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped += ch;
+            break;
+        }
+    }
+
+    return escaped;
+}
+
+static std::unique_ptr<CompoundTag> buildDisplayTag(const std::string& name, const std::vector<std::string>& loreLines) {
+    std::string snbt = "{Name:\"" + escapeSnbtString(name) + "\",Lore:[";
+    for (size_t i = 0; i < loreLines.size(); ++i) {
+        if (i > 0) {
+            snbt += ",";
+        }
+        snbt += "\"" + escapeSnbtString(loreLines[i]) + "\"";
+    }
+    snbt += "]}";
+    return NbtUtils::parseSNBT(snbt);
+}
+
+static bool applyDisplayTag(ItemStack& item, const std::string& name, const std::vector<std::string>& loreLines) {
+    auto itemNbt = NbtUtils::getItemNbt(item);
+    if (!itemNbt) {
+        return false;
+    }
+
+    CompoundTag tagNbt;
+    if (itemNbt->contains("tag")) {
+        tagNbt = itemNbt->at("tag").get<CompoundTag>();
+    }
+
+    auto displayTag = buildDisplayTag(name, loreLines);
+    if (!displayTag) {
+        return false;
+    }
+
+    tagNbt["display"] = *displayTag;
+    (*itemNbt)["tag"] = std::move(tagNbt);
+    return NbtUtils::setItemNbt(item, *itemNbt);
+}
+
+static ItemStack makeChestUiControlItem(
+    std::string_view                typeName,
+    const std::string&              displayName,
+    const std::vector<std::string>& loreLines = {}
+) {
+    ItemStack item;
+    item.reinit(typeName, 1, 0);
+    applyDisplayTag(item, displayName, loreLines);
+    return item;
+}
+
+static Player* findOnlinePlayer(const std::string& uuidString) {
+    auto level = ll::service::getLevel();
+    if (!level) {
+        return nullptr;
+    }
+
+    auto uuid = mce::UUID::fromString(uuidString);
+    if (uuid == mce::UUID::EMPTY()) {
+        return nullptr;
+    }
+
+    return level->getPlayer(uuid);
+}
+
+static void runAfterTicks(int ticks, std::function<void()> task) {
+    if (ticks <= 0) {
+        ll::thread::ServerThreadExecutor::getDefault().execute(std::move(task));
+        return;
+    }
+
+    ll::thread::ServerThreadExecutor::getDefault().executeAfter(std::move(task), std::chrono::milliseconds(ticks * 50));
+}
+
+static void runForOnlinePlayerAfterTicks(Player& player, int ticks, std::function<void(Player&)> task) {
+    auto playerUuid = player.getUuid().asString();
+    runAfterTicks(ticks, [playerUuid, task = std::move(task)]() mutable {
+        if (auto* target = findOnlinePlayer(playerUuid)) {
+            task(*target);
+        }
+    });
+}
 
 // 判断是否为官方商店类型
 static bool isOfficialShopType(ChestType type) {
@@ -192,24 +341,19 @@ static std::string buildRecyclePreviewCountText(const RecycleItemData& item) {
     return i18n.get("public_shop.preview_recycle_remaining", {{"count", std::to_string(remaining)}});
 }
 
-static void showShopListFormImpl(
-    Player&                 player,
-    int                     currentPage,
-    const std::string&      searchKeyword,
-    const std::string&      searchType,
-    OfficialFilter          officialFilter,
-    PublicListSortMode      sortMode,
-    ChestType               targetType,
-    const ShopListI18nKeys& keys
+static std::vector<PlayerAggregateInfo> collectPublicShopPlayerAggregates(
+    bool               isRecycle,
+    const std::string& searchKeyword,
+    const std::string& searchType,
+    OfficialFilter     officialFilter,
+    PublicListSortMode sortMode
 ) {
     auto& i18n = I18nService::getInstance();
 
-    ll::form::SimpleForm fm;
-    fm.setTitle(i18n.get(keys.listTitle));
-    bool isRecycle = (targetType == ChestType::RecycleShop);
     auto chestItemSummary = buildPublicChestItemSummary(isRecycle, searchType == "item" ? searchKeyword : "");
+    auto allChests        = ChestService::getInstance().getAllPublicChests();
 
-    auto allChests = ChestService::getInstance().getAllPublicChests();
+    ChestType targetType = isRecycle ? ChestType::RecycleShop : ChestType::Shop;
 
     std::vector<ChestData> filteredChests;
     for (const auto& chest : allChests) {
@@ -245,23 +389,16 @@ static void showShopListFormImpl(
     }
     auto ownerNameCache = CT::FormUtils::getPlayerNameCache(ownerUuids);
 
-    auto                       salesRanking = isRecycle ? ShopRepository::getInstance().getRecycleChestSalesRanking(10000)
-                                                        : ShopRepository::getInstance().getChestSalesRanking(10000);
+    auto salesRanking = isRecycle ? ShopRepository::getInstance().getRecycleChestSalesRanking(10000)
+                                  : ShopRepository::getInstance().getChestSalesRanking(10000);
     std::map<std::string, int> salesMap;
     for (const auto& sale : salesRanking) {
         salesMap[buildChestSalesKey(sale.dimId, sale.pos)] = sale.totalSalesCount;
     }
     auto latestRankMap = buildLatestChestRankMap(isRecycle);
 
-    struct PlayerAggregateInfo {
-        std::string ownerUuid;
-        std::string ownerName;
-        int         shopCount;
-        int         activeEntryCount;
-        int         totalSalesCount;
-        int         latestRank;
-    };
     std::vector<PlayerAggregateInfo> players;
+    players.reserve(ownerShops.size());
 
     for (const auto& [ownerUuid, shops] : ownerShops) {
         std::string ownerName = ownerNameCache[ownerUuid];
@@ -324,6 +461,231 @@ static void showShopListFormImpl(
         if (a.shopCount != b.shopCount) return a.shopCount > b.shopCount;
         return a.ownerName < b.ownerName;
     });
+
+    return players;
+}
+
+static std::string buildOfficialFilterText(OfficialFilter officialFilter) {
+    auto& i18n = I18nService::getInstance();
+    switch (officialFilter) {
+    case OfficialFilter::Official:
+        return i18n.get("public_shop.filter_official_only");
+    case OfficialFilter::Player:
+        return i18n.get("public_shop.filter_player_only");
+    case OfficialFilter::All:
+    default:
+        return i18n.get("public_shop.filter_all");
+    }
+}
+
+static PublicShopChestUiPageData buildPublicShopChestUiPage(
+    const std::string&  searchKeyword,
+    const std::string&  searchType,
+    OfficialFilter      officialFilter,
+    PublicListSortMode  sortMode,
+    std::size_t         requestedPage
+) {
+    auto& i18n    = I18nService::getInstance();
+    auto  players = collectPublicShopPlayerAggregates(false, searchKeyword, searchType, officialFilter, sortMode);
+
+    auto pageSlice =
+        Pagination::makeZeroBasedPageSlice(static_cast<int>(players.size()), SHOPS_CHEST_UI_PER_PAGE, (int)requestedPage);
+    std::size_t currentPage = static_cast<std::size_t>(pageSlice.currentPage);
+    std::size_t totalPages  = static_cast<std::size_t>(pageSlice.totalPages);
+
+    std::vector<ItemStack> chestItems(54, ItemStack::EMPTY_ITEM());
+    std::vector<PlayerAggregateInfo> entries;
+    entries.reserve(pageSlice.endIndex - pageSlice.startIndex);
+
+    for (int index = pageSlice.startIndex; index < pageSlice.endIndex; ++index) {
+        const auto& info = players[index];
+        ItemStack item;
+        item.reinit("minecraft:chest", 1, 0);
+        applyDisplayTag(
+            item,
+            info.ownerName,
+            {
+                i18n.get("player_list.player_shop_stats_button", {
+                    {"name", info.ownerName},
+                    {"active", std::to_string(info.activeEntryCount)},
+                    {"sales", std::to_string(info.totalSalesCount)},
+                    {"count", std::to_string(info.shopCount)}
+                }),
+                i18n.get("form.chest_ui_item_hint")
+            }
+        );
+        chestItems[entries.size()] = std::move(item);
+        entries.push_back(info);
+    }
+
+    if (currentPage > 0) {
+        chestItems[SHOPS_CHEST_UI_PREV_SLOT] =
+            makeChestUiControlItem("minecraft:arrow", i18n.get("public_shop.button_prev_page"));
+    }
+    chestItems[SHOPS_CHEST_UI_INFO_SLOT] = makeChestUiControlItem(
+        "minecraft:book",
+        i18n.get(
+            "form.chest_ui_page_info",
+            {{"page", std::to_string(currentPage + 1)}, {"total", std::to_string(std::max<std::size_t>(1, totalPages))}}
+        ),
+        {
+            i18n.get(
+                "player_list.total_players",
+                {
+                    {"count", std::to_string(players.size())},
+                    {"page", std::to_string(currentPage + 1)},
+                    {"total", std::to_string(std::max<std::size_t>(1, totalPages))}
+                }
+            ),
+            buildOfficialFilterText(officialFilter),
+            i18n.get(sortMode == PublicListSortMode::Latest ? "public_shop.sort_current_latest"
+                                                            : "public_shop.sort_current_sales")
+        }
+    );
+    if (currentPage + 1 < std::max<std::size_t>(1, totalPages)) {
+        chestItems[SHOPS_CHEST_UI_NEXT_SLOT] =
+            makeChestUiControlItem("minecraft:arrow", i18n.get("public_shop.button_next_page"));
+    }
+    chestItems[SHOPS_CHEST_UI_SEARCH_SLOT] =
+        makeChestUiControlItem("minecraft:compass", i18n.get("public_shop.button_search"));
+    chestItems[SHOPS_CHEST_UI_SORT_SLOT] =
+        makeChestUiControlItem(
+            "minecraft:clock",
+            i18n.get(sortMode == PublicListSortMode::Latest ? "public_shop.button_sort_latest"
+                                                            : "public_shop.button_sort_sales")
+        );
+    chestItems[SHOPS_CHEST_UI_FILTER_SLOT] =
+        makeChestUiControlItem("minecraft:comparator", buildOfficialFilterText(officialFilter));
+    chestItems[SHOPS_CHEST_UI_CLOSE_SLOT] =
+        makeChestUiControlItem("minecraft:barrier", i18n.get("public_shop.button_close"));
+
+    std::string title = i18n.get("public_shop.list_title") + " §7(" + std::to_string(currentPage + 1) + "/"
+                      + std::to_string(std::max<std::size_t>(1, totalPages)) + ")§r";
+    if (!searchKeyword.empty()) {
+        title += " §6" + searchKeyword + "§r";
+    }
+
+    return PublicShopChestUiPageData{
+        .title       = std::move(title),
+        .items       = std::move(chestItems),
+        .entries     = std::move(entries),
+        .currentPage = currentPage,
+        .totalPages  = std::max<std::size_t>(1, totalPages)
+    };
+}
+
+static PublicShopChestUiPageData buildPublicRecycleShopChestUiPage(
+    const std::string&  searchKeyword,
+    const std::string&  searchType,
+    OfficialFilter      officialFilter,
+    PublicListSortMode  sortMode,
+    std::size_t         requestedPage
+) {
+    auto& i18n    = I18nService::getInstance();
+    auto  players = collectPublicShopPlayerAggregates(true, searchKeyword, searchType, officialFilter, sortMode);
+
+    auto pageSlice =
+        Pagination::makeZeroBasedPageSlice(static_cast<int>(players.size()), SHOPS_CHEST_UI_PER_PAGE, (int)requestedPage);
+    std::size_t currentPage = static_cast<std::size_t>(pageSlice.currentPage);
+    std::size_t totalPages  = static_cast<std::size_t>(pageSlice.totalPages);
+
+    std::vector<ItemStack> chestItems(54, ItemStack::EMPTY_ITEM());
+    std::vector<PlayerAggregateInfo> entries;
+    entries.reserve(pageSlice.endIndex - pageSlice.startIndex);
+
+    for (int index = pageSlice.startIndex; index < pageSlice.endIndex; ++index) {
+        const auto& info = players[index];
+        ItemStack item;
+        item.reinit("minecraft:hopper", 1, 0);
+        applyDisplayTag(
+            item,
+            info.ownerName,
+            {
+                i18n.get("player_list.player_recycle_stats_button", {
+                    {"name", info.ownerName},
+                    {"active", std::to_string(info.activeEntryCount)},
+                    {"sales", std::to_string(info.totalSalesCount)},
+                    {"count", std::to_string(info.shopCount)}
+                }),
+                i18n.get("form.chest_ui_item_hint")
+            }
+        );
+        chestItems[entries.size()] = std::move(item);
+        entries.push_back(info);
+    }
+
+    if (currentPage > 0) {
+        chestItems[SHOPS_CHEST_UI_PREV_SLOT] =
+            makeChestUiControlItem("minecraft:arrow", i18n.get("public_shop.button_prev_page"));
+    }
+    chestItems[SHOPS_CHEST_UI_INFO_SLOT] = makeChestUiControlItem(
+        "minecraft:book",
+        i18n.get(
+            "form.chest_ui_page_info",
+            {{"page", std::to_string(currentPage + 1)}, {"total", std::to_string(std::max<std::size_t>(1, totalPages))}}
+        ),
+        {
+            i18n.get(
+                "player_list.total_players",
+                {
+                    {"count", std::to_string(players.size())},
+                    {"page", std::to_string(currentPage + 1)},
+                    {"total", std::to_string(std::max<std::size_t>(1, totalPages))}
+                }
+            ),
+            buildOfficialFilterText(officialFilter),
+            i18n.get(sortMode == PublicListSortMode::Latest ? "public_shop.sort_current_latest"
+                                                            : "public_shop.sort_current_sales")
+        }
+    );
+    if (currentPage + 1 < std::max<std::size_t>(1, totalPages)) {
+        chestItems[SHOPS_CHEST_UI_NEXT_SLOT] =
+            makeChestUiControlItem("minecraft:arrow", i18n.get("public_shop.button_next_page"));
+    }
+    chestItems[SHOPS_CHEST_UI_SEARCH_SLOT] =
+        makeChestUiControlItem("minecraft:compass", i18n.get("public_shop.button_search"));
+    chestItems[SHOPS_CHEST_UI_SORT_SLOT] =
+        makeChestUiControlItem(
+            "minecraft:clock",
+            i18n.get(sortMode == PublicListSortMode::Latest ? "public_shop.button_sort_latest"
+                                                            : "public_shop.button_sort_sales")
+        );
+    chestItems[SHOPS_CHEST_UI_FILTER_SLOT] =
+        makeChestUiControlItem("minecraft:comparator", buildOfficialFilterText(officialFilter));
+    chestItems[SHOPS_CHEST_UI_CLOSE_SLOT] =
+        makeChestUiControlItem("minecraft:barrier", i18n.get("public_shop.button_close"));
+
+    std::string title = i18n.get("public_shop.recycle_list_title") + " §7(" + std::to_string(currentPage + 1) + "/"
+                      + std::to_string(std::max<std::size_t>(1, totalPages)) + ")§r";
+    if (!searchKeyword.empty()) {
+        title += " §6" + searchKeyword + "§r";
+    }
+
+    return PublicShopChestUiPageData{
+        .title       = std::move(title),
+        .items       = std::move(chestItems),
+        .entries     = std::move(entries),
+        .currentPage = currentPage,
+        .totalPages  = std::max<std::size_t>(1, totalPages)
+    };
+}
+
+static void showShopListFormImpl(
+    Player&                 player,
+    int                     currentPage,
+    const std::string&      searchKeyword,
+    const std::string&      searchType,
+    OfficialFilter          officialFilter,
+    PublicListSortMode      sortMode,
+    ChestType               targetType,
+    const ShopListI18nKeys& keys
+) {
+    auto& i18n = I18nService::getInstance();
+
+    ll::form::SimpleForm fm;
+    fm.setTitle(i18n.get(keys.listTitle));
+    bool isRecycle = (targetType == ChestType::RecycleShop);
+    auto players = collectPublicShopPlayerAggregates(isRecycle, searchKeyword, searchType, officialFilter, sortMode);
 
     int  totalPlayers = static_cast<int>(players.size());
     auto pageSlice    = Pagination::makeZeroBasedPageSlice(totalPlayers, PLAYERS_PER_PAGE, currentPage);
@@ -554,6 +916,123 @@ static void showSearchForm(
     );
 }
 
+static void showSearchChestUiForm(
+    Player&            player,
+    const std::string& currentKeyword,
+    const std::string& currentSearchType,
+    OfficialFilter     currentFilter,
+    PublicListSortMode currentSortMode,
+    std::size_t        currentPage,
+    bool               isRecycle,
+    std::function<void(Player&)> onBack
+) {
+    auto&                i18n = I18nService::getInstance();
+    ll::form::CustomForm fm;
+    fm.setTitle(isRecycle ? i18n.get("public_shop.search_recycle_title") : i18n.get("public_shop.search_title"));
+    fm.appendDropdown(
+        "type",
+        i18n.get("public_shop.search_type"),
+        {i18n.get("public_shop.search_by_owner"), i18n.get("public_shop.search_by_item")},
+        currentSearchType == "item" ? 1 : 0
+    );
+    fm.appendInput("keyword", i18n.get("public_shop.search_keyword"), i18n.get("public_shop.search_keyword_hint"), currentKeyword);
+    fm.appendDropdown(
+        "official",
+        i18n.get("public_shop.filter_official"),
+        {i18n.get("public_shop.filter_all"),
+         i18n.get("public_shop.filter_official_shops"),
+         i18n.get("public_shop.filter_player_shops")},
+        static_cast<int>(currentFilter)
+    );
+
+    fm.sendTo(
+        player,
+        [currentKeyword, currentSearchType, currentFilter, currentSortMode, currentPage, isRecycle, onBack](
+            Player& p,
+            ll::form::CustomFormResult const& result,
+            ll::form::FormCancelReason
+        ) {
+            if (!result.has_value() || result->empty()) {
+                if (isRecycle) {
+                    showPublicRecycleShopListChestUi(
+                        p,
+                        currentPage,
+                        currentKeyword,
+                        currentSearchType,
+                        currentFilter,
+                        currentSortMode,
+                        onBack
+                    );
+                } else {
+                    showPublicShopListChestUi(
+                        p,
+                        currentPage,
+                        currentKeyword,
+                        currentSearchType,
+                        currentFilter,
+                        currentSortMode,
+                        onBack
+                    );
+                }
+                return;
+            }
+
+            uint64         typeIdx = (currentSearchType == "item") ? 1 : 0;
+            std::string    keyword = currentKeyword;
+            OfficialFilter officialFilter = currentFilter;
+
+            auto typeIt = result->find("type");
+            if (typeIt != result->end()) {
+                if (auto* ptr = std::get_if<uint64>(&typeIt->second)) {
+                    typeIdx = *ptr;
+                } else if (auto* dptr = std::get_if<double>(&typeIt->second)) {
+                    typeIdx = static_cast<uint64>(*dptr);
+                }
+            }
+
+            auto keywordIt = result->find("keyword");
+            if (keywordIt != result->end()) {
+                if (auto* ptr = std::get_if<std::string>(&keywordIt->second)) {
+                    keyword = *ptr;
+                }
+            }
+
+            auto officialIt = result->find("official");
+            if (officialIt != result->end()) {
+                uint64 officialIdx = 0;
+                if (auto* ptr = std::get_if<uint64>(&officialIt->second)) {
+                    officialIdx = *ptr;
+                } else if (auto* dptr = std::get_if<double>(&officialIt->second)) {
+                    officialIdx = static_cast<uint64>(*dptr);
+                }
+                officialFilter = static_cast<OfficialFilter>(officialIdx);
+            }
+
+            if (isRecycle) {
+                showPublicRecycleShopListChestUi(
+                    p,
+                    0,
+                    keyword,
+                    typeIdx == 0 ? "owner" : "item",
+                    officialFilter,
+                    currentSortMode,
+                    onBack
+                );
+            } else {
+                showPublicShopListChestUi(
+                    p,
+                    0,
+                    keyword,
+                    typeIdx == 0 ? "owner" : "item",
+                    officialFilter,
+                    currentSortMode,
+                    onBack
+                );
+            }
+        }
+    );
+}
+
 void showPublicShopListForm(
     Player&            player,
     int                currentPage,
@@ -572,6 +1051,362 @@ void showPublicShopListForm(
         ChestType::Shop,
         SHOP_I18N_KEYS
     );
+}
+
+void showPublicShopListChestUi(
+    Player&            player,
+    std::size_t        currentPage,
+    const std::string& searchKeyword,
+    const std::string& searchType,
+    OfficialFilter     officialFilter,
+    PublicListSortMode sortMode,
+    std::function<void(Player&)> onBack
+) {
+    struct PublicShopChestUiState {
+        std::size_t        currentPage{0};
+        std::string        searchKeyword;
+        std::string        searchType{"owner"};
+        OfficialFilter     officialFilter{OfficialFilter::All};
+        PublicListSortMode sortMode{PublicListSortMode::Sales};
+        std::function<void(Player&)> onBack;
+    };
+
+    auto state = std::make_shared<PublicShopChestUiState>(PublicShopChestUiState{
+        .currentPage    = currentPage,
+        .searchKeyword  = searchKeyword,
+        .searchType     = searchType,
+        .officialFilter = officialFilter,
+        .sortMode       = sortMode,
+        .onBack         = std::move(onBack)
+    });
+
+    auto refreshView = std::make_shared<std::function<void(Player&, bool)>>();
+    *refreshView     = [state, refreshView](Player& target, bool reopen) {
+        auto pageData = buildPublicShopChestUiPage(
+            state->searchKeyword,
+            state->searchType,
+            state->officialFilter,
+            state->sortMode,
+            state->currentPage
+        );
+        state->currentPage = pageData.currentPage;
+        if (state->onBack) {
+            pageData.items[SHOPS_CHEST_UI_BACK_SLOT] =
+                makeChestUiControlItem("minecraft:arrow", I18nService::getInstance().get("form.button_back"));
+        }
+
+        auto handleClick = [state, refreshView](Player& p, ChestUI::ClickContext const& ctx) {
+            switch (ctx.slot) {
+            case SHOPS_CHEST_UI_PREV_SLOT:
+                if (state->currentPage > 0) {
+                    --state->currentPage;
+                    (*refreshView)(p, false);
+                }
+                return;
+            case SHOPS_CHEST_UI_NEXT_SLOT: {
+                auto currentData = buildPublicShopChestUiPage(
+                    state->searchKeyword,
+                    state->searchType,
+                    state->officialFilter,
+                    state->sortMode,
+                    state->currentPage
+                );
+                if (state->currentPage + 1 < currentData.totalPages) {
+                    ++state->currentPage;
+                    (*refreshView)(p, false);
+                }
+                return;
+            }
+            case SHOPS_CHEST_UI_SEARCH_SLOT:
+                ChestUI::close(p);
+                runForOnlinePlayerAfterTicks(
+                    p,
+                    SHOPS_CHEST_UI_OPEN_DELAY_TICKS,
+                    [keyword = state->searchKeyword,
+                     type = state->searchType,
+                     filter = state->officialFilter,
+                     sort = state->sortMode,
+                     page = state->currentPage,
+                     onBack = state->onBack](Player& target) {
+                        showSearchChestUiForm(target, keyword, type, filter, sort, page, false, onBack);
+                    }
+                );
+                return;
+            case SHOPS_CHEST_UI_SORT_SLOT:
+                state->sortMode =
+                    (state->sortMode == PublicListSortMode::Latest) ? PublicListSortMode::Sales
+                                                                    : PublicListSortMode::Latest;
+                (*refreshView)(p, false);
+                return;
+            case SHOPS_CHEST_UI_FILTER_SLOT:
+                switch (state->officialFilter) {
+                case OfficialFilter::All:
+                    state->officialFilter = OfficialFilter::Official;
+                    break;
+                case OfficialFilter::Official:
+                    state->officialFilter = OfficialFilter::Player;
+                    break;
+                case OfficialFilter::Player:
+                default:
+                    state->officialFilter = OfficialFilter::All;
+                    break;
+                }
+                (*refreshView)(p, false);
+                return;
+            case SHOPS_CHEST_UI_CLOSE_SLOT:
+                ChestUI::close(p);
+                return;
+            case SHOPS_CHEST_UI_BACK_SLOT:
+                if (state->onBack) {
+                    state->onBack(p);
+                }
+                return;
+            default:
+                break;
+            }
+
+            if (ctx.slot == SHOPS_CHEST_UI_INFO_SLOT || ctx.slot >= SHOPS_CHEST_UI_PER_PAGE) {
+                return;
+            }
+
+            auto currentData = buildPublicShopChestUiPage(
+                state->searchKeyword,
+                state->searchType,
+                state->officialFilter,
+                state->sortMode,
+                state->currentPage
+            );
+            if (ctx.slot >= currentData.entries.size()) {
+                return;
+            }
+
+            const auto info = currentData.entries[ctx.slot];
+            showPlayerPublicItemsChestUi(
+                p,
+                info.ownerUuid,
+                0,
+                "",
+                [keyword = state->searchKeyword,
+                 type = state->searchType,
+                 filter = state->officialFilter,
+                 sort = state->sortMode,
+                 page = state->currentPage,
+                 onBack = state->onBack](Player& backPlayer) {
+                    showPublicShopListChestUi(backPlayer, page, keyword, type, filter, sort, onBack);
+                }
+            );
+        };
+
+        if (reopen || !ChestUI::isOpen(target)) {
+            ChestUI::OpenRequest request;
+            request.title        = pageData.title;
+            request.items        = pageData.items;
+            request.onClick      = std::move(handleClick);
+            request.onClose      = [](Player&) {};
+            request.closeOnClick = false;
+            if (!ChestUI::open(target, std::move(request))) {
+                showPublicShopListForm(
+                    target,
+                    static_cast<int>(state->currentPage),
+                    state->searchKeyword,
+                    state->searchType,
+                    state->officialFilter,
+                    state->sortMode
+                );
+            }
+            return;
+        }
+
+        ChestUI::UpdateRequest request;
+        request.title        = pageData.title;
+        request.items        = pageData.items;
+        request.onClick      = std::move(handleClick);
+        request.onClose      = [](Player&) {};
+        request.closeOnClick = false;
+        if (!ChestUI::update(target, std::move(request))) {
+            (*refreshView)(target, true);
+        }
+    };
+
+    (*refreshView)(player, false);
+}
+
+void showPublicRecycleShopListChestUi(
+    Player&            player,
+    std::size_t        currentPage,
+    const std::string& searchKeyword,
+    const std::string& searchType,
+    OfficialFilter     officialFilter,
+    PublicListSortMode sortMode,
+    std::function<void(Player&)> onBack
+) {
+    struct PublicRecycleShopChestUiState {
+        std::size_t        currentPage{0};
+        std::string        searchKeyword;
+        std::string        searchType{"owner"};
+        OfficialFilter     officialFilter{OfficialFilter::All};
+        PublicListSortMode sortMode{PublicListSortMode::Sales};
+        std::function<void(Player&)> onBack;
+    };
+
+    auto state = std::make_shared<PublicRecycleShopChestUiState>(PublicRecycleShopChestUiState{
+        .currentPage    = currentPage,
+        .searchKeyword  = searchKeyword,
+        .searchType     = searchType,
+        .officialFilter = officialFilter,
+        .sortMode       = sortMode,
+        .onBack         = std::move(onBack)
+    });
+
+    auto refreshView = std::make_shared<std::function<void(Player&, bool)>>();
+    *refreshView     = [state, refreshView](Player& target, bool reopen) {
+        auto pageData = buildPublicRecycleShopChestUiPage(
+            state->searchKeyword,
+            state->searchType,
+            state->officialFilter,
+            state->sortMode,
+            state->currentPage
+        );
+        state->currentPage = pageData.currentPage;
+        if (state->onBack) {
+            pageData.items[SHOPS_CHEST_UI_BACK_SLOT] =
+                makeChestUiControlItem("minecraft:arrow", I18nService::getInstance().get("form.button_back"));
+        }
+
+        auto handleClick = [state, refreshView](Player& p, ChestUI::ClickContext const& ctx) {
+            switch (ctx.slot) {
+            case SHOPS_CHEST_UI_PREV_SLOT:
+                if (state->currentPage > 0) {
+                    --state->currentPage;
+                    (*refreshView)(p, false);
+                }
+                return;
+            case SHOPS_CHEST_UI_NEXT_SLOT: {
+                auto currentData = buildPublicRecycleShopChestUiPage(
+                    state->searchKeyword,
+                    state->searchType,
+                    state->officialFilter,
+                    state->sortMode,
+                    state->currentPage
+                );
+                if (state->currentPage + 1 < currentData.totalPages) {
+                    ++state->currentPage;
+                    (*refreshView)(p, false);
+                }
+                return;
+            }
+            case SHOPS_CHEST_UI_SEARCH_SLOT:
+                ChestUI::close(p);
+                runForOnlinePlayerAfterTicks(
+                    p,
+                    SHOPS_CHEST_UI_OPEN_DELAY_TICKS,
+                    [keyword = state->searchKeyword,
+                     type = state->searchType,
+                     filter = state->officialFilter,
+                     sort = state->sortMode,
+                     page = state->currentPage,
+                     onBack = state->onBack](Player& target) {
+                        showSearchChestUiForm(target, keyword, type, filter, sort, page, true, onBack);
+                    }
+                );
+                return;
+            case SHOPS_CHEST_UI_SORT_SLOT:
+                state->sortMode =
+                    (state->sortMode == PublicListSortMode::Latest) ? PublicListSortMode::Sales
+                                                                    : PublicListSortMode::Latest;
+                (*refreshView)(p, false);
+                return;
+            case SHOPS_CHEST_UI_FILTER_SLOT:
+                switch (state->officialFilter) {
+                case OfficialFilter::All:
+                    state->officialFilter = OfficialFilter::Official;
+                    break;
+                case OfficialFilter::Official:
+                    state->officialFilter = OfficialFilter::Player;
+                    break;
+                case OfficialFilter::Player:
+                default:
+                    state->officialFilter = OfficialFilter::All;
+                    break;
+                }
+                (*refreshView)(p, false);
+                return;
+            case SHOPS_CHEST_UI_CLOSE_SLOT:
+                ChestUI::close(p);
+                return;
+            case SHOPS_CHEST_UI_BACK_SLOT:
+                if (state->onBack) {
+                    state->onBack(p);
+                }
+                return;
+            default:
+                break;
+            }
+
+            if (ctx.slot == SHOPS_CHEST_UI_INFO_SLOT || ctx.slot >= SHOPS_CHEST_UI_PER_PAGE) {
+                return;
+            }
+
+            auto currentData = buildPublicRecycleShopChestUiPage(
+                state->searchKeyword,
+                state->searchType,
+                state->officialFilter,
+                state->sortMode,
+                state->currentPage
+            );
+            if (ctx.slot >= currentData.entries.size()) {
+                return;
+            }
+
+            const auto info = currentData.entries[ctx.slot];
+            showPlayerPublicRecycleItemsChestUi(
+                p,
+                info.ownerUuid,
+                0,
+                "",
+                [keyword = state->searchKeyword,
+                 type = state->searchType,
+                 filter = state->officialFilter,
+                 sort = state->sortMode,
+                 page = state->currentPage,
+                 onBack = state->onBack](Player& backPlayer) {
+                    showPublicRecycleShopListChestUi(backPlayer, page, keyword, type, filter, sort, onBack);
+                }
+            );
+        };
+
+        if (reopen || !ChestUI::isOpen(target)) {
+            ChestUI::OpenRequest request;
+            request.title        = pageData.title;
+            request.items        = pageData.items;
+            request.onClick      = std::move(handleClick);
+            request.onClose      = [](Player&) {};
+            request.closeOnClick = false;
+            if (!ChestUI::open(target, std::move(request))) {
+                showPublicRecycleShopListForm(
+                    target,
+                    static_cast<int>(state->currentPage),
+                    state->searchKeyword,
+                    state->searchType,
+                    state->officialFilter,
+                    state->sortMode
+                );
+            }
+            return;
+        }
+
+        ChestUI::UpdateRequest request;
+        request.title        = pageData.title;
+        request.items        = pageData.items;
+        request.onClick      = std::move(handleClick);
+        request.onClose      = [](Player&) {};
+        request.closeOnClick = false;
+        if (!ChestUI::update(target, std::move(request))) {
+            (*refreshView)(target, true);
+        }
+    };
+
+    (*refreshView)(player, false);
 }
 
 void showPublicRecycleShopListForm(
@@ -795,7 +1630,8 @@ void showPlayerShopsForm(
     int                currentPage,
     bool               isRecycle,
     OfficialFilter     officialFilter,
-    PublicListSortMode sortMode
+    PublicListSortMode sortMode,
+    std::function<void(Player&)> onBack
 ) {
     auto& i18n = I18nService::getInstance();
 
@@ -906,9 +1742,39 @@ void showPlayerShopsForm(
                                    );
 
             if (isRecycle) {
-                fm.appendButton(buttonText, [shop](Player& p) { showRecycleShopPreviewForm(p, shop); });
+                fm.appendButton(
+                    buttonText,
+                    [shop, ownerUuid, currentPage, isRecycle, officialFilter, sortMode, onBack](Player& p) {
+                        showRecycleShopPreviewForm(p, shop, [ownerUuid, currentPage, isRecycle, officialFilter, sortMode, onBack](Player& backPlayer) {
+                            showPlayerShopsForm(
+                                backPlayer,
+                                ownerUuid,
+                                currentPage,
+                                isRecycle,
+                                officialFilter,
+                                sortMode,
+                                onBack
+                            );
+                        });
+                    }
+                );
             } else {
-                fm.appendButton(buttonText, [shop](Player& p) { showShopPreviewForm(p, shop); });
+                fm.appendButton(
+                    buttonText,
+                    [shop, ownerUuid, currentPage, isRecycle, officialFilter, sortMode, onBack](Player& p) {
+                        showShopPreviewForm(p, shop, [ownerUuid, currentPage, isRecycle, officialFilter, sortMode, onBack](Player& backPlayer) {
+                            showPlayerShopsForm(
+                                backPlayer,
+                                ownerUuid,
+                                currentPage,
+                                isRecycle,
+                                officialFilter,
+                                sortMode,
+                                onBack
+                            );
+                        });
+                    }
+                );
             }
         }
     }
@@ -942,7 +1808,11 @@ void showPlayerShopsForm(
         i18n.get("player_list.button_back_list"),
         "textures/ui/arrow_left",
         "path",
-        [isRecycle, officialFilter, sortMode](Player& p) {
+        [isRecycle, officialFilter, sortMode, onBack](Player& p) {
+            if (onBack) {
+                onBack(p);
+                return;
+            }
             if (isRecycle) {
                 showPublicRecycleShopListForm(p, 0, "", "owner", officialFilter, sortMode);
             } else {

@@ -34,6 +34,9 @@ struct OpenRequest {
 struct UpdateRequest {
     std::optional<std::string> title;
     std::vector<ItemStack>     items;
+    std::optional<ClickCallback> onClick;
+    std::optional<CloseCallback> onClose;
+    std::optional<bool>         closeOnClick;
 };
 
 bool open(Player& player, OpenRequest request);

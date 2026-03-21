@@ -1,5 +1,6 @@
 #include "command.h"
 #include "Config/ConfigManager.h"
+#include "chestui/PublicMenu.h"
 #include "chestui/chestui.h"
 #include "chestui/demo.h"
 #include "compat/PermissionCompat.h"
@@ -121,6 +122,24 @@ void registerCommand() {
                 return;
             }
             showPublicShopListForm(*player);
+        }
+    );
+
+    auto& shopMenuCmd = registrar.getOrCreateCommand(
+        commands.publicMenuCommand,
+        i18n.get("command.shopmenu_description"),
+        CommandPermissionLevel::Any
+    );
+    shopMenuCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            if (!ChestUI::PublicMenu::open(*player)) {
+                showPublicShopListForm(*player);
+            }
         }
     );
 
