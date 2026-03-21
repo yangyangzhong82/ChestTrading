@@ -14,6 +14,7 @@ public:
     void probe();
 
     std::optional<bool> isInLand(Player const& player, BlockPos const& pos) const;
+    std::optional<bool> isOwnerLand(std::string const& playerUuid, BlockPos const& pos, int dimId) const;
     bool canUseContainer(Player const& player, BlockPos const& pos) const;
     bool canPlace(Player const& player, BlockPos const& pos) const;
     bool canDestroy(Player const& player, BlockPos const& pos) const;

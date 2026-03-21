@@ -119,7 +119,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return false;
     }
 
-    if (ChestService::getInstance().isChestProtected(chestPos, dimId, region)) {
+    if (ChestService::getInstance().shouldBlockAutomatedTransfer(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试从受保护的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
             chestPos.x,
@@ -189,7 +189,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return false;
     }
 
-    if (ChestService::getInstance().isChestProtected(chestPos, dimId, region)) {
+    if (ChestService::getInstance().shouldBlockAutomatedTransfer(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试向受保护的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
             chestPos.x,

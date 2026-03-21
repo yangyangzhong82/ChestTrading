@@ -118,6 +118,7 @@ public:
      * @note 未来可能根据箱子类型或配置返回不同结果
      */
     bool isChestProtected(BlockPos pos, int dimId, BlockSource& region);
+    bool shouldBlockAutomatedTransfer(BlockPos pos, int dimId, BlockSource& region);
 
     /**
      * @brief [已废弃] 请使用 hasChestConfig() 或 isChestProtected()

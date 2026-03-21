@@ -180,7 +180,8 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
     ]
   },
   "landRestrictionSettings": {
-    "onlyAllowTradeShopCreationInPland": true
+    "onlyAllowTradeShopCreationInPland": true,
+    "allowAutomationTransferInOwnerPland": true
   },
   "tradeRecordCleanupSettings": {
     "maxTotalRecords": 5000,
@@ -208,8 +209,10 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 领地限制说明：
 
 - `onlyAllowTradeShopCreationInPland`：开启后，普通玩家只能在 PLand 领地内创建商店和回收商店
+- `allowAutomationTransferInOwnerPland`：开启后，如果受保护箱子位于“箱子主人自己的 PLand 领地”内，则允许漏斗和合成器转移物品
 - `chest.admin` 管理员不受此限制
 - 若服务器未安装 PLand，或 PLand 对接不可用，则该限制不会生效
+- “自己的领地”按箱子主人在该位置的 PLand 权限类型为 `Owner` 判定，成员领地 / 访客领地不会放行
 
 交易记录自动清理说明：
 

@@ -413,6 +413,25 @@ bool ChestService::isChestProtected(BlockPos pos, int dimId, BlockSource& region
     return true;
 }
 
+bool ChestService::shouldBlockAutomatedTransfer(BlockPos pos, int dimId, BlockSource& region) {
+    auto info = getChestInfo(pos, dimId, region);
+    if (!info) {
+        return false;
+    }
+
+    const auto& landRestrictions = ConfigManager::getInstance().get().landRestrictionSettings;
+    if (!landRestrictions.allowAutomationTransferInOwnerPland) {
+        return true;
+    }
+
+    auto ownerLand = PLandCompat::getInstance().isOwnerLand(info->ownerUuid, getMainChestPos(pos, region), dimId);
+    if (ownerLand.has_value() && *ownerLand) {
+        return false;
+    }
+
+    return true;
+}
+
 bool ChestService::isChestLocked(BlockPos pos, int dimId, BlockSource& region) {
     // 为保持向后兼容，委托给 hasChestConfig
     return hasChestConfig(pos, dimId, region);

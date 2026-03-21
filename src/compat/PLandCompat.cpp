@@ -275,7 +275,7 @@ struct LandQueryContext {
     std::shared_ptr<LandOpaque> land;
 };
 
-LandQueryState queryLandContext(Player const& player, BlockPos const& pos, LandQueryContext& context) {
+LandQueryState queryLandContext(BlockPos const& pos, int dimId, LandQueryContext& context) {
     {
         auto& s = state();
         std::lock_guard lock(s.mutex);
@@ -301,7 +301,7 @@ LandQueryState queryLandContext(Player const& player, BlockPos const& pos, LandQ
     }
 
     try {
-        context.symbols.getLandAt(context.registryPtr, &context.land, pos, static_cast<int>(player.getDimensionId()));
+        context.symbols.getLandAt(context.registryPtr, &context.land, pos, dimId);
     } catch (...) {
         reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandAt，已回退为放行。");
         return LandQueryState::Unavailable;
@@ -325,11 +325,34 @@ void PLandCompat::probe() {
 
 std::optional<bool> PLandCompat::isInLand(Player const& player, BlockPos const& pos) const {
     LandQueryContext context;
-    if (queryLandContext(player, pos, context) == LandQueryState::Unavailable) {
+    if (queryLandContext(pos, static_cast<int>(player.getDimensionId()), context) == LandQueryState::Unavailable) {
         return std::nullopt;
     }
 
     return context.land != nullptr;
+}
+
+std::optional<bool> PLandCompat::isOwnerLand(std::string const& playerUuid, BlockPos const& pos, int dimId) const {
+    if (playerUuid.empty()) {
+        return false;
+    }
+
+    LandQueryContext context;
+    if (queryLandContext(pos, dimId, context) == LandQueryState::Unavailable) {
+        return std::nullopt;
+    }
+
+    if (!context.land) {
+        return false;
+    }
+
+    try {
+        mce::UUID const uuid = mce::UUID::fromString(playerUuid);
+        return context.symbols.getPermType(context.land.get(), uuid) == 1;
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=isOwnerLand，已回退为不匹配。");
+        return std::nullopt;
+    }
 }
 
 bool PLandCompat::canUseContainer(Player const& player, BlockPos const& pos) const {
@@ -349,7 +372,7 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     mce::UUID const*      uuidPtr  = nullptr;
     LandPermTableLayout const* tablePtr = nullptr;
 
-    if (queryLandContext(player, pos, context) == LandQueryState::Unavailable) {
+    if (queryLandContext(pos, static_cast<int>(player.getDimensionId()), context) == LandQueryState::Unavailable) {
         return true; // PLand not loaded or unavailable -> ignore integration.
     }
 

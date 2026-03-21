@@ -84,6 +84,7 @@ struct TradeRestrictionSettings {
 
 struct LandRestrictionSettings {
     bool onlyAllowTradeShopCreationInPland = false; // 是否仅允许普通玩家在 PLand 领地内创建商店/回收商店
+    bool allowAutomationTransferInOwnerPland = false; // 是否允许箱子主人在自己 PLand 领地内被漏斗/合成器转移
 };
 
 struct TradeRecordCleanupSettings {
