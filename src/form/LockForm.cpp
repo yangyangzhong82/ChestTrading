@@ -29,6 +29,26 @@ std::string buildChestSetupButtonText(TextService& textService, const std::strin
     return text + "\n" + textService.getMessage("form.button_cost_line", {{"price", MoneyFormat::format(cost)}});
 }
 
+double getChestRemovalRefund(ChestType type) {
+    auto const& refunds = ConfigManager::getInstance().get().chestRemovalRefunds;
+    switch (type) {
+    case ChestType::Locked:
+        return refunds.lockedChestRefund;
+    case ChestType::Public:
+        return refunds.publicChestRefund;
+    case ChestType::RecycleShop:
+        return refunds.recycleShopRefund;
+    case ChestType::Shop:
+        return refunds.shopRefund;
+    case ChestType::AdminShop:
+        return refunds.adminShopRefund;
+    case ChestType::AdminRecycle:
+        return refunds.adminRecycleRefund;
+    default:
+        return 0.0;
+    }
+}
+
 } // namespace
 
 void showChestLockForm(
@@ -62,9 +82,46 @@ static void showRemoveChestConfirmForm(Player& player, BlockPos pos, int dimId) 
         "textures/ui/trash_default",
         "path",
         [pos, dimId](Player& p) {
-            auto& region = p.getDimensionBlockSource();
-            auto  result = ChestService::getInstance().removeChest(pos, dimId, region);
-            p.sendMessage(result.message);
+            auto& region      = p.getDimensionBlockSource();
+            auto& textService = TextService::getInstance();
+            auto  info        = ChestService::getInstance().getChestInfo(pos, dimId, region);
+            auto  result      = ChestService::getInstance().removeChest(pos, dimId, region);
+
+            if (!result.success) {
+                p.sendMessage(result.message);
+                return;
+            }
+
+            if (!info) {
+                p.sendMessage(result.message);
+                return;
+            }
+
+            double refund = getChestRemovalRefund(info->type);
+            if (refund <= 0.0 || info->ownerUuid.empty()) {
+                p.sendMessage(result.message);
+                return;
+            }
+
+            if (!Economy::addMoneyByUuid(info->ownerUuid, refund)) {
+                p.sendMessage(textService.getMessage(
+                    "chest.remove_success_refund_fail",
+                    {{"price", MoneyFormat::format(refund)}}
+                ));
+                return;
+            }
+
+            if (info->ownerUuid == p.getUuid().asString()) {
+                p.sendMessage(textService.getMessage(
+                    "chest.remove_success_refund_self",
+                    {{"price", MoneyFormat::format(refund)}}
+                ));
+            } else {
+                p.sendMessage(textService.getMessage(
+                    "chest.remove_success_refund_owner",
+                    {{"price", MoneyFormat::format(refund)}}
+                ));
+            }
         }
     );
     fm.appendButton(

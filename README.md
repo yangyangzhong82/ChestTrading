@@ -131,6 +131,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `floatingText`：悬浮字与假掉落物显示
 - `chestLimits`：各类箱子数量上限
 - `chestCosts`：创建费用
+- `chestRemovalRefunds`：移除设置时返还费用
 - `teleportSettings`：传送费用和冷却
 - `taxSettings`：商店税率 / 回收税率
 - `interactionSettings`：管理工具、交互防抖、是否要求下蹲
@@ -179,6 +180,14 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
       "minecraft:bedrock"
     ]
   },
+  "chestRemovalRefunds": {
+    "lockedChestRefund": 100.0,
+    "publicChestRefund": 50.0,
+    "recycleShopRefund": 500.0,
+    "shopRefund": 500.0,
+    "adminShopRefund": 0.0,
+    "adminRecycleRefund": 0.0
+  },
   "landRestrictionSettings": {
     "onlyAllowTradeShopCreationInPland": true,
     "allowAutomationTransferInOwnerPland": true
@@ -205,6 +214,13 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `blockedRecycleItems`：禁止设置为回收委托的物品 ID，按命名空间 ID 精确匹配
 - 配置里可写 `diamond_sword`，插件会自动按 `minecraft:diamond_sword` 处理
 - 拥有 `chest.admin` 的管理员不受这些限制
+
+移除设置返还说明：
+
+- `lockedChestRefund` / `publicChestRefund` / `recycleShopRefund` / `shopRefund`：移除对应箱子设置时返还给箱子主人的金额
+- `adminShopRefund` / `adminRecycleRefund`：移除官方商店 / 官方回收商店设置时返还给箱子主人的金额
+- 所有返还金额默认都是 `0`，表示关闭该类型返还
+- 返还只在“管理表单 -> 移除设置”时触发，不影响直接破坏箱子的处理逻辑
 
 领地限制说明：
 

@@ -36,6 +36,15 @@ struct ChestCreationCosts {
     double shopCost        = 500.0; // 创建商店的费用
 };
 
+struct ChestRemovalRefunds {
+    double lockedChestRefund   = 0.0; // 移除上锁箱子设置时返还的费用
+    double publicChestRefund   = 0.0; // 移除公共箱子设置时返还的费用
+    double recycleShopRefund   = 0.0; // 移除回收商店设置时返还的费用
+    double shopRefund          = 0.0; // 移除商店设置时返还的费用
+    double adminShopRefund     = 0.0; // 移除官方商店设置时返还的费用
+    double adminRecycleRefund  = 0.0; // 移除官方回收商店设置时返还的费用
+};
+
 struct TeleportSettings {
     double teleportCost        = 100.0; // 传送到商店的费用
     int    teleportCooldownSec = 60;    // 传送冷却时间（秒）
@@ -123,6 +132,7 @@ struct Config {
     FloatingTextSettings     floatingText;                             // 悬浮字相关设置
     ChestLimits              chestLimits;                              // 箱子数量限制
     ChestCreationCosts       chestCosts;                               // 箱子创建费用
+    ChestRemovalRefunds      chestRemovalRefunds;                      // 移除设置返还费用
     TeleportSettings         teleportSettings;                         // 传送相关设置
     TaxSettings              taxSettings;                              // 税率设置
     ResourcePaths            resourcePaths;                            // 数据库/贴图等路径配置
