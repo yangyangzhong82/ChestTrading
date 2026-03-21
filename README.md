@@ -33,6 +33,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - LegacyMoney
 - 可选经济依赖：`czmoney`
 - 可选权限依赖：`Bedrock-Authority`
+- 可选领地依赖：`PLand`
 
 ## 核心功能概览
 
@@ -137,6 +138,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `salesRankingSettings`：排行榜显示数量
 - `shopNameRestrictions`：商店名称限制
 - `tradeRestrictionSettings`：禁止上架 / 禁止回收委托的物品列表
+- `landRestrictionSettings`：PLand 领地相关限制
 - `tradeRecordCleanupSettings`：交易记录自动清理
 
 示例：
@@ -177,6 +179,9 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
       "minecraft:bedrock"
     ]
   },
+  "landRestrictionSettings": {
+    "onlyAllowTradeShopCreationInPland": true
+  },
   "tradeRecordCleanupSettings": {
     "maxTotalRecords": 5000,
     "maxRecordAgeDays": 30
@@ -199,6 +204,12 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `blockedRecycleItems`：禁止设置为回收委托的物品 ID，按命名空间 ID 精确匹配
 - 配置里可写 `diamond_sword`，插件会自动按 `minecraft:diamond_sword` 处理
 - 拥有 `chest.admin` 的管理员不受这些限制
+
+领地限制说明：
+
+- `onlyAllowTradeShopCreationInPland`：开启后，普通玩家只能在 PLand 领地内创建商店和回收商店
+- `chest.admin` 管理员不受此限制
+- 若服务器未安装 PLand，或 PLand 对接不可用，则该限制不会生效
 
 交易记录自动清理说明：
 

@@ -264,6 +264,52 @@ bool hasRolePermission(
     return entry.guest;
 }
 
+enum class LandQueryState {
+    Unavailable,
+    Available
+};
+
+struct LandQueryContext {
+    SymbolSet                  symbols;
+    LandRegistryOpaque*        registryPtr = nullptr;
+    std::shared_ptr<LandOpaque> land;
+};
+
+LandQueryState queryLandContext(Player const& player, BlockPos const& pos, LandQueryContext& context) {
+    {
+        auto& s = state();
+        std::lock_guard lock(s.mutex);
+        if (!resolveSymbolsLocked(s)) {
+            return LandQueryState::Unavailable;
+        }
+        context.symbols = s.symbols;
+    }
+
+    PLandOpaque* landModPtr = nullptr;
+    try {
+        landModPtr = std::addressof(context.symbols.getInstance());
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getInstance，已回退为放行。");
+        return LandQueryState::Unavailable;
+    }
+
+    try {
+        context.registryPtr = std::addressof(context.symbols.getRegistry(landModPtr));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandRegistry，已回退为放行。");
+        return LandQueryState::Unavailable;
+    }
+
+    try {
+        context.symbols.getLandAt(context.registryPtr, &context.land, pos, static_cast<int>(player.getDimensionId()));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandAt，已回退为放行。");
+        return LandQueryState::Unavailable;
+    }
+
+    return LandQueryState::Available;
+}
+
 } // namespace
 
 PLandCompat& PLandCompat::getInstance() {
@@ -275,6 +321,15 @@ void PLandCompat::probe() {
     auto& s = state();
     std::lock_guard lock(s.mutex);
     (void)resolveSymbolsLocked(s);
+}
+
+std::optional<bool> PLandCompat::isInLand(Player const& player, BlockPos const& pos) const {
+    LandQueryContext context;
+    if (queryLandContext(player, pos, context) == LandQueryState::Unavailable) {
+        return std::nullopt;
+    }
+
+    return context.land != nullptr;
 }
 
 bool PLandCompat::canUseContainer(Player const& player, BlockPos const& pos) const {
@@ -290,48 +345,19 @@ bool PLandCompat::canDestroy(Player const& player, BlockPos const& pos) const {
 }
 
 bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action action) const {
-    SymbolSet symbols;
-    {
-        auto& s = state();
-        std::lock_guard lock(s.mutex);
-        if (!resolveSymbolsLocked(s)) {
-            return true; // PLand not loaded or unavailable -> ignore integration.
-        }
-        symbols = s.symbols;
-    }
-
-    PLandOpaque*          landModPtr  = nullptr;
-    LandRegistryOpaque*   registryPtr = nullptr;
-    std::shared_ptr<LandOpaque> land;
-    mce::UUID const*      uuidPtr = nullptr;
+    LandQueryContext      context;
+    mce::UUID const*      uuidPtr  = nullptr;
     LandPermTableLayout const* tablePtr = nullptr;
 
-    try {
-        landModPtr = std::addressof(symbols.getInstance());
-    } catch (...) {
-        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getInstance，已回退为放行。");
+    if (queryLandContext(player, pos, context) == LandQueryState::Unavailable) {
+        return true; // PLand not loaded or unavailable -> ignore integration.
+    }
+
+    if (!context.land) {
         return true;
     }
 
-    try {
-        registryPtr = std::addressof(symbols.getRegistry(landModPtr));
-    } catch (...) {
-        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandRegistry，已回退为放行。");
-        return true;
-    }
-
-    try {
-        symbols.getLandAt(registryPtr, &land, pos, static_cast<int>(player.getDimensionId()));
-    } catch (...) {
-        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandAt，已回退为放行。");
-        return true;
-    }
-
-    if (!land) {
-        return true;
-    }
-
-    auto const* landPtr = land.get();
+    auto const* landPtr = context.land.get();
     try {
         uuidPtr = std::addressof(player.getUuid());
     } catch (...) {
@@ -340,7 +366,7 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     }
 
     try {
-        tablePtr = std::addressof(symbols.getPermTable(landPtr));
+        tablePtr = std::addressof(context.symbols.getPermTable(landPtr));
     } catch (...) {
         reportRuntimeFailureThrottled("PLand 对接失败，步骤=getPermTable，已回退为放行。");
         return true;
@@ -349,11 +375,11 @@ bool PLandCompat::canPlayerDo(Player const& player, BlockPos const& pos, Action 
     try {
         switch (action) {
         case Action::UseContainer:
-            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.useContainer);
+            return hasRolePermission(context.symbols, *context.registryPtr, landPtr, *uuidPtr, tablePtr->role.useContainer);
         case Action::Place:
-            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.allowPlace);
+            return hasRolePermission(context.symbols, *context.registryPtr, landPtr, *uuidPtr, tablePtr->role.allowPlace);
         case Action::Destroy:
-            return hasRolePermission(symbols, *registryPtr, landPtr, *uuidPtr, tablePtr->role.allowDestroy);
+            return hasRolePermission(context.symbols, *context.registryPtr, landPtr, *uuidPtr, tablePtr->role.allowDestroy);
         default:
             return true;
         }

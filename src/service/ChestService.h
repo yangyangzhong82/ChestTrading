@@ -131,6 +131,7 @@ public:
 
     // === 权限检查 ===
     bool canPlayerAccess(const std::string& playerUuid, BlockPos pos, int dimId, BlockSource& region);
+    bool canPlayerCreateChest(Player const& player, BlockPos pos, ChestType type, std::string& errorMessage);
     bool canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::string& errorMessage);
 
     // === 分享管理 ===

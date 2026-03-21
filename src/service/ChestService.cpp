@@ -1,5 +1,6 @@
 #include "ChestService.h"
 #include "compat/PermissionCompat.h"
+#include "compat/PLandCompat.h"
 #include "Config/ConfigManager.h"
 #include "FloatingText/FloatingText.h"
 #include "TextService.h"
@@ -43,6 +44,10 @@ std::string toLowerAscii(std::string input) {
         return static_cast<char>(std::tolower(ch));
     });
     return input;
+}
+
+[[nodiscard]] bool isPlayerTradeChestType(ChestType type) {
+    return type == ChestType::Shop || type == ChestType::RecycleShop;
 }
 
 } // namespace
@@ -440,6 +445,32 @@ bool ChestService::canPlayerAccess(const std::string& playerUuid, BlockPos pos, 
     }
 
     return false;
+}
+
+bool ChestService::canPlayerCreateChest(Player const& player, BlockPos pos, ChestType type, std::string& errorMessage) {
+    std::string playerUuid = player.getUuid().asString();
+    bool        isAdmin    = PermissionCompat::hasPermission(playerUuid, "chest.admin");
+
+    if (!canPlayerCreateChest(playerUuid, type, errorMessage)) {
+        return false;
+    }
+
+    if (isAdmin) {
+        return true;
+    }
+
+    const auto& landRestrictions = ConfigManager::getInstance().get().landRestrictionSettings;
+    if (!landRestrictions.onlyAllowTradeShopCreationInPland || !isPlayerTradeChestType(type)) {
+        return true;
+    }
+
+    auto landState = PLandCompat::getInstance().isInLand(player, pos);
+    if (landState.has_value() && !*landState) {
+        errorMessage = TextService::getInstance().getMessage("chest.create_trade_shop_only_in_pland");
+        return false;
+    }
+
+    return true;
 }
 
 bool ChestService::canPlayerCreateChest(const std::string& playerUuid, ChestType type, std::string& errorMessage) {

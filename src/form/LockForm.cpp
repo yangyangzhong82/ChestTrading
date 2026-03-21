@@ -283,7 +283,7 @@ void showChestLockForm(
                 auto& textService = TextService::getInstance();
 
                 std::string errorMsg;
-                if (!svc.canPlayerCreateChest(playerUuid, type, errorMsg)) {
+                if (!svc.canPlayerCreateChest(p, pos, type, errorMsg)) {
                     p.sendMessage(errorMsg);
                     return;
                 }

@@ -82,6 +82,10 @@ struct TradeRestrictionSettings {
     std::vector<std::string> blockedRecycleItems = {}; // 禁止设置回收委托的物品命名空间 ID
 };
 
+struct LandRestrictionSettings {
+    bool onlyAllowTradeShopCreationInPland = false; // 是否仅允许普通玩家在 PLand 领地内创建商店/回收商店
+};
+
 struct TradeRecordCleanupSettings {
     int maxTotalRecords = -1;   // 交易记录总保留条数（购买+回收合计），<0 表示关闭此项清理
     int maxRecordAgeDays = -1;  // 交易记录最大保留天数，<0 表示关闭此项清理
@@ -126,6 +130,7 @@ struct Config {
     SalesRankingSettings     salesRankingSettings;                     // 销量榜单设置
     ShopNameRestrictions     shopNameRestrictions;                     // 商店名称限制
     TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
+    LandRestrictionSettings  landRestrictionSettings;                  // PLand 领地限制
     TradeRecordCleanupSettings tradeRecordCleanupSettings;             // 交易记录自动清理
     CommandSettings          commandSettings;                          // 命令名称配置
 };
