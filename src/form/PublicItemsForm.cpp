@@ -174,7 +174,10 @@ static void runForOnlinePlayerAfterTicks(Player& player, int ticks, std::functio
     });
 }
 
-static std::string buildDetailTeleportCostText() {
+static std::string buildDetailTeleportCostText(Player const& player) {
+    if (!CT::FormUtils::canUseChestTeleport(player)) {
+        return {};
+    }
     double teleportCost = ConfigManager::getInstance().get().teleportSettings.teleportCost;
     if (teleportCost <= 0.0) {
         return {};
@@ -1508,24 +1511,26 @@ static void showItemDetailFormImpl(
             {"z",   std::to_string(pos.z)              }
     }
     );
-    content += buildDetailTeleportCostText();
+    content += buildDetailTeleportCostText(player);
     if (isOfficial) {
         content += i18n.get("public_items.item_official");
     }
     content += "\n" + i18n.get(isRecycle ? "public_shop.preview_recycle_notice" : "public_shop.preview_notice");
     fm.setContent(content);
 
-    std::string tpHintKey = isRecycle ? "public_shop.teleport_recycle_hint" : "public_shop.teleport_hint";
-    fm.appendButton(
-        i18n.get("public_shop.button_teleport"),
-        "textures/ui/flyingascend_pressed",
-        "path",
-        [pos, dimId, tpHintKey](Player& p) {
-            if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
-                p.sendMessage(I18nService::getInstance().get(tpHintKey));
+    if (CT::FormUtils::canUseChestTeleport(player)) {
+        std::string tpHintKey = isRecycle ? "public_shop.teleport_recycle_hint" : "public_shop.teleport_hint";
+        fm.appendButton(
+            i18n.get("public_shop.button_teleport"),
+            "textures/ui/flyingascend_pressed",
+            "path",
+            [pos, dimId, tpHintKey](Player& p) {
+                if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
+                    p.sendMessage(I18nService::getInstance().get(tpHintKey));
+                }
             }
-        }
-    );
+        );
+    }
     fm.appendButton(
         i18n.get("public_shop.button_back_list"),
         "textures/ui/arrow_left",
@@ -1593,23 +1598,25 @@ static void showRecycleItemDetailForm(
             {"z",   std::to_string(item.pos.z)             }
         }
     );
-    content += buildDetailTeleportCostText();
+    content += buildDetailTeleportCostText(player);
     if (item.isOfficial) {
         content += i18n.get("public_items.item_official");
     }
     content += "\n" + i18n.get("public_shop.preview_recycle_notice");
     fm.setContent(content);
 
-    fm.appendButton(
-        i18n.get("public_shop.button_teleport"),
-        "textures/ui/flyingascend_pressed",
-        "path",
-        [pos = item.pos, dimId = item.dimId](Player& p) {
-            if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
-                p.sendMessage(I18nService::getInstance().get("public_shop.teleport_recycle_hint"));
+    if (CT::FormUtils::canUseChestTeleport(player)) {
+        fm.appendButton(
+            i18n.get("public_shop.button_teleport"),
+            "textures/ui/flyingascend_pressed",
+            "path",
+            [pos = item.pos, dimId = item.dimId](Player& p) {
+                if (CT::FormUtils::teleportToShop(p, pos, dimId)) {
+                    p.sendMessage(I18nService::getInstance().get("public_shop.teleport_recycle_hint"));
+                }
             }
-        }
-    );
+        );
+    }
     fm.appendButton(
         i18n.get("public_shop.button_back_list"),
         "textures/ui/arrow_left",

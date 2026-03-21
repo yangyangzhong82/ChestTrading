@@ -133,6 +133,7 @@
     "invalid_item_id": "§c无效的物品ID！"
   },
   "teleport": {
+    "disabled": "§c当前已关闭箱子传送功能。",
     "success": "§a已传送到目标位置！花费 §6{cost}§a 金币。",
     "insufficient_money": "§c金币不足！传送需要 §6{cost}§c 金币。",
     "cooldown": "§c传送冷却中！还需等待 §e{seconds}§c 秒。",

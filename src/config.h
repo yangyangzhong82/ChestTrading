@@ -46,6 +46,7 @@ struct ChestRemovalRefunds {
 };
 
 struct TeleportSettings {
+    bool   enableChestTeleport = true;  // 是否允许普通玩家通过公开列表/记录传送到箱子
     double teleportCost        = 100.0; // 传送到商店的费用
     int    teleportCooldownSec = 60;    // 传送冷却时间（秒）
 };

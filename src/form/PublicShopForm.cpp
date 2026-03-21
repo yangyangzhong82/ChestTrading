@@ -319,7 +319,10 @@ static std::map<std::string, int> buildLatestChestRankMap(bool isRecycle) {
     return rankMap;
 }
 
-static std::string buildPreviewTeleportCostText() {
+static std::string buildPreviewTeleportCostText(Player const& player) {
+    if (!CT::FormUtils::canUseChestTeleport(player)) {
+        return {};
+    }
     double teleportCost = ConfigManager::getInstance().get().teleportSettings.teleportCost;
     if (teleportCost <= 0.0) {
         return {};
@@ -1468,7 +1471,7 @@ void showShopPreviewForm(Player& player, const ChestData& shop, std::function<vo
             {"z",   std::to_string(shop.pos.z)              }
     }
     );
-    content += buildPreviewTeleportCostText();
+    content += buildPreviewTeleportCostText(player);
 
     if (items.empty()) {
         content += i18n.get("public_shop.preview_no_items");
@@ -1504,17 +1507,19 @@ void showShopPreviewForm(Player& player, const ChestData& shop, std::function<vo
     content += i18n.get("public_shop.preview_notice");
     fm.setContent(content);
 
-    fm.appendButton(
-        i18n.get("public_shop.button_teleport"),
-        "textures/ui/flyingascend_pressed",
-        "path",
-        [shop](Player& p) {
-            auto& i18n = I18nService::getInstance();
-            if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
-                p.sendMessage(i18n.get("public_shop.teleport_hint"));
+    if (CT::FormUtils::canUseChestTeleport(player)) {
+        fm.appendButton(
+            i18n.get("public_shop.button_teleport"),
+            "textures/ui/flyingascend_pressed",
+            "path",
+            [shop](Player& p) {
+                auto& i18n = I18nService::getInstance();
+                if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
+                    p.sendMessage(i18n.get("public_shop.teleport_hint"));
+                }
             }
-        }
-    );
+        );
+    }
 
     fm.appendButton(
         i18n.get("public_shop.button_back_list"),
@@ -1571,7 +1576,7 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop, std::func
             {"z",   std::to_string(shop.pos.z)              }
     }
     );
-    content += buildPreviewTeleportCostText();
+    content += buildPreviewTeleportCostText(player);
 
     if (items.empty()) {
         content += i18n.get("public_shop.preview_no_recycle");
@@ -1595,17 +1600,19 @@ void showRecycleShopPreviewForm(Player& player, const ChestData& shop, std::func
     content += i18n.get("public_shop.preview_recycle_notice");
     fm.setContent(content);
 
-    fm.appendButton(
-        i18n.get("public_shop.button_teleport"),
-        "textures/ui/flyingascend_pressed",
-        "path",
-        [shop](Player& p) {
-            auto& i18n = I18nService::getInstance();
-            if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
-                p.sendMessage(i18n.get("public_shop.teleport_recycle_hint"));
+    if (CT::FormUtils::canUseChestTeleport(player)) {
+        fm.appendButton(
+            i18n.get("public_shop.button_teleport"),
+            "textures/ui/flyingascend_pressed",
+            "path",
+            [shop](Player& p) {
+                auto& i18n = I18nService::getInstance();
+                if (CT::FormUtils::teleportToShop(p, shop.pos, shop.dimId)) {
+                    p.sendMessage(i18n.get("public_shop.teleport_recycle_hint"));
+                }
             }
-        }
-    );
+        );
+    }
 
     fm.appendButton(
         i18n.get("public_shop.button_back_list"),

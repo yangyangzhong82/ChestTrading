@@ -133,6 +133,7 @@
     "invalid_item_id": "§cInvalid item ID!"
   },
   "teleport": {
+    "disabled": "§cChest teleport is currently disabled.",
     "success": "§aTeleported to destination! Cost: §6{cost}§a coins.",
     "insufficient_money": "§cInsufficient coins! Teleport costs §6{cost}§c coins.",
     "cooldown": "§cTeleport on cooldown! Wait §e{seconds}§c seconds.",

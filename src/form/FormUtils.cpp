@@ -4,6 +4,7 @@
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
+#include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "mc/platform/UUID.h"
@@ -23,6 +24,13 @@
 
 
 namespace CT::FormUtils {
+
+bool canUseChestTeleport(const Player& player) {
+    if (PermissionCompat::hasPermission(player.getUuid().asString(), "chest.admin")) {
+        return true;
+    }
+    return ConfigManager::getInstance().get().teleportSettings.enableChestTeleport;
+}
 
 std::string getItemDisplayString(const ItemStack& item, int count, bool showTypeName) {
     auto&       i18n          = I18nService::getInstance();
@@ -354,6 +362,11 @@ bool teleportToShop(Player& player, BlockPos pos, int dimId) {
     auto&       txt        = TextService::getInstance();
     auto&       config     = ConfigManager::getInstance().get();
     std::string playerUuid = player.getUuid().asString();
+
+    if (!canUseChestTeleport(player)) {
+        player.sendMessage(txt.getMessage("teleport.disabled"));
+        return false;
+    }
 
     if (!tpService.canTeleport(playerUuid)) {
         int remainingSeconds = tpService.getRemainingCooldown(playerUuid);

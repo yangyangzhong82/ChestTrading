@@ -84,6 +84,13 @@ void showSetNameForm(
 );
 
 /**
+ * @brief 检查玩家是否允许使用公开列表里的箱子传送
+ * @param player 玩家
+ * @return 是否允许使用箱子传送（管理员始终允许）
+ */
+bool canUseChestTeleport(const Player& player);
+
+/**
  * @brief 执行传送到商店的通用逻辑（检查冷却、扣费、传送）
  * @param player 玩家
  * @param pos 目标位置

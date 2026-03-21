@@ -507,7 +507,8 @@ void showTradeRecordDetailForm(Player& player, const DisplayTradeRecord& record,
     }
     fm.setContent(content);
 
-    if (state.allowRecordTeleport && record.raw.kind == TradeRecordKind::Purchase) {
+    if (state.allowRecordTeleport && record.raw.kind == TradeRecordKind::Purchase
+        && FormUtils::canUseChestTeleport(player)) {
         fm.appendButton(
             i18n.get("trade_records.button_teleport_record"),
             "textures/ui/flyingascend_pressed",

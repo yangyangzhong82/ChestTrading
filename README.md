@@ -156,6 +156,11 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
     "shopTaxRate": 0.05,
     "recycleTaxRate": 0.02
   },
+  "teleportSettings": {
+    "enableChestTeleport": true,
+    "teleportCost": 100.0,
+    "teleportCooldownSec": 60
+  },
   "interactionSettings": {
     "manageToolItem": "minecraft:stick",
     "requireSneakingForManage": false
@@ -207,6 +212,13 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 表单显示配置说明：
 
 - `publicItemsPerPage`：公开商店物品列表 / 公开回收物品列表表单每页显示数量，`<= 0` 时按 `1` 处理
+
+传送配置说明：
+
+- `enableChestTeleport`：是否允许普通玩家通过公开列表 / 交易记录传送到箱子
+- `teleportCost`：每次传送消耗的费用
+- `teleportCooldownSec`：传送冷却时间（秒）
+- 拥有 `chest.admin` 的管理员不受 `enableChestTeleport` 开关限制
 
 交易物品限制说明：
 
