@@ -144,5 +144,5 @@ struct Config {
     TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
     LandRestrictionSettings  landRestrictionSettings;                  // PLand 领地限制
     TradeRecordCleanupSettings tradeRecordCleanupSettings;             // 交易记录自动清理
-    CommandSettings          commandSettings;                          // 命令名称配置
+    CommandSettings          commandSettings;                          // 命令名称配置（仅启动时注册，重载不会重新注册命令）
 };

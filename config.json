@@ -1,0 +1,206 @@
+{
+  // SQLite 忙等待超时，单位毫秒；可减少 "database is locked" 报错
+  "busyTimeoutMs": 5000,
+
+  // 创建各类箱子设置时需要扣除的费用
+  "chestCosts": {
+    // 创建上锁箱子的费用
+    "lockedChestCost": 100.0,
+    // 创建公共箱子的费用
+    "publicChestCost": 50.0,
+    // 创建回收商店的费用
+    "recycleShopCost": 500.0,
+    // 创建出售商店的费用
+    "shopCost": 500.0
+  },
+
+  // 每个玩家可拥有的各类箱子数量上限
+  "chestLimits": {
+    // 上锁箱子上限
+    "maxLockedChests": 10,
+    // 公共箱子上限
+    "maxPublicChests": 5,
+    // 回收商店上限
+    "maxRecycleShops": 3,
+    // 出售商店上限
+    "maxShops": 3
+  },
+
+  // 通过“管理表单 -> 移除设置”时返还给箱子主人的金额；填 0 表示不返还
+  "chestRemovalRefunds": {
+    // 移除官方回收商店设置时返还金额
+    "adminRecycleRefund": 0.0,
+    // 移除官方商店设置时返还金额
+    "adminShopRefund": 0.0,
+    // 移除上锁箱子设置时返还金额
+    "lockedChestRefund": 0.0,
+    // 移除公共箱子设置时返还金额
+    "publicChestRefund": 0.0,
+    // 移除回收商店设置时返还金额
+    "recycleShopRefund": 0.0,
+    // 移除出售商店设置时返还金额
+    "shopRefund": 0.0
+  },
+
+  // 命令名称配置；如果你改了这里，玩家使用的命令名也会一起变化
+  "commandSettings": {
+    // 管理员菜单命令
+    "adminCommand": "ctadmin",
+    // ChestUI 测试命令
+    "chestUiCommand": "ctchestui",
+    // 导入官方商店配置命令
+    "importOfficialShopCommand": "ctimportshop",
+    // 限购重置命令
+    "limitResetCommand": "ctlimitreset",
+    // 主命令
+    "mainCommand": "ct",
+    // 箱子打包模式命令
+    "packChestCommand": "packchest",
+    // 公开出售物品列表命令
+    "publicItemsCommand": "items",
+    // 公开菜单命令
+    "publicMenuCommand": "shopmenu",
+    // 公开回收商店列表命令
+    "publicRecycleCommand": "recycle",
+    // 公开出售商店列表命令
+    "publicShopCommand": "shop",
+    // 销量排行命令
+    "rankingCommand": "ranking",
+    // 交易记录命令
+    "recordsCommand": "records",
+    // 公开回收物品列表命令
+    "recycleItemsCommand": "recycleitems",
+    // 回收店主列表命令
+    "recyclePlayersCommand": "recycleplayers",
+    // 重载配置命令
+    "reloadCommand": "ctreload",
+    // 自动测试命令
+    "testCommand": "cttest"
+  },
+
+  // 箱子/店铺等数据库缓存保留时间，单位秒
+  "databaseCacheTimeoutSec": 60,
+  // 数据库线程池线程数量
+  "databaseThreadPoolSize": 4,
+
+  // 经济系统类型：0 = LLMoney
+  "economyType": 0,
+
+  // 是否启用 SQLite WAL 模式
+  "enableWalMode": true,
+
+  // 悬浮字与假掉落物显示设置
+  "floatingText": {
+    // 是否显示假掉落物
+    "enableFakeItem": true,
+    // 是否显示上锁箱子悬浮字
+    "enableLockedChest": true,
+    // 是否显示公共箱子悬浮字
+    "enablePublicChest": true,
+    // 是否显示回收商店悬浮字
+    "enableRecycleShop": true,
+    // 是否显示出售商店悬浮字
+    "enableShopChest": true,
+    // 假掉落物对玩家可见的最大距离；<= 0 表示不限制
+    "fakeItemVisibleDistance": 36
+  },
+
+  // 悬浮字刷新间隔，单位秒
+  "floatingTextUpdateIntervalSeconds": 1,
+
+  // 公开列表分页设置
+  "formSettings": {
+    // 公开物品列表每页显示数量；<= 0 会按 1 处理
+    "publicItemsPerPage": 10
+  },
+
+  // 交互相关设置
+  "interactionSettings": {
+    // 交互记录清理阈值，单位秒
+    "cleanupThresholdSec": 60,
+    // 同一玩家交互防抖时间，单位毫秒
+    "debounceIntervalMs": 500,
+    // 手持这个物品点击箱子可打开管理界面；留空表示禁用
+    "manageToolItem": "minecraft:stick",
+    // 是否必须下蹲才能用管理工具打开管理界面
+    "requireSneakingForManage": false
+  },
+
+  // PLand 领地相关限制
+  "landRestrictionSettings": {
+    // 是否允许在“箱子主人自己的 PLand 领地”内使用漏斗/合成器/投掷器转移受保护箱子
+    "allowAutomationTransferInOwnerPland": false,
+    // 是否仅允许普通玩家在 PLand 领地内创建出售商店和回收商店
+    "onlyAllowTradeShopCreationInPland": false
+  },
+
+  // 日志等级；可填写数字或 Trace / Debug / Info / Warn / Error / Fatal / Off
+  "logLevel": 3,
+
+  // 资源文件路径配置
+  "resourcePaths": {
+    // 数据库文件路径
+    "databasePath": "plugins/ChestTrading/data/ChestTrading.db",
+    // 物品贴图文件，按顺序加载
+    "itemTextureFiles": [
+      "plugins/ChestTrading/icon/texture_path.json",
+      "plugins/ChestTrading/icon/terrain_texture.json",
+      "plugins/ChestTrading/icon/item_texture.json"
+    ],
+    // 当前语言
+    "language": "zh_CN",
+    // 语言文件目录
+    "languageDir": "plugins/ChestTrading/lang"
+  },
+
+  // 销量榜显示数量限制
+  "salesRankingSettings": {
+    // 销量榜最多显示多少条
+    "maxDisplayCount": 50
+  },
+
+  // 商店名称限制
+  "shopNameRestrictions": {
+    // 禁止出现在店名中的关键词；空数组表示不限制
+    "blockedKeywords": [],
+    // 店名最大长度；<= 0 表示不限制
+    "maxLength": 32
+  },
+
+  // 税率设置；0.05 表示 5%
+  "taxSettings": {
+    // 回收商店税率
+    "recycleTaxRate": 0.0,
+    // 出售商店税率
+    "shopTaxRate": 0.0
+  },
+
+  // 传送到箱子相关设置
+  "teleportSettings": {
+    // 是否允许普通玩家通过公开列表 / 交易记录传送到箱子；管理员不受此限制
+    "enableChestTeleport": true,
+    // 传送冷却时间，单位秒
+    "teleportCooldownSec": 60,
+    // 每次传送花费
+    "teleportCost": 100.0
+  },
+
+  // 交易记录自动清理设置；填 -1 表示关闭对应清理
+  "tradeRecordCleanupSettings": {
+    // 自动删除早于指定天数的记录
+    "maxRecordAgeDays": -1,
+    // 最大保留记录总数（购买 + 回收）
+    "maxTotalRecords": -1
+  },
+
+  // 禁止上架 / 禁止回收的物品列表；支持写完整命名空间 ID
+  "tradeRestrictionSettings": {
+    // 禁止设置为回收委托的物品
+    "blockedRecycleItems": [],
+    // 禁止设置为出售商品的物品
+    "blockedShopItems": []
+  },
+
+  // 配置版本号
+  "version": 1
+}

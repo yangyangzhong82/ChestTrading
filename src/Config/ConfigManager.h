@@ -7,6 +7,11 @@
 
 namespace CT {
 
+struct ReloadResult {
+    bool success                = false;
+    bool commandSettingsIgnored = false;
+};
+
 class ConfigManager {
 public:
     // 获取单例实例
@@ -19,7 +24,7 @@ public:
     bool save();
 
     // 重新加载配置
-    bool reload();
+    ReloadResult reload();
 
     // 获取配置对象的引用
     Config& get();

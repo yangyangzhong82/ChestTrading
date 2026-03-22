@@ -13,7 +13,7 @@
 | --- | --- | --- | --- |
 | `/ct` | 无 | 显示插件欢迎信息 | 仅玩家 |
 | `/ctadmin` | 无 | 打开管理员主菜单 | 仅玩家；需要管理员权限 |
-| `/ctreload` | 无 | 重载配置文件 | 可控制台/玩家执行；命令级别为 `GameDirectors` |
+| `/ctreload` | 无 | 重载配置文件（不重新注册命令） | 可控制台/玩家执行；命令级别为 `GameDirectors` |
 | `/ctimportshop` | 无 | 显示官方商店导入命令用法 | 仅玩家；需要管理员权限 |
 | `/ctimportshop merge <x> <y> <z> <file_path>` | `merge` 子命令 | 合并导入外部官方商店配置到指定官方商店箱子 | 仅玩家；需要管理员权限 |
 | `/ctimportshop replace <x> <y> <z> <file_path>` | `replace` 子命令 | 清空原商品后导入外部官方商店配置到指定官方商店箱子 | 仅玩家；需要管理员权限 |
@@ -63,3 +63,4 @@
   - 例如 `/ctadmin` 既要求命令级别为 `GameDirectors`，也要求 `chest.admin`。
 - 创建箱子的权限由业务逻辑校验（`ChestService::canPlayerCreateChest`），不是独立聊天命令。
 - 当服务器未安装 `Bedrock-Authority`，或其导出符号不可用时，`PermissionCompat::hasPermission(...)` 会回退为放行模式，即权限节点不生效。
+- 修改 `commandSettings` 后需要重启插件；`/ctreload` 只重载配置值，不会重新注册命令。

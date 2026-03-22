@@ -88,7 +88,32 @@ bool ConfigManager::save() {
     return true;
 }
 
-bool ConfigManager::reload() { return load(mConfigPath); }
+ReloadResult ConfigManager::reload() {
+    ReloadResult result;
+    if (mConfigPath.empty()) {
+        Entry::getInstance().getSelf().getLogger().warn(
+            "Reload requested before config path was initialized."
+        );
+        return result;
+    }
+
+    const auto previousCommands = mConfig->commandSettings;
+    if (!load(mConfigPath)) {
+        return result;
+    }
+
+    if (nlohmann::json(previousCommands) != nlohmann::json(mConfig->commandSettings)) {
+        mConfig->commandSettings = previousCommands;
+        Entry::getInstance().getSelf().getLogger().warn(
+            "Command settings changed in config.json, but commands do not support hot reload. "
+            "Keeping existing command names until the plugin restarts."
+        );
+        result.commandSettingsIgnored = true;
+    }
+
+    result.success = true;
+    return result;
+}
 
 Config& ConfigManager::get() { return *mConfig; }
 

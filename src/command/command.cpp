@@ -101,8 +101,12 @@ void registerCommand() {
     );
     reloadCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const&, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
-            if (ConfigManager::getInstance().reload()) {
-                output.success(i18n.get("command.reload_success"));
+            auto result = ConfigManager::getInstance().reload();
+            if (result.success) {
+                output.success(i18n.get(
+                    result.commandSettingsIgnored ? "command.reload_success_commands_ignored"
+                                                  : "command.reload_success"
+                ));
             } else {
                 output.error(i18n.get("command.reload_fail"));
             }

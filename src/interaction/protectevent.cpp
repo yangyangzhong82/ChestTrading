@@ -249,4 +249,34 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     // 如果不是箱子，或者箱子未被锁定，则执行原始逻辑
     return origin(region, curPos, curBranchFacing, pistonMoveFacing);
 }
+// 阻止非玩家实体（如铜傀儡等）打开受保护的箱子
+LL_AUTO_TYPE_INSTANCE_HOOK(
+    ChestStartOpenHook,
+    ll::memory::HookPriority::Normal,
+    ChestBlockActor,
+    &ChestBlockActor::startOpen,
+    void,
+    ::Actor& actor
+) {
+    if (!actor.isPlayer()) {
+        auto  pos    = this->mPosition;
+        auto& region = actor.getDimensionBlockSource();
+        int   dimId  = static_cast<int>(region.getDimensionId());
+
+        if (ChestService::getInstance().isChestProtected(pos, dimId, region)) {
+            logger.debug(
+                "非玩家实体 {} 尝试打开受保护的箱子 ({}, {}, {}) in dim {}，已阻止。",
+                actor.getTypeName(),
+                pos->x,
+                pos->y,
+                pos->z,
+                dimId
+            );
+            return; // 阻止打开
+        }
+    }
+
+    origin(actor);
+}
+
 } // namespace CT

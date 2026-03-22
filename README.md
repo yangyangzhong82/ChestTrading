@@ -55,7 +55,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 ### 管理能力
 
 - 支持管理员商店 / 官方回收商店
-- 支持重载配置
+- 支持重载大部分配置
 - 支持限购窗口重置
 - 支持箱子打包为物品并恢复
 - 支持店铺名称审核规则
@@ -110,7 +110,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 管理员常用命令：
 
 - `/ctadmin`：打开管理员菜单
-- `/ctreload`：重载配置
+- `/ctreload`：重载配置（不重新注册命令）
 - `/ctimportshop merge <x> <y> <z> <file>`：合并导入外部官方商店配置到指定官方商店箱子
 - `/ctimportshop replace <x> <y> <z> <file>`：清空后导入外部官方商店配置到指定官方商店箱子
 - `/ctlimitreset ...`：重置限购窗口
@@ -124,10 +124,12 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 
 插件配置支持注释 JSON，并会对缺失键使用默认值。
 
+注意：`commandSettings` 中的命令名只会在插件启动时注册。修改这部分配置后需要重启插件，`/ctreload` 不会重新注册命令。
+
 常见配置项包括：
 
 - `economyType`：经济实现类型
-- `commandSettings`：插件命令名称配置
+- `commandSettings`：插件命令名称配置（修改后需重启插件）
 - `floatingText`：悬浮字与假掉落物显示
 - `chestLimits`：各类箱子数量上限
 - `chestCosts`：创建费用
