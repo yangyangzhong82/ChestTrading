@@ -1,6 +1,6 @@
+#include "Utils/ChestTypeUtils.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
-#include "Utils/ChestTypeUtils.h"
 #include "mc/deps/ecs/gamerefs_entity/EntityContext.h"
 #include "mc/deps/game_refs/WeakRef.h"
 #include "mc/world/actor/Actor.h"
@@ -14,6 +14,7 @@
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "mc/world/level/block/actor/PistonBlockActor.h"
 #include "service/ChestService.h"
+
 
 
 namespace CT {
@@ -254,7 +255,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ChestStartOpenHook,
     ll::memory::HookPriority::Normal,
     ChestBlockActor,
-    &ChestBlockActor::startOpen,
+    &ChestBlockActor::$startOpen,
     void,
     ::Actor& actor
 ) {
