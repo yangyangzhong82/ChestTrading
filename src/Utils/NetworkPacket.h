@@ -7,6 +7,7 @@
 #include "mc/network/Packet.h"
 
 #include <string>
+#include <string_view>
 
 namespace CT {
 
@@ -25,7 +26,7 @@ public:
 
     [[nodiscard]] auto getId() const -> MinecraftPacketIds override { return packetId; }
 
-    [[nodiscard]] auto getName() const -> std::string override { return "NetworkPacket"; }
+    [[nodiscard]] auto getName() const -> std::string_view override { return "NetworkPacket"; }
 
     void write(BinaryStream& stream) const override { stream.mBuffer.append(mData); }
 

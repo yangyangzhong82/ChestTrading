@@ -259,7 +259,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     void,
     ::Actor& actor
 ) {
-    if (!actor.isPlayer()) {
+    if (actor.getEntityTypeId() != ActorType::Player) {
         auto  pos    = this->mPosition;
         auto& region = actor.getDimensionBlockSource();
         int   dimId  = static_cast<int>(region.getDimensionId());

@@ -18,7 +18,7 @@
 #include "mc/world/item/enchanting/EnchantmentInstance.h"
 #include "mc/world/item/enchanting/ItemEnchants.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
-#include "mc/nbt/ByteTag.h"
+#include "mc/deps/nbt/ByteTag.h"
 #include "nlohmann/json.hpp"
 #include "repository/ItemRepository.h"
 #include "repository/ShopRepository.h"

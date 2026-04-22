@@ -3,7 +3,7 @@
 #include "Config/ConfigManager.h"
 #include "Utils/NbtUtils.h"
 #include "compat/PermissionCompat.h"
-#include "mc/nbt/ByteTag.h"
+#include "mc/deps/nbt/ByteTag.h"
 #include "mc/world/item/ItemStack.h"
 
 #include <algorithm>

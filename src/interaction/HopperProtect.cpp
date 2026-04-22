@@ -1,4 +1,5 @@
 
+#include "Utils/ChestTypeUtils.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
 #include "mc/world/actor/Hopper.h"
@@ -8,7 +9,6 @@
 #include "mc/world/level/block/HopperBlock.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "service/ChestService.h"
-#include "Utils/ChestTypeUtils.h"
 
 namespace CT {
 
@@ -16,7 +16,7 @@ namespace {
 
 bool validateChestBlockEntity(BlockSource& region, BlockPos const& pos, char const* hookName) {
     if (!region.hasChunksAt(pos, 0, false)) {
-        logger.warn(
+        logger.debug(
             "{}: hopper target/source chunk is not loaded at ({}, {}, {}), skip transfer to avoid invalid access.",
             hookName,
             pos.x,
@@ -113,7 +113,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         );
     }
     BlockPos chestPos = BlockPos(pos).above(); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
-    int dimId = static_cast<int>(region.getDimensionId());
+    int      dimId    = static_cast<int>(region.getDimensionId());
 
     if (!validateChestBlockEntity(region, chestPos, "HopperPullInHook")) {
         return false;

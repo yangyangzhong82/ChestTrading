@@ -6,8 +6,8 @@
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include "logger.h"
 #include "mc/deps/core/utility/BinaryStream.h"
-#include "mc/nbt/CompoundTag.h"
-#include "mc/nbt/ListTag.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/ListTag.h"
 #include "mc/network/NetworkIdentifier.h"
 #include "mc/network/ServerNetworkHandler.h"
 #include "mc/network/packet/BlockActorDataPacket.h"
@@ -172,11 +172,11 @@ void sendBlockUpdate(Player& player, BlockPos const& pos, uint runtimeId) {
 }
 
 void sendChestBlockActor(
-    Player&                player,
-    BlockPos const&        pos,
-    std::string const&     title,
+    Player&                 player,
+    BlockPos const&         pos,
+    std::string const&      title,
     std::optional<BlockPos> pairedPos = std::nullopt,
-    bool                   pairLead  = false
+    bool                    pairLead  = false
 ) {
     CompoundTag tag;
     tag["Findable"]   = static_cast<char>(0);
@@ -205,7 +205,12 @@ void sendChestBlockActor(
     );
 }
 
-void sendLargeChestBlockActor(Player& player, BlockPos const& leadPos, BlockPos const& pairPos, std::string const& title) {
+void sendLargeChestBlockActor(
+    Player&            player,
+    BlockPos const&    leadPos,
+    BlockPos const&    pairPos,
+    std::string const& title
+) {
     sendChestBlockActor(player, leadPos, title, pairPos, true);
     sendChestBlockActor(player, pairPos, title, leadPos, false);
 }
@@ -288,10 +293,8 @@ struct ActionCaptureContext {
 
 thread_local ActionCaptureContext gActionCapture;
 
-auto resolveSlotFromAction(
-    ItemStackRequestAction const& requestAction,
-    Session const&                session
-) -> std::optional<uint8_t>;
+auto resolveSlotFromAction(ItemStackRequestAction const& requestAction, Session const& session)
+    -> std::optional<uint8_t>;
 
 auto isSessionContainerSlot(Session const& session, FullContainerName const& fullName, uchar slot) -> bool {
     if (slot >= session.items.size()) {
@@ -367,10 +370,10 @@ void captureSlotFromResponse(ItemStackRequestActionHandler& handler, ItemStackRe
         return;
     }
 
-    auto const&         session         = it->second;
-    auto const&         fullNameStorage = slotInfo.mOpenContainerNetId;
-    auto const&         fullName        = fullNameStorage.get();
-    auto const isSession = isSessionContainerSlot(session, fullName, static_cast<uchar>(slotInfo.mSlot));
+    auto const& session         = it->second;
+    auto const& fullNameStorage = slotInfo.mOpenContainerNetId;
+    auto const& fullName        = fullNameStorage.get();
+    auto const  isSession       = isSessionContainerSlot(session, fullName, static_cast<uchar>(slotInfo.mSlot));
 
     if (isSession) {
         gActionCapture.slot = static_cast<uint8_t>(slotInfo.mSlot);
@@ -378,11 +381,11 @@ void captureSlotFromResponse(ItemStackRequestActionHandler& handler, ItemStackRe
 }
 
 auto captureSlotFromValidatedRequest(
-    ItemStackRequestActionHandler&    handler,
-    ItemStackRequestSlotInfo const&   requestSlotInfo,
+    ItemStackRequestActionHandler&         handler,
+    ItemStackRequestSlotInfo const&        requestSlotInfo,
     ItemStackRequestHandlerSlotInfo const& resolvedSlotInfo,
-    bool                              isItemRequired,
-    bool                              isHintSlot
+    bool                                   isItemRequired,
+    bool                                   isHintSlot
 ) -> void {
     (void)isItemRequired;
     (void)isHintSlot;
@@ -403,12 +406,12 @@ auto captureSlotFromValidatedRequest(
         return;
     }
 
-    auto const&         session         = it->second;
-    auto const&         reqFullName     = requestSlotInfo.mFullContainerName;
-    auto const&         fullNameStorage = resolvedSlotInfo.mOpenContainerNetId;
-    auto const&         fullName        = fullNameStorage.get();
-    auto const          reqIsSession    = isSessionContainerSlot(session, reqFullName, requestSlotInfo.mSlot);
-    auto const          isSession       = isSessionContainerSlot(session, fullName, static_cast<uchar>(resolvedSlotInfo.mSlot));
+    auto const& session         = it->second;
+    auto const& reqFullName     = requestSlotInfo.mFullContainerName;
+    auto const& fullNameStorage = resolvedSlotInfo.mOpenContainerNetId;
+    auto const& fullName        = fullNameStorage.get();
+    auto const  reqIsSession    = isSessionContainerSlot(session, reqFullName, requestSlotInfo.mSlot);
+    auto const  isSession       = isSessionContainerSlot(session, fullName, static_cast<uchar>(resolvedSlotInfo.mSlot));
 
     if (isSession) {
         gActionCapture.slot = static_cast<uint8_t>(resolvedSlotInfo.mSlot);
@@ -417,10 +420,8 @@ auto captureSlotFromValidatedRequest(
     }
 }
 
-auto resolveSlotFromAction(
-    ItemStackRequestAction const& requestAction,
-    Session const&                session
-) -> std::optional<uint8_t> {
+auto resolveSlotFromAction(ItemStackRequestAction const& requestAction, Session const& session)
+    -> std::optional<uint8_t> {
     auto const actionType = static_cast<ItemStackRequestActionType>(requestAction.mActionType);
     if (actionType != ItemStackRequestActionType::Take && actionType != ItemStackRequestActionType::Place
         && actionType != ItemStackRequestActionType::Swap && actionType != ItemStackRequestActionType::Drop
@@ -428,11 +429,11 @@ auto resolveSlotFromAction(
         return std::nullopt;
     }
 
-    auto const*         transfer = static_cast<ItemStackRequestActionTransferBase const*>(&requestAction);
-    auto const&         src      = *transfer->mSrc;
-    auto const&         dst      = *transfer->mDst;
-    auto const srcIsSession = isSessionContainerSlot(session, src.mFullContainerName, src.mSlot);
-    auto const dstIsSession = isSessionContainerSlot(session, dst.mFullContainerName, dst.mSlot);
+    auto const* transfer     = static_cast<ItemStackRequestActionTransferBase const*>(&requestAction);
+    auto const& src          = *transfer->mSrc;
+    auto const& dst          = *transfer->mDst;
+    auto const  srcIsSession = isSessionContainerSlot(session, src.mFullContainerName, src.mSlot);
+    auto const  dstIsSession = isSessionContainerSlot(session, dst.mFullContainerName, dst.mSlot);
 
     if (srcIsSession) {
         return static_cast<uint8_t>(src.mSlot);
@@ -537,27 +538,38 @@ bool open(Player& player, OpenRequest request) {
     auto const playerUuid      = player.getUuid().asString();
     auto const playerXuid      = player.getXuid();
 
-    runAfterTicks(4, [playerKey, playerUuid, playerXuid, openContainerId, openGeneration, openPos, openPairPos, openTitle, openItems]() {
-        auto* player = findPlayerByIdentity(playerUuid, playerXuid);
-        if (!player) {
-            return;
-        }
-
-        {
-            std::scoped_lock lock(gSessionMutex);
-            auto             it = gSessions.find(playerKey);
-            if (it == gSessions.end() || it->second.containerId != openContainerId
-                || it->second.generation != openGeneration) {
+    runAfterTicks(
+        4,
+        [playerKey,
+         playerUuid,
+         playerXuid,
+         openContainerId,
+         openGeneration,
+         openPos,
+         openPairPos,
+         openTitle,
+         openItems]() {
+            auto* player = findPlayerByIdentity(playerUuid, playerXuid);
+            if (!player) {
                 return;
             }
-        }
 
-        sendBlockUpdate(*player, openPos, getChestRuntimeId());
-        sendBlockUpdate(*player, openPairPos, getChestRuntimeId());
-        sendLargeChestBlockActor(*player, openPos, openPairPos, openTitle);
-        sendContainerOpen(*player, openContainerId, openPos);
-        sendContainerSlots(*player, openContainerId, openItems);
-    });
+            {
+                std::scoped_lock lock(gSessionMutex);
+                auto             it = gSessions.find(playerKey);
+                if (it == gSessions.end() || it->second.containerId != openContainerId
+                    || it->second.generation != openGeneration) {
+                    return;
+                }
+            }
+
+            sendBlockUpdate(*player, openPos, getChestRuntimeId());
+            sendBlockUpdate(*player, openPairPos, getChestRuntimeId());
+            sendLargeChestBlockActor(*player, openPos, openPairPos, openTitle);
+            sendContainerOpen(*player, openContainerId, openPos);
+            sendContainerSlots(*player, openContainerId, openItems);
+        }
+    );
 
     return true;
 }
@@ -698,9 +710,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     ItemStackNetResult,
     ItemStackRequestAction const& requestAction
 ) {
-    auto&      player    = mPlayer;
-    auto const playerKey = getPlayerKey(player);
-    bool       tracking  = false;
+    auto&                  player    = mPlayer;
+    auto const             playerKey = getPlayerKey(player);
+    bool                   tracking  = false;
     std::optional<uint8_t> actionSlot;
 
     {
@@ -716,9 +728,9 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return origin(requestAction);
     }
 
-    auto prevCapture        = gActionCapture;
-    gActionCapture.active   = true;
-    gActionCapture.playerKey = playerKey;
+    auto prevCapture          = gActionCapture;
+    gActionCapture.active     = true;
+    gActionCapture.playerKey  = playerKey;
     gActionCapture.actionType = static_cast<ItemStackRequestActionType>(requestAction.mActionType);
     gActionCapture.slot.reset();
 

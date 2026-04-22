@@ -3,12 +3,12 @@
 #include "FloatingText/FloatingText.h"
 #include "Utils/ChestTypeUtils.h"
 #include "Utils/NbtUtils.h"
-#include "compat/PermissionCompat.h"
 #include "compat/PLandCompat.h"
-#include "logger.h"
-#include "mc/nbt/CompoundTag.h"
-#include "mc/nbt/CompoundTagVariant.h"
+#include "compat/PermissionCompat.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
+#include "logger.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/CompoundTagVariant.h"
 #include "repository/ChestRepository.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
@@ -150,8 +150,9 @@ void handlePlayerPlacedBlock(ll::event::PlayerPlacedBlockEvent& ev) {
                 chestInfo->type
             );
 
-            bool isShopType = (chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::RecycleShop
-                               || chestInfo->type == ChestType::AdminShop || chestInfo->type == ChestType::AdminRecycle);
+            bool isShopType =
+                (chestInfo->type == ChestType::Shop || chestInfo->type == ChestType::RecycleShop
+                 || chestInfo->type == ChestType::AdminShop || chestInfo->type == ChestType::AdminRecycle);
 
             ftm.setChestFakeItemEnabled(pos, dimId, chestInfo->enableFakeItem);
             ftm.setFloatingTextVisible(pos, dimId, chestInfo->enableFloatingText);

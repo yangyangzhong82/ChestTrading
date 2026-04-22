@@ -4,8 +4,8 @@
 #include "Utils/NbtUtils.h"
 #include "compat/PLandCompat.h"
 #include "compat/PermissionCompat.h"
-#include "mc/nbt/CompoundTagVariant.h"
-#include "mc/nbt/ListTag.h"
+#include "mc/deps/nbt/ListTag.h"
+#include "mc/deps/nbt/CompoundTagVariant.h"
 #include "mc/world/level/block/Block.h"
 #include "mc/world/level/block/BlockChangeContext.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
@@ -51,16 +51,14 @@ std::string escapeSnbtString(const std::string& value) {
 }
 
 std::unique_ptr<CompoundTag> buildPackedChestDisplayTag(TextService& txt, const std::optional<ChestData>& chestInfo) {
-    std::vector<std::string> loreLines{
-        txt.getMessage("chest.pack_item_lore")
-    };
+    std::vector<std::string> loreLines{txt.getMessage("chest.pack_item_lore")};
 
     if (chestInfo.has_value()) {
         loreLines.push_back(txt.getMessage(
             "chest.pack_item_type_lore",
             {
                 {"type", txt.getChestTypeName(chestInfo->type)}
-            }
+        }
         ));
     }
 
@@ -79,11 +77,11 @@ std::unique_ptr<CompoundTag> buildPackedChestDisplayTag(TextService& txt, const 
 } // namespace
 
 bool packChestForPlayer(Player& player, BlockPos pos, int dimId, BlockSource& region) {
-    auto        playerUuid   = player.getUuid().asString();
-    auto&       txt          = TextService::getInstance();
-    auto&       chestService = ChestService::getInstance();
-    auto        mainPos      = chestService.getMainChestPos(pos, region);
-    auto*       blockActor   = region.getBlockEntity(mainPos);
+    auto  playerUuid   = player.getUuid().asString();
+    auto& txt          = TextService::getInstance();
+    auto& chestService = ChestService::getInstance();
+    auto  mainPos      = chestService.getMainChestPos(pos, region);
+    auto* blockActor   = region.getBlockEntity(mainPos);
 
     if (!PermissionCompat::hasPermission(playerUuid, "chest.pack")) {
         player.sendMessage(txt.getMessage("command.no_permission"));

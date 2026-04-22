@@ -3,7 +3,7 @@
 #include "Utils/ItemTextureManager.h"
 #include "Utils/NbtUtils.h"
 #include "logger.h"
-#include "mc/nbt/CompoundTag.h"
+#include "mc/deps/nbt/CompoundTag.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/item/ItemStack.h"
 #include "mc/world/level/BlockPos.h"
@@ -51,12 +51,8 @@ std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemN
  * @param targetItemNbtStr 目标物品的SNBT字符串（已清理）。
  * @return 匹配物品总数量；若箱子当前不可读则返回 std::nullopt。
  */
-std::optional<int> tryCountItemsInChest(
-    BlockSource&       region,
-    BlockPos           pos,
-    int                dimId,
-    const std::string& targetItemNbtStr
-);
+std::optional<int>
+tryCountItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr);
 
 /**
  * @brief 迭代箱子内容，根据提供的NBT字符串计算匹配物品的总数量。

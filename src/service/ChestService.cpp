@@ -8,7 +8,7 @@
 #include "db/Sqlite3Wrapper.h"
 #include "ll/api/service/PlayerInfo.h"
 #include "logger.h"
-#include "mc/nbt/StringTag.h"
+#include "mc/deps/nbt/StringTag.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
