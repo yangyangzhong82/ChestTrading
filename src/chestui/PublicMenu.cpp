@@ -35,7 +35,8 @@ constexpr size_t kMenuRecycleItemsSlot    = 16;
 constexpr size_t kMenuRankingSlot         = 28;
 constexpr size_t kMenuRecordsSlot         = 30;
 constexpr size_t kMenuAdminSlot           = 32;
-constexpr size_t kMenuCloseSlot           = 49;
+constexpr size_t kMenuCloseSlot           = 51;
+constexpr size_t kMenuBackSlot            = 52;
 
 std::string escapeSnbtString(const std::string& value) {
     std::string escaped;
@@ -187,15 +188,16 @@ std::vector<ItemStack> buildMenuItems(Player& player) {
         );
     }
     items[kMenuCloseSlot] = makeMenuItem("minecraft:barrier", txt.getMessage("public_shop.button_close"));
+    items[kMenuBackSlot]  = makeMenuItem("minecraft:arrow", txt.getMessage("form.button_back"));
     return items;
 }
 
 } // namespace
 
-bool open(Player& player) {
+bool open(Player& player, std::function<void(Player&)> onBack) {
     auto& txt = TextService::getInstance();
 
-    auto handleClick = [](Player& p, ChestUI::ClickContext const& ctx) {
+    auto handleClick = [onBack = std::move(onBack)](Player& p, ChestUI::ClickContext const& ctx) {
         switch (ctx.slot) {
         case kMenuPublicShopsSlot:
             showPublicShopListChestUi(p, 0, "", "owner", OfficialFilter::All, PublicListSortMode::Sales, [](Player& backPlayer) {
@@ -238,6 +240,13 @@ bool open(Player& player) {
             return;
         case kMenuCloseSlot:
             ChestUI::close(p);
+            return;
+        case kMenuBackSlot:
+            if (onBack) {
+                onBack(p);
+            } else {
+                ChestUI::close(p);
+            }
             return;
         default:
             return;

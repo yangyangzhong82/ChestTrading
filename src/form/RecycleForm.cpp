@@ -293,8 +293,8 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 });
                 continue;
             }
-            itemNbt->at("Count") = ByteTag(1);
-            auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+            CT::NbtUtils::ensureItemCount(*itemNbt);
+            auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
             if (!itemPtr) {
                 fm.appendButton(txt.getMessage("form.data_corrupt_button2"), [](Player& p) {
                     p.sendMessage(TextService::getInstance().getMessage("recycle.data_corrupt"));
@@ -838,8 +838,8 @@ void showEditCommissionForm(
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
         return;
     }
-    itemNbt->at("Count") = ByteTag(1);
-    auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+    CT::NbtUtils::ensureItemCount(*itemNbt);
+    auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
         player.sendMessage(txt.getMessage("recycle.load_fail"));
         showCommissionDetailsForm(player, pos, dimId, region, commissionNbtStr);
@@ -958,8 +958,8 @@ void showCommissionDetailsForm(
         player.sendMessage(txt.getMessage("recycle.load_fail"));
         return;
     }
-    itemNbt->at("Count") = ByteTag(1);
-    auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+    CT::NbtUtils::ensureItemCount(*itemNbt);
+    auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
         player.sendMessage(txt.getMessage("recycle.load_fail"));
         return;
@@ -1175,8 +1175,8 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
         for (const auto& commission : commissions) {
             auto itemNbt = CT::NbtUtils::parseSNBT(commission.itemNbt);
             if (!itemNbt) continue;
-            itemNbt->at("Count") = ByteTag(1);
-            auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+            CT::NbtUtils::ensureItemCount(*itemNbt);
+            auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
             if (!itemPtr) continue;
             ItemStack item = *itemPtr;
 

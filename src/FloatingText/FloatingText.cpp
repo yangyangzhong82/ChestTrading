@@ -483,8 +483,8 @@ void FloatingTextManager::loadAllChests() {
                         // 从 NBT 字符串解析物品名称
                         auto nbt = CompoundTag::fromSnbt(itemNbt);
                         if (nbt) {
-                            nbt->at("Count") = ByteTag(1); // 修复：为创建ItemStack添加Count标签
-                            auto itemPtr     = NbtUtils::createItemFromNbt(*nbt);
+                            NbtUtils::ensureItemCount(*nbt);
+                            auto itemPtr = NbtUtils::createItemFromNbt(*nbt);
                             if (itemPtr && !itemPtr->isNull()) {
                                 std::string itemName = itemPtr->getName();
                                 if (itemName.empty()) {
@@ -842,8 +842,8 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 continue;
             }
 
-            nbt->at("Count") = ByteTag(1);
-            auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
+            CT::NbtUtils::ensureItemCount(*nbt);
+            auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
             if (!itemPtr || itemPtr->isNull()) {
                 logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemNbt);
                 continue;
@@ -989,8 +989,8 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         logger.warn("sendFakeItemToPlayer: failed to parse item nbt: {}", currentNbt);
         return;
     }
-    nbt->at("Count") = ByteTag(1);
-    auto itemPtr     = CT::NbtUtils::createItemFromNbt(*nbt);
+    CT::NbtUtils::ensureItemCount(*nbt);
+    auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
     if (!itemPtr || itemPtr->isNull()) {
         logger.warn("sendFakeItemToPlayer: failed to create item from nbt: {}", currentNbt);
         return;

@@ -120,6 +120,11 @@ bool setBlockEntityNbt(BlockActor* blockEntity, const CompoundTag& nbtTag);
 std::unique_ptr<ItemStack> createItemFromNbt(const CompoundTag& tag);
 
 /**
+ * @brief Ensure item NBT has a valid Count tag for ItemStack creation.
+ */
+void ensureItemCount(CompoundTag& tag, int count = 1);
+
+/**
  * @brief 获取ItemStack的NBT数据
  * @param item 要获取NBT的ItemStack
  * @return 一个包含NBT数据的 std::unique_ptr<CompoundTag>。

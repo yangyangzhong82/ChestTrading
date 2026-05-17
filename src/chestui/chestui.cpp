@@ -1,11 +1,9 @@
 #include "chestui/chestui.h"
 
-#include "Utils/NetworkPacket.h"
 #include "ll/api/memory/Hook.h"
 #include "ll/api/service/Bedrock.h"
 #include "ll/api/thread/ServerThreadExecutor.h"
 #include "logger.h"
-#include "mc/deps/core/utility/BinaryStream.h"
 #include "mc/deps/nbt/CompoundTag.h"
 #include "mc/deps/nbt/ListTag.h"
 #include "mc/network/NetworkIdentifier.h"
@@ -16,6 +14,7 @@
 #include "mc/network/packet/InventoryContentPacket.h"
 #include "mc/network/packet/InventorySlotPacket.h"
 #include "mc/network/packet/UpdateBlockPacket.h"
+#include "mc/server/ServerPlayer.h"
 #include "mc/world/actor/player/Player.h"
 #include "mc/world/containers/ContainerEnumName.h"
 #include "mc/world/containers/FullContainerName.h"
@@ -152,14 +151,11 @@ auto getAirRuntimeId() -> uint {
 }
 
 void sendBlockUpdate(Player& player, BlockPos const& pos, uint runtimeId) {
-    BinaryStream stream;
-    stream.writeVarInt(pos.x, nullptr, nullptr);
-    stream.writeUnsignedVarInt(static_cast<uint>(pos.y), nullptr, nullptr);
-    stream.writeVarInt(pos.z, nullptr, nullptr);
-    stream.writeUnsignedVarInt(runtimeId, nullptr, nullptr);
-    stream.writeUnsignedVarInt(0, nullptr, nullptr); // layer
-    stream.writeUnsignedVarInt(0, nullptr, nullptr); // flags
-    NetworkPacket<MinecraftPacketIds::UpdateBlock> packet(stream.mBuffer);
+    UpdateBlockPacket packet;
+    packet.mPos         = pos;
+    packet.mLayer       = static_cast<uint>(0);
+    packet.mUpdateFlags = static_cast<uchar>(0);
+    packet.mRuntimeId   = runtimeId;
     player.sendNetworkPacket(packet);
     logger.debug(
         "ChestUI: UpdateBlock -> {} pos=({}, {}, {}) runtimeId={}",
@@ -216,14 +212,11 @@ void sendLargeChestBlockActor(
 }
 
 void sendContainerOpen(Player& player, ContainerID containerId, BlockPos const& pos) {
-    BinaryStream stream;
-    stream.writeByte(static_cast<uchar>(static_cast<schar>(containerId)), nullptr, nullptr); // container id
-    stream.writeByte(0, nullptr, nullptr);                                                   // container type (chest)
-    stream.writeVarInt(pos.x, nullptr, nullptr);
-    stream.writeUnsignedVarInt(static_cast<uint>(pos.y), nullptr, nullptr);
-    stream.writeVarInt(pos.z, nullptr, nullptr);
-    stream.writeVarInt64(-1, nullptr, nullptr); // runtime entity id
-    NetworkPacket<MinecraftPacketIds::ContainerOpen> packet(stream.mBuffer);
+    ContainerOpenPacket packet;
+    packet.mContainerId   = containerId;
+    packet.mType          = SharedTypes::Legacy::ContainerType::Container;
+    packet.mPos           = pos;
+    packet.mEntityUniqueID = ActorUniqueID::INVALID_ID();
     player.sendNetworkPacket(packet);
     logger.debug(
         "ChestUI: ContainerOpen -> {} containerId={} pos=({}, {}, {})",
@@ -485,15 +478,33 @@ void runAfterTicks(int ticks, std::function<void()> task) {
     ll::thread::ServerThreadExecutor::getDefault().executeAfter(std::move(task), std::chrono::milliseconds(ticks * 50));
 }
 
+auto resolveContainerId(Player& player, int requestedContainerId) -> std::optional<ContainerID> {
+    if (requestedContainerId > static_cast<int>(ContainerID::Inventory)) {
+        return static_cast<ContainerID>(requestedContainerId);
+    }
+
+    auto& serverPlayer = static_cast<ServerPlayer&>(player);
+    auto  containerId  = serverPlayer.openUnmanagedContainer();
+    if (containerId == ContainerID::None) {
+        logger.warn("ChestUI: failed to allocate unmanaged container id for {}", player.getRealName());
+        return std::nullopt;
+    }
+    return containerId;
+}
+
 } // namespace
 
 bool open(Player& player, OpenRequest request) {
     cleanupForReopen(player);
 
+    auto containerId = resolveContainerId(player, request.containerId);
+    if (!containerId.has_value()) {
+        return false;
+    }
+
     Session session;
     session.generation         = ++gSessionGeneration;
-    int resolvedContainerId    = request.containerId;
-    session.containerId        = static_cast<ContainerID>(resolvedContainerId);
+    session.containerId        = containerId.value();
     session.dynamicContainerId = static_cast<uint>(static_cast<uchar>(session.containerId));
     session.openedAt           = std::chrono::steady_clock::now();
     session.fakePos            = makeFakePos(player, session.generation);

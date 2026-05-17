@@ -27,7 +27,7 @@ struct OpenRequest {
     std::vector<ItemStack> items;
     ClickCallback          onClick;
     CloseCallback          onClose;
-    int                    containerId{-30};
+    int                    containerId{-1};
     bool                   closeOnClick{true};
 };
 

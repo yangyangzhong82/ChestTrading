@@ -230,8 +230,8 @@ std::unique_ptr<ItemStack> createItemStackFromNbtString(const std::string& itemN
         logger.error("createItemStackFromNbtString: 无法解析物品NBT: {}", itemNbtStr);
         return nullptr;
     }
-    itemNbt->at("Count") = ByteTag(1); // 从NBT创建物品需要Count标签
-    auto itemPtr         = CT::NbtUtils::createItemFromNbt(*itemNbt);
+    CT::NbtUtils::ensureItemCount(*itemNbt);
+    auto itemPtr = CT::NbtUtils::createItemFromNbt(*itemNbt);
     if (!itemPtr) {
         logger.error("createItemStackFromNbtString: 无法从NBT创建物品。原始NBT: {}", itemNbtStr);
         return nullptr;

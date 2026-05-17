@@ -417,6 +417,8 @@ std::unique_ptr<ItemStack> createItemFromNbt(const CompoundTag& tag) {
     return newItem;
 }
 
+void ensureItemCount(CompoundTag& tag, int count) { tag["Count"] = ByteTag(static_cast<unsigned char>(count)); }
+
 
 std::unique_ptr<CompoundTag> getItemNbt(const ItemStack& item) {
     return item.save(*SaveContextFactory::createCloneSaveContext());
@@ -459,7 +461,7 @@ getContainerItemsInternal(const CompoundTag& containerNbt, const std::string& it
         if (skipZeroCount && itemCount == 0) continue;
 
         auto tempItemNbt            = itemTag.clone();
-        tempItemNbt->at("Count")    = ByteTag(1);
+        ensureItemCount(*tempItemNbt, 1);
         auto        tempItemPtr     = createItemFromNbt(*tempItemNbt);
         std::string itemDisplayInfo = rawItemName;
 
