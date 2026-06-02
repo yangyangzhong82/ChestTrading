@@ -8,6 +8,7 @@
 #include <Windows.h>
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -113,7 +114,7 @@ struct SymbolSet {
     // RCX=this, RDX=hidden return-buffer, R8=arg1, R9=arg2.
     using GetLandAtFn      = void (*)(LandRegistryOpaque const*, std::shared_ptr<LandOpaque>*, BlockPos const&, int);
     using IsOperatorFn     = bool (*)(LandRegistryOpaque const*, mce::UUID const&);
-    using GetPermTypeFn    = int (*)(LandOpaque const*, mce::UUID const&);
+    using GetPermTypeFn    = std::uint8_t (*)(LandOpaque const*, mce::UUID const&);
     using GetPermTableFn   = LandPermTableLayout const& (*)(LandOpaque const*);
 
     GetInstanceFn  getInstance  = nullptr;
@@ -246,8 +247,8 @@ bool hasRolePermission(
     if (symbols.isOperator(&registry, uuid)) {
         return true;
     }
-    int permType = symbols.getPermType(land, uuid);
-    // LandPermType: Operator=0, Owner=1, Member=2, Guest=3.
+    int permType = static_cast<int>(symbols.getPermType(land, uuid));
+    // LandPermType: Admin=0, Owner=1, Member=2, Actor=3.
     if (permType == 0 || permType == 1) {
         return true;
     }
@@ -348,7 +349,7 @@ std::optional<bool> PLandCompat::isOwnerLand(std::string const& playerUuid, Bloc
 
     try {
         mce::UUID const uuid = mce::UUID::fromString(playerUuid);
-        return context.symbols.getPermType(context.land.get(), uuid) == 1;
+        return static_cast<int>(context.symbols.getPermType(context.land.get(), uuid)) == 1;
     } catch (...) {
         reportRuntimeFailureThrottled("PLand 对接失败，步骤=isOwnerLand，已回退为不匹配。");
         return std::nullopt;
