@@ -278,6 +278,24 @@ PurchaseResult ShopService::purchaseItem(
         return {false, limitCheck.message};
     }
 
+    // 检查玩家背包容量（提前创建itemPtr以便复用）
+    auto itemPtr = FormUtils::createItemStackFromNbtString(itemNbt);
+    if (itemPtr) {
+        int maxStackSize = itemPtr->getMaxStackSize();
+        int inventorySpace = countPlayerInventorySpace(buyer, itemNbt, maxStackSize);
+        if (inventorySpace < quantity) {
+            return {
+                false,
+                txt.getMessage(
+                    "shop.inventory_full",
+                    {{"space", std::to_string(inventorySpace)}, {"need", std::to_string(quantity)}}
+                )
+            };
+        }
+    } else {
+        return {false, txt.getMessage("shop.data_corrupt")};
+    }
+
     // 获取箱子容器（大箱子会返回合并后的容器）
     auto* container = getChestContainer(region, mainPos);
     if (!container) {
@@ -411,7 +429,6 @@ PurchaseResult ShopService::purchaseItem(
     }
 
     // 给玩家物品
-    auto itemPtr = FormUtils::createItemStackFromNbtString(itemNbt);
     if (itemPtr) {
         int maxStackSize    = itemPtr->getMaxStackSize();
         int remainingToGive = quantity;
@@ -420,7 +437,12 @@ PurchaseResult ShopService::purchaseItem(
             ItemStack itemToGive = *itemPtr;
             itemToGive.set(giveCount);
             if (!buyer.add(itemToGive)) {
-                buyer.drop(itemToGive, true);
+                logger.warn(
+                    "purchaseItem: 物品添加失败，跳过。buyer={}, item={}, count={}",
+                    buyer.getRealName(),
+                    itemPtr->getTypeName(),
+                    giveCount
+                );
             }
             remainingToGive -= giveCount;
         }

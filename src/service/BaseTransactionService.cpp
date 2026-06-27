@@ -1,6 +1,7 @@
 #include "BaseTransactionService.h"
 #include "Utils/NbtUtils.h"
 #include "form/FormUtils.h"
+#include "mc/world/actor/player/Inventory.h"
 
 #include <optional>
 
@@ -191,6 +192,55 @@ BaseTransactionService::countAllMatchingItems(Container* container, const std::v
     }
 
     return result;
+}
+
+int BaseTransactionService::countPlayerInventorySpace(
+    Player&            player,
+    const std::string& itemNbt,
+    int                maxStackSize
+) {
+    if (maxStackSize <= 0) maxStackSize = 64;
+
+    auto& inventory = player.getInventory();
+
+    std::optional<std::string> expectedBinKey;
+    bool                       expectedDamageable = false;
+    if (auto expectedItem = FormUtils::createItemStackFromNbtString(itemNbt)) {
+        expectedDamageable = expectedItem->isDamageableItem();
+    }
+    if (auto tag = NbtUtils::parseSNBT(itemNbt)) {
+        auto cleaned = NbtUtils::cleanNbtForComparison(*tag, expectedDamageable);
+        expectedBinKey = NbtUtils::toBinaryNBT(*cleaned);
+    }
+
+    int totalSpace = 0;
+    for (int i = 0; i < inventory.getContainerSize(); ++i) {
+        const auto& invItem = inventory.getItem(i);
+        if (invItem.isNull()) {
+            totalSpace += maxStackSize;
+            continue;
+        }
+
+        auto invItemNbt = NbtUtils::getItemNbt(invItem);
+        if (!invItemNbt) continue;
+
+        auto cleanedNbt = NbtUtils::cleanNbtForComparison(*invItemNbt, invItem.isDamageableItem());
+        bool matches = false;
+        if (expectedBinKey) {
+            matches = (NbtUtils::toBinaryNBT(*cleanedNbt) == *expectedBinKey);
+        } else {
+            matches = (NbtUtils::toSNBT(*cleanedNbt) == itemNbt);
+        }
+
+        if (matches) {
+            int remaining = maxStackSize - static_cast<int>(invItem.mCount);
+            if (remaining > 0) {
+                totalSpace += remaining;
+            }
+        }
+    }
+
+    return totalSpace;
 }
 
 } // namespace CT

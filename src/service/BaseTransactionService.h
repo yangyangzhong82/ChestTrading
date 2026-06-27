@@ -16,6 +16,10 @@ namespace CT {
  * 提供箱子物品操作的通用方法
  */
 class BaseTransactionService {
+public:
+    // 计算玩家背包中能容纳指定物品的最大数量（含空位和同类物品堆叠空间）
+    static int countPlayerInventorySpace(Player& player, const std::string& itemNbt, int maxStackSize);
+
 protected:
     // 获取箱子的容器视图（大箱子会返回合并后的容器）
     static Container* getChestContainer(BlockSource& region, BlockPos pos);

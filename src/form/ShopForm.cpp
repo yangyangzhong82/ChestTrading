@@ -24,6 +24,7 @@
 #include "repository/ShopRepository.h"
 #include "service/ChestService.h"
 #include "service/DynamicPricingService.h"
+#include "service/BaseTransactionService.h"
 #include "service/ShopService.h"
 #include "service/TeleportService.h"
 #include "service/TextService.h"
@@ -47,6 +48,7 @@ constexpr size_t kShopChestUiNextSlot    = 47;
 constexpr size_t kShopChestUiSearchSlot  = 48;
 constexpr size_t kShopChestUiRefreshSlot = 49;
 constexpr size_t kShopChestUiCloseSlot   = 50;
+constexpr size_t kShopChestUiBackSlot    = 51;
 
 struct ShopChestUiEntry {
     std::string itemNbtStr;
@@ -514,6 +516,10 @@ ShopChestUiPageData buildShopChestUiPage(
         "minecraft:barrier",
         txt.getMessage("public_shop.button_close")
     );
+    chestItems[kShopChestUiBackSlot]    = makeChestUiControlItem(
+        "minecraft:arrow",
+        txt.getMessage("form.button_back")
+    );
 
     return ShopChestUiPageData{
         .title       = buildShopChestUiTitle(pos, dimId, region, searchKeyword, currentPage, totalPages),
@@ -530,7 +536,8 @@ void showShopItemSearchForm(
     int                dimId,
     const std::string& currentKeyword,
     bool               returnToChestUi,
-    size_t             returnPage
+    size_t             returnPage,
+    std::function<void(Player&)> onBack = {}
 ) {
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
@@ -544,7 +551,7 @@ void showShopItemSearchForm(
 
     fm.sendTo(
         player,
-        [pos, dimId, currentKeyword, returnToChestUi, returnPage](
+        [pos, dimId, currentKeyword, returnToChestUi, returnPage, onBack](
             Player& p,
             const ll::form::CustomFormResult& result,
             ll::form::FormCancelReason
@@ -552,7 +559,7 @@ void showShopItemSearchForm(
             auto& region = p.getDimensionBlockSource();
             if (!result.has_value()) {
                 if (returnToChestUi) {
-                    showShopChestItemsUi(p, pos, dimId, region, currentKeyword, returnPage);
+                    showShopChestItemsUi(p, pos, dimId, region, currentKeyword, returnPage, onBack);
                 } else {
                     showShopChestItemsForm(p, pos, dimId, region, currentKeyword);
                 }
@@ -567,7 +574,7 @@ void showShopItemSearchForm(
                 }
             }
             if (returnToChestUi) {
-                showShopChestItemsUi(p, pos, dimId, region, keyword, 0);
+                showShopChestItemsUi(p, pos, dimId, region, keyword, 0, onBack);
             } else {
                 showShopChestItemsForm(p, pos, dimId, region, keyword);
             }
@@ -578,27 +585,30 @@ void showShopItemSearchForm(
 } // namespace
 
 void showShopChestItemsUi(
-    Player&            player,
-    BlockPos           pos,
-    int                dimId,
-    BlockSource&       region,
-    const std::string& searchKeyword,
-    size_t             page
+    Player&                      player,
+    BlockPos                     pos,
+    int                          dimId,
+    BlockSource&                 region,
+    const std::string&           searchKeyword,
+    size_t                       page,
+    std::function<void(Player&)> onBack
 ) {
     (void)region;
 
     struct ShopChestUiState {
-        BlockPos    pos;
-        int         dimId{0};
-        std::string searchKeyword;
-        size_t      currentPage{0};
+        BlockPos                     pos;
+        int                          dimId{0};
+        std::string                  searchKeyword;
+        size_t                       currentPage{0};
+        std::function<void(Player&)> onBack;
     };
 
     auto state = std::make_shared<ShopChestUiState>(ShopChestUiState{
         .pos           = pos,
         .dimId         = dimId,
         .searchKeyword = searchKeyword,
-        .currentPage   = page
+        .currentPage   = page,
+        .onBack        = std::move(onBack)
     });
 
     auto refreshView = std::make_shared<std::function<void(Player&, bool)>>();
@@ -638,9 +648,9 @@ void showShopChestItemsUi(
                 runForOnlinePlayerAfterTicks(
                     p,
                     2,
-                    [pos = state->pos, dimId = state->dimId, keyword = state->searchKeyword, page = state->currentPage](
+                    [pos = state->pos, dimId = state->dimId, keyword = state->searchKeyword, page = state->currentPage, onBack = state->onBack](
                         Player& target
-                    ) { showShopItemSearchForm(target, pos, dimId, keyword, true, page); }
+                    ) { showShopItemSearchForm(target, pos, dimId, keyword, true, page, onBack); }
                 );
                 return;
             }
@@ -652,6 +662,16 @@ void showShopChestItemsUi(
 
             if (ctx.slot == kShopChestUiCloseSlot) {
                 ChestUI::close(p);
+                return;
+            }
+
+            if (ctx.slot == kShopChestUiBackSlot) {
+                ChestUI::close(p);
+                runForOnlinePlayerAfterTicks(p, 2, [onBack = state->onBack](Player& target) {
+                    if (onBack) {
+                        onBack(target);
+                    }
+                });
                 return;
             }
 
@@ -680,7 +700,8 @@ void showShopChestItemsUi(
                  itemNbtStr   = entry.itemNbtStr,
                  unitPrice    = entry.unitPrice,
                  keyword      = state->searchKeyword,
-                 currentPage  = state->currentPage](Player& target) {
+                 currentPage  = state->currentPage,
+                 onBack       = state->onBack](Player& target) {
                     auto& regionLater = target.getDimensionBlockSource();
                     showShopItemBuyForm(
                         target,
@@ -692,7 +713,8 @@ void showShopChestItemsUi(
                         itemNbtStr,
                         keyword,
                         true,
-                        currentPage
+                        currentPage,
+                        onBack
                     );
                 }
             );
@@ -1224,24 +1246,25 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
 }
 
 void showShopItemBuyForm(
-    Player&            player,
-    BlockPos           pos,
-    int                dimId,
-    int                slot,
-    double             unitPrice, // 修改为 double
-    BlockSource&       region,
-    const std::string& itemNbtStr, // 添加 itemNbtStr 参数
-    const std::string& searchKeyword,
-    bool               returnToChestUi,
-    size_t             returnPage
+    Player&                      player,
+    BlockPos                     pos,
+    int                          dimId,
+    int                          slot,
+    double                       unitPrice,
+    BlockSource&                 region,
+    const std::string&           itemNbtStr,
+    const std::string&           searchKeyword,
+    bool                         returnToChestUi,
+    size_t                       returnPage,
+    std::function<void(Player&)> onBack
 ) {
     (void)region;
     ll::form::CustomForm fm;
     auto&                txt = TextService::getInstance();
-    auto reopenBrowse = [pos, dimId, searchKeyword, returnToChestUi, returnPage](Player& target) {
+    auto reopenBrowse = [pos, dimId, searchKeyword, returnToChestUi, returnPage, onBack](Player& target) {
         auto& regionRef = target.getDimensionBlockSource();
         if (returnToChestUi) {
-            showShopChestItemsUi(target, pos, dimId, regionRef, searchKeyword, returnPage);
+            showShopChestItemsUi(target, pos, dimId, regionRef, searchKeyword, returnPage, onBack);
         } else {
             showShopChestItemsForm(target, pos, dimId, regionRef, searchKeyword);
         }
@@ -1305,10 +1328,21 @@ void showShopItemBuyForm(
             {"balance", CT::MoneyFormat::format(Economy::getMoney(player))}
     }
     ));
+    {
+        int maxStackSize = item.getMaxStackSize();
+        int availableSpace =
+            BaseTransactionService::countPlayerInventorySpace(player, itemNbtStr, maxStackSize);
+        fm.appendLabel(txt.getMessage(
+            "form.label_available_space",
+            {
+                {"space", std::to_string(availableSpace)}
+        }
+        ));
+    }
 
     fm.sendTo(
         player,
-        [pos, dimId, slot, unitPrice, itemNbtStr, searchKeyword, returnToChestUi, returnPage, reopenBrowse](
+        [pos, dimId, slot, unitPrice, itemNbtStr, searchKeyword, returnToChestUi, returnPage, onBack, reopenBrowse](
             Player&                           p,
             const ll::form::CustomFormResult& result,
             ll::form::FormCancelReason
@@ -1352,7 +1386,8 @@ void showShopItemBuyForm(
                         itemNbtStr,
                         searchKeyword,
                         returnToChestUi,
-                        returnPage
+                        returnPage,
+                        onBack
                     );
                     return;
                 }
@@ -1369,7 +1404,8 @@ void showShopItemBuyForm(
                     itemNbtStr,
                     searchKeyword,
                     returnToChestUi,
-                    returnPage
+                    returnPage,
+                    onBack
                 );
                 return;
             }

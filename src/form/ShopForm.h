@@ -10,12 +10,13 @@
 namespace CT {
 
 void showShopChestItemsUi(
-    Player&            player,
-    BlockPos           pos,
-    int                dimId,
-    BlockSource&       region,
-    const std::string& searchKeyword = "",
-    std::size_t        page          = 0
+    Player&                        player,
+    BlockPos                       pos,
+    int                            dimId,
+    BlockSource&                   region,
+    const std::string&             searchKeyword = "",
+    std::size_t                    page          = 0,
+    std::function<void(Player&)>   onBack        = {}
 );
 void showShopChestItemsForm(
     Player&            player,
@@ -40,16 +41,17 @@ void showShopItemManageForm(
 );
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region);
 void showShopItemBuyForm(
-    Player&            player,
-    BlockPos           pos,
-    int                dimId,
-    int                slot,
-    double             unitPrice,
-    BlockSource&       region,
-    const std::string& itemNbtStr,
-    const std::string& searchKeyword = "",
-    bool               returnToChestUi = false,
-    std::size_t        returnPage      = 0
+    Player&                      player,
+    BlockPos                     pos,
+    int                          dimId,
+    int                          slot,
+    double                       unitPrice,
+    BlockSource&                 region,
+    const std::string&           itemNbtStr,
+    const std::string&           searchKeyword = "",
+    bool                         returnToChestUi = false,
+    std::size_t                  returnPage      = 0,
+    std::function<void(Player&)> onBack          = {}
 );
 void showPlayerPurchaseHistoryForm(Player& player, std::function<void(Player&)> onBack = {});
 
