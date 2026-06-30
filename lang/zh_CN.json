@@ -44,7 +44,9 @@
     "land_no_permission_destroy": "§c你没有在此领地破坏方块的权限。",
     "land_no_permission_pack": "§c你没有在此领地打包箱子的权限。",
     "create_trade_shop_only_in_pland": "§c当前配置仅允许在 PLand 领地内设置商店和回收商店。",
-    "land_create_type_disabled": "§c该领地主人已禁止其他玩家在此领地创建{type}。"
+    "land_create_type_disabled": "§c该领地主人已禁止其他玩家在此领地创建{type}。",
+    "expiry_notice": "§e你的{type}已过期并变回普通箱子。位置: {dim} [{x}, {y}, {z}]",
+    "expiry_notice_refund": "§e你的{type}已过期并变回普通箱子。位置: {dim} [{x}, {y}, {z}]§e，已返还 §6{price}§e 金币。"
   },
   "shop": {
     "insufficient_money": "§c你的金币不足！需要 §6{price}§c 金币。",

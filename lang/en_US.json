@@ -44,7 +44,9 @@
     "land_no_permission_destroy": "§cYou don't have permission to destroy blocks in this land.",
     "land_no_permission_pack": "§cYou don't have permission to pack chests in this land.",
     "create_trade_shop_only_in_pland": "§cCurrent config only allows creating shops and recycle shops inside PLand claims.",
-    "land_create_type_disabled": "§cThe owner of this claim has disabled creating {type} by other players here."
+    "land_create_type_disabled": "§cThe owner of this claim has disabled creating {type} by other players here.",
+    "expiry_notice": "§eYour {type} has expired and reverted to a normal chest. Location: {dim} [{x}, {y}, {z}]",
+    "expiry_notice_refund": "§eYour {type} has expired and reverted to a normal chest. Location: {dim} [{x}, {y}, {z}]§e, refunded §6{price}§e coins."
   },
   "shop": {
     "insufficient_money": "§cInsufficient coins! Need §6{price}§c coins.",

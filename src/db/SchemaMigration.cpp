@@ -22,6 +22,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV12,
         migrateToV13,
         migrateToV14,
+        migrateToV15,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -434,6 +435,21 @@ bool SchemaMigration::migrateToV14(Sqlite3Wrapper& db) {
 
         "DROP TABLE land_chest_settings;",
         "ALTER TABLE land_chest_settings_v14 RENAME TO land_chest_settings;"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV15(Sqlite3Wrapper& db) {
+    // 箱子商店过期功能：为 chests 表添加 last_restock_time 字段，记录最后一次补货/管理时间（Unix 秒）。
+    // 过期判定基于该字段：当 now - last_restock_time > 配置天数时过期。
+    // 旧数据统一初始化为当前时间，避免迁移后立刻过期。
+    const char* sqls[] = {
+        "ALTER TABLE chests ADD COLUMN last_restock_time INTEGER NOT NULL DEFAULT 0;",
+        "UPDATE chests SET last_restock_time = CAST(strftime('%s', 'now') AS INTEGER) WHERE last_restock_time = 0;"
     };
 
     for (const char* sql : sqls) {

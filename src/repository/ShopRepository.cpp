@@ -3,6 +3,7 @@
 #include "Utils/TimeUtils.h"
 #include "DbRowParser.h"
 #include "db/Sqlite3Wrapper.h"
+#include "repository/ChestRepository.h"
 #include <algorithm>
 #include <sstream>
 
@@ -134,7 +135,7 @@ ShopRepository& ShopRepository::getInstance() {
 
 bool ShopRepository::upsertItem(const ShopItemData& item) {
     auto& db = Sqlite3Wrapper::getInstance();
-    return db.execute(
+    bool  ok = db.execute(
         "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET "
@@ -148,6 +149,10 @@ bool ShopRepository::upsertItem(const ShopItemData& item) {
         item.price,
         item.dbCount
     );
+    if (ok) {
+        ChestRepository::getInstance().touchRestockTime(item.pos, item.dimId);
+    }
+    return ok;
 }
 
 bool ShopRepository::removeItem(BlockPos pos, int dimId, int itemId) {
@@ -210,7 +215,26 @@ std::vector<ShopItemData> ShopRepository::findAllItems(BlockPos pos, int dimId) 
 
 bool ShopRepository::updateDbCount(BlockPos pos, int dimId, int itemId, int newCount) {
     auto& db = Sqlite3Wrapper::getInstance();
-    return db.execute(
+
+    // 读取当前库存，用于判断是否为补货（库存增加）以刷新过期计时
+    int  oldCount   = -1;
+    auto curResults = db.query(
+        "SELECT db_count FROM shop_items WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        itemId
+    );
+    if (!curResults.empty() && !curResults[0].empty()) {
+        try {
+            oldCount = std::stoi(curResults[0][0]);
+        } catch (...) {
+            oldCount = -1;
+        }
+    }
+
+    bool ok = db.execute(
         "UPDATE shop_items SET db_count = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = "
         "?;",
         newCount,
@@ -220,6 +244,12 @@ bool ShopRepository::updateDbCount(BlockPos pos, int dimId, int itemId, int newC
         pos.z,
         itemId
     );
+
+    // 库存增加视为补货，刷新过期计时
+    if (ok && oldCount >= 0 && newCount > oldCount) {
+        ChestRepository::getInstance().touchRestockTime(pos, dimId);
+    }
+    return ok;
 }
 
 bool ShopRepository::decrementDbCount(BlockPos pos, int dimId, int itemId, int amount) {
@@ -618,7 +648,7 @@ std::optional<RecycleItemData> ShopRepository::findRecycleItem(BlockPos pos, int
 
 bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
     auto& db = Sqlite3Wrapper::getInstance();
-    return db.execute(
+    bool  ok = db.execute(
         "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, "
         "min_durability, required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?) "
@@ -637,6 +667,10 @@ bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
         item.maxRecycleCount,
         item.requiredAuxValue
     );
+    if (ok) {
+        ChestRepository::getInstance().touchRestockTime(item.pos, item.dimId);
+    }
+    return ok;
 }
 
 bool ShopRepository::removeRecycleItem(BlockPos pos, int dimId, int itemId) {
@@ -653,7 +687,7 @@ bool ShopRepository::removeRecycleItem(BlockPos pos, int dimId, int itemId) {
 
 bool ShopRepository::updateRecycleItem(BlockPos pos, int dimId, int itemId, double price, int maxCount) {
     auto& db = Sqlite3Wrapper::getInstance();
-    return db.execute(
+    bool  ok = db.execute(
         "UPDATE recycle_shop_items SET price = ?, max_recycle_count = ? "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
         price,
@@ -664,6 +698,10 @@ bool ShopRepository::updateRecycleItem(BlockPos pos, int dimId, int itemId, doub
         pos.z,
         itemId
     );
+    if (ok) {
+        ChestRepository::getInstance().touchRestockTime(pos, dimId);
+    }
+    return ok;
 }
 
 bool ShopRepository::incrementRecycledCount(BlockPos pos, int dimId, int itemId, int amount) {

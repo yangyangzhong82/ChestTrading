@@ -15,6 +15,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - 支持店铺打包与恢复，方便迁移和调整布局
 - 支持店铺名称限制，可配置最大长度和禁用关键词
 - 支持交易税率、创建费用、数量限制、传送费用与冷却
+- 支持箱子商店过期，超时未续期的商店/回收商店会自动变回普通箱子
 - 支持普通箱子和铜箱子识别
 - 支持多语言与物品贴图资源加载
 
@@ -143,6 +144,7 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `tradeRestrictionSettings`：禁止上架 / 禁止回收委托的物品列表
 - `landRestrictionSettings`：PLand 领地相关限制
 - `tradeRecordCleanupSettings`：交易记录自动清理
+- `chestExpirySettings`：箱子商店过期设置
 
 示例：
 
@@ -202,6 +204,12 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
   "tradeRecordCleanupSettings": {
     "maxTotalRecords": 5000,
     "maxRecordAgeDays": 30
+  },
+  "chestExpirySettings": {
+    "enabled": false,
+    "shopExpiryDays": 30,
+    "checkIntervalMinutes": 60,
+    "refundOnExpiry": false
   }
 }
 ```
@@ -249,6 +257,24 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - `maxTotalRecords`：购买记录 + 回收记录的总保留条数，超过后自动删除最旧记录，`< 0` 表示关闭此项清理
 - `maxRecordAgeDays`：自动删除早于指定天数的购买/回收记录，`< 0` 表示关闭此项清理
 - 清理会在插件启动时执行一次，并在每次交易成功后自动再执行一次
+
+箱子商店过期说明：
+
+- `enabled`：是否启用箱子商店过期功能，关闭后不会进行任何过期检查
+- `shopExpiryDays`：玩家商店 / 回收商店的过期天数，`<= 0` 表示不过期
+- `checkIntervalMinutes`：过期检查的执行间隔（分钟），`<= 0` 时按 `60` 分钟处理
+- `refundOnExpiry`：过期时是否按 `chestRemovalRefunds` 配置返还创建费用给箱子主人
+- 官方商店 / 官方回收商店永远不会过期
+- 过期条件（必须同时满足）：
+  1. 箱子中没有有效商品/委托（商店：所有商品 `db_count <= 0`；回收商店：所有委托已满或无委托）
+  2. 超过 `shopExpiryDays` 天未补货/管理
+- 只要箱子中还有有效商品/委托，就永远不会过期（即使很久没有管理）
+- 商品被买光 / 委托被用完后，店主有 `shopExpiryDays` 天的补货宽限期；在此期间补货或重新上架会刷新计时
+- 玩家购买不会刷新过期计时；只有店主主动补货/上架/管理才会重置
+- 过期后箱子会从数据库中移除，级联清理商品 / 委托 / 分享 / 限购 / 动态价格等数据，并移除悬浮字，箱子变回普通箱子
+- 过期检查在插件启动时执行一次，并在运行时按配置间隔周期性执行
+- 重新设置箱子类型（如重新设为商店）会刷新 `last_restock_time`，过期时间从该次设置开始重新计算
+- 打包箱子恢复（unpack）时也会刷新 `last_restock_time`
 
 官方商店导入说明：
 

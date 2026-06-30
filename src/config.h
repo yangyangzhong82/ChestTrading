@@ -102,6 +102,13 @@ struct TradeRecordCleanupSettings {
     int maxRecordAgeDays = -1;  // 交易记录最大保留天数，<0 表示关闭此项清理
 };
 
+struct ChestExpirySettings {
+    bool enabled              = false; // 是否启用箱子商店过期功能
+    int  shopExpiryDays       = 30;    // 玩家商店/回收商店过期天数，<=0 表示不过期；官方商店永远不会过期
+    int  checkIntervalMinutes = 60;    // 过期检查间隔（分钟），<=0 时按 60 分钟处理
+    bool refundOnExpiry       = false; // 过期时是否按 chestRemovalRefunds 返还创建费用给箱子主人
+};
+
 struct CommandSettings {
     std::string mainCommand           = "ct";             // 主命令
     std::string adminCommand          = "ctadmin";        // 管理员菜单命令
@@ -145,5 +152,6 @@ struct Config {
     TradeRestrictionSettings tradeRestrictionSettings;                 // 交易物品限制
     LandRestrictionSettings  landRestrictionSettings;                  // PLand 领地限制
     TradeRecordCleanupSettings tradeRecordCleanupSettings;             // 交易记录自动清理
+    ChestExpirySettings        chestExpirySettings;                    // 箱子商店过期设置
     CommandSettings          commandSettings;                          // 命令名称配置（仅启动时注册，重载不会重新注册命令）
 };

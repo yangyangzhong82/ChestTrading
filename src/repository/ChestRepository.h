@@ -2,6 +2,7 @@
 
 #include "Types.h"
 #include "mc/world/level/BlockPos.h"
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,6 +50,16 @@ public:
     std::vector<ChestData>   findAll();
     std::vector<ChestData>   findAllPublicShops();
     int                      countByOwnerAndType(const std::string& ownerUuid, ChestType type);
+
+    // === 过期检查 ===
+    // 查询所有已过期的玩家商店/回收商店（官方商店永远不会过期，不会被返回）。
+    // 过期条件：箱子中没有有效商品/委托，且超过 shopExpirySeconds 未补货。
+    // shopExpirySeconds: 玩家商店/回收商店的过期秒数，<=0 表示不检查
+    std::vector<ChestData>   findExpiredChests(int64_t shopExpirySeconds);
+
+    // === 补货时间管理 ===
+    // 刷新指定箱子最后一次补货/管理时间为当前时间（重置过期计时）。
+    bool                     touchRestockTime(BlockPos pos, int dimId);
 
     // === 分享管理 ===
     bool                         addSharedPlayer(const SharedChestData& data);

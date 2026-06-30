@@ -9,6 +9,7 @@
 #include "interaction/Event.h"
 #include "ll/api/mod/RegisterHelper.h"
 #include "repository/ShopRepository.h"
+#include "service/ChestExpiryService.h"
 #include "service/I18nService.h"
 
 namespace CT {
@@ -63,6 +64,11 @@ bool Entry::enable() {
             getSelf().getLogger().warn("Trade record cleanup failed during startup.");
         }
 
+        // 启动时执行一次过期检查，清理离线期间累积的过期商店
+        ChestExpiryService::getInstance().checkAndExpire();
+        // 启动周期性过期检查协程
+        ChestExpiryService::getInstance().startPeriodicCheck();
+
         FloatingTextManager::getInstance().loadAllChests(); // 在模组启用时加载所有悬浮字
 
         // 数据库打开成功后再注册事件监听器
@@ -78,6 +84,7 @@ bool Entry::enable() {
 bool Entry::disable() {
     getSelf().getLogger().debug("Disabling...");
     // Code for disabling the mod goes here.
+    ChestExpiryService::getInstance().stopPeriodicCheck();        // 停止过期检查协程
     FloatingTextManager::getInstance().stopDynamicTextUpdateLoop(); // 先停止协程
     FloatingTextManager::getInstance().removeAllFloatingTexts();    // 移除所有悬浮字
     Sqlite3Wrapper::getInstance().close();                          // 关闭数据库

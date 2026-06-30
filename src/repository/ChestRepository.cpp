@@ -16,7 +16,8 @@ bool ChestRepository::insert(const ChestData& chest) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(
         "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
-        "enable_floating_text, enable_fake_item, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+        "enable_floating_text, enable_fake_item, is_public, last_restock_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
         chest.ownerUuid,
         chest.dimId,
         chest.pos.x,
@@ -166,6 +167,85 @@ int ChestRepository::countByOwnerAndType(const std::string& ownerUuid, ChestType
         }
     }
     return 0;
+}
+
+// === 过期检查 ===
+
+std::vector<ChestData> ChestRepository::findExpiredChests(int64_t shopExpirySeconds) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    auto  now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    std::vector<ChestData> expired;
+
+    if (shopExpirySeconds <= 0) {
+        return expired;
+    }
+
+    int64_t threshold = now - shopExpirySeconds;
+
+    // 解析结果的通用函数
+    auto parseRowsFn = [&](std::vector<std::vector<std::string>>& results) {
+        for (const auto& row : results) {
+            if (row.size() < 6) continue;
+            try {
+                ChestData data;
+                data.dimId     = std::stoi(row[0]);
+                data.pos       = BlockPos{std::stoi(row[1]), std::stoi(row[2]), std::stoi(row[3])};
+                data.ownerUuid = row[4];
+                data.type      = static_cast<ChestType>(std::stoi(row[5]));
+                expired.push_back(std::move(data));
+            } catch (const std::exception& e) {
+                logger.error("findExpiredChests: 解析过期箱子行失败: {}", e.what());
+            }
+        }
+    };
+
+    // 商店（type=2）：超过阈值未补货，且箱子中没有任何 db_count > 0 的商品（空商店或全部售罄）
+    auto shopResults = db.query(
+        "SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.type "
+        "FROM chests c "
+        "WHERE c.type = 2 AND c.last_restock_time > 0 AND c.last_restock_time <= ? "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM shop_items si "
+        "  WHERE si.dim_id = c.dim_id AND si.pos_x = c.pos_x "
+        "  AND si.pos_y = c.pos_y AND si.pos_z = c.pos_z AND si.db_count > 0"
+        ");",
+        static_cast<long long>(threshold)
+    );
+    parseRowsFn(shopResults);
+
+    // 回收商店（type=3）：超过阈值未补货，且没有任何有效委托
+    // 有效委托 = 无限回收(max<=0) 或 未达到上限(current < max)
+    auto recycleResults = db.query(
+        "SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.type "
+        "FROM chests c "
+        "WHERE c.type = 3 AND c.last_restock_time > 0 AND c.last_restock_time <= ? "
+        "AND NOT EXISTS ("
+        "  SELECT 1 FROM recycle_shop_items rsi "
+        "  WHERE rsi.dim_id = c.dim_id AND rsi.pos_x = c.pos_x "
+        "  AND rsi.pos_y = c.pos_y AND rsi.pos_z = c.pos_z "
+        "  AND (rsi.max_recycle_count <= 0 OR rsi.current_recycled_count < rsi.max_recycle_count)"
+        ");",
+        static_cast<long long>(threshold)
+    );
+    parseRowsFn(recycleResults);
+
+    return expired;
+}
+
+// === 补货时间管理 ===
+
+bool ChestRepository::touchRestockTime(BlockPos pos, int dimId) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    return db.execute(
+        "UPDATE chests SET last_restock_time = CAST(strftime('%s', 'now') AS INTEGER) "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z
+    );
 }
 
 // === 分享管理 ===
@@ -415,7 +495,8 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     // 恢复箱子主表
     if (!db.execute(
             "INSERT INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
-            "enable_floating_text, enable_fake_item, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            "enable_floating_text, enable_fake_item, is_public, last_restock_time) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
             result[0][0], // player_uuid
             newDimId,
             newPos.x,
