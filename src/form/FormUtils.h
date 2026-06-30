@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -28,6 +29,14 @@ namespace CT::FormUtils {
  * @return 包含物品所有信息的格式化字符串。
  */
 std::string getItemDisplayString(const ItemStack& item, int count = 0, bool showTypeName = true);
+
+/**
+ * @brief 清洗进入表单 JSON 的字符串，替换非法 UTF-8 字节，避免 json.dump 崩溃。
+ * @param value 原始字符串。
+ * @param fallback 清洗后为空时使用的备用字符串。
+ * @return 可安全写入表单 JSON 的 UTF-8 字符串。
+ */
+std::string sanitizeFormString(std::string_view value, std::string_view fallback = {});
 
 /**
  * @brief 获取物品的纹理路径。

@@ -25,6 +25,78 @@
 
 namespace CT::FormUtils {
 
+std::string sanitizeFormString(std::string_view value, std::string_view fallback) {
+    std::string sanitized;
+    sanitized.reserve(value.size());
+
+    auto appendReplacement = [&sanitized]() { sanitized.push_back('?'); };
+
+    for (size_t i = 0; i < value.size();) {
+        const auto byte = static_cast<unsigned char>(value[i]);
+        if (byte <= 0x7F) {
+            if (byte == 0 || (byte < 0x20 && byte != '\n' && byte != '\r' && byte != '\t')) {
+                appendReplacement();
+            } else {
+                sanitized.push_back(static_cast<char>(byte));
+            }
+            ++i;
+            continue;
+        }
+
+        size_t       length       = 0;
+        unsigned int codePoint    = 0;
+        unsigned int minCodePoint = 0;
+        if (byte >= 0xC2 && byte <= 0xDF) {
+            length       = 2;
+            codePoint    = byte & 0x1F;
+            minCodePoint = 0x80;
+        } else if (byte >= 0xE0 && byte <= 0xEF) {
+            length       = 3;
+            codePoint    = byte & 0x0F;
+            minCodePoint = 0x800;
+        } else if (byte >= 0xF0 && byte <= 0xF4) {
+            length       = 4;
+            codePoint    = byte & 0x07;
+            minCodePoint = 0x10000;
+        } else {
+            appendReplacement();
+            ++i;
+            continue;
+        }
+
+        if (i + length > value.size()) {
+            appendReplacement();
+            ++i;
+            continue;
+        }
+
+        bool valid = true;
+        for (size_t j = 1; j < length; ++j) {
+            const auto continuation = static_cast<unsigned char>(value[i + j]);
+            if ((continuation & 0xC0) != 0x80) {
+                valid = false;
+                break;
+            }
+            codePoint = (codePoint << 6) | (continuation & 0x3F);
+        }
+
+        if (!valid || codePoint < minCodePoint || codePoint > 0x10FFFF
+            || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+            appendReplacement();
+            ++i;
+            continue;
+        }
+
+        sanitized.append(value.substr(i, length));
+        i += length;
+    }
+
+    if (sanitized.empty() && !fallback.empty()) {
+        return sanitizeFormString(fallback);
+    }
+    return sanitized;
+}
+
 bool canUseChestTeleport(const Player& player) {
     if (PermissionCompat::hasPermission(player.getUuid().asString(), "chest.admin")) {
         return true;
@@ -34,9 +106,10 @@ bool canUseChestTeleport(const Player& player) {
 
 std::string getItemDisplayString(const ItemStack& item, int count, bool showTypeName) {
     auto&       i18n          = I18nService::getInstance();
-    std::string displayString = std::string(item.getName());
+    std::string typeName      = sanitizeFormString(item.getTypeName(), "Unknown");
+    std::string displayString = sanitizeFormString(item.getName(), typeName);
     if (showTypeName) {
-        displayString += " §7(" + item.getTypeName() + ")§r";
+        displayString += " §7(" + typeName + ")§r";
     }
     if (count > 0) {
         displayString += " x" + std::to_string(count);

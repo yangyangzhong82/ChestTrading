@@ -257,6 +257,23 @@ std::unique_ptr<ItemStack> createDisplayItem(const std::string& itemNbtStr) {
     return itemPtr;
 }
 
+std::string getSafeItemTypeName(const ItemStack& item) {
+    return CT::FormUtils::sanitizeFormString(item.getTypeName(), "Unknown");
+}
+
+std::string getSafeItemName(const ItemStack& item) {
+    return CT::FormUtils::sanitizeFormString(item.getName(), getSafeItemTypeName(item));
+}
+
+std::string getSafeItemLabel(const ItemStack& item) {
+    const std::string typeName = getSafeItemTypeName(item);
+    return CT::FormUtils::sanitizeFormString(item.getName(), typeName) + " §f(" + typeName + ")§r";
+}
+
+std::string getSafeItemTexturePath(const ItemStack& item) {
+    return CT::FormUtils::sanitizeFormString(CT::FormUtils::getItemTexturePath(item));
+}
+
 } // namespace
 
 
@@ -308,7 +325,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
             int    commissionRemaining = getCommissionRemainingCount(commission);
             bool   completed           = commissionRemaining == 0;
 
-            std::string buttonText = std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r\n";
+            std::string buttonText = getSafeItemLabel(item) + "\n";
             if (completed) {
                 buttonText += txt.getMessage("form.recycle_completed_label");
             } else {
@@ -361,7 +378,7 @@ void showRecycleItemListForm(Player& player, BlockPos pos, int dimId, BlockSourc
                     commission,
                     item,
                     commission.itemNbt,
-                    CT::FormUtils::getItemTexturePath(item),
+                    getSafeItemTexturePath(item),
                     buttonText,
                     displayUnitPrice,
                     completed
@@ -521,7 +538,7 @@ void showRecycleConfirmForm(
     fm.appendLabel(txt.getMessage(
         "form.label_setting_commission",
         {
-            {"item", std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r"}
+            {"item", getSafeItemLabel(item)}
     }
     ));
     fm.appendLabel(txt.getMessage(
@@ -670,7 +687,7 @@ void showRecycleFinalConfirmForm(
         showRecycleForm(player, pos, dimId, region);
         return;
     }
-    std::string itemName  = itemPtr->getName();
+    std::string itemName  = getSafeItemName(*itemPtr);
     int   itemId          = ItemRepository::getInstance().getOrCreateItemId(commissionNbtStr);
     int   maxRecycleCount = 0;
     if (itemId >= 0) {
@@ -869,7 +886,7 @@ void showEditCommissionForm(
     fm.appendLabel(txt.getMessage(
         "form.label_item",
         {
-            {"item", std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r"}
+            {"item", getSafeItemLabel(item)}
     }
     ));
     fm.appendInput(
@@ -964,7 +981,7 @@ void showCommissionDetailsForm(
         player.sendMessage(txt.getMessage("recycle.load_fail"));
         return;
     }
-    std::string itemName = itemPtr->getName();
+    std::string itemName = getSafeItemName(*itemPtr);
 
     auto& db = Sqlite3Wrapper::getInstance();
 
@@ -1194,7 +1211,7 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
             auto   priceView        = getDynamicRecyclePriceView(mainPos, dimId, commission.itemId, commission.price, region);
             double displayUnitPrice = priceView.unitPrice;
 
-            std::string buttonText = std::string(item.getName()) + " §e" + progress
+            std::string buttonText = getSafeItemName(item) + " §e" + progress
                                    + txt.getMessage(
                                        "form.price_tag",
                                        {
@@ -1202,7 +1219,7 @@ void showViewRecycleCommissionsForm(Player& player, BlockPos pos, int dimId, Blo
             }
                                    );
             std::string itemNbtStr  = commission.itemNbt;
-            std::string texturePath = CT::FormUtils::getItemTexturePath(item);
+            std::string texturePath = getSafeItemTexturePath(item);
             if (!texturePath.empty()) {
                 fm.appendButton(buttonText, texturePath, "path", [mainPos, dimId, itemNbtStr](Player& p) {
                     auto& region = p.getDimensionBlockSource();
@@ -1259,9 +1276,8 @@ void showAddItemToRecycleShopForm(Player& player, BlockPos pos, int dimId, Block
                 continue;
             }
             std::string itemNbtStr = CT::NbtUtils::toSNBT(*itemNbt);
-            std::string buttonText =
-                std::string(item.getName()) + " §f(" + item.getTypeName() + ")§r x" + std::to_string(item.mCount);
-            std::string texturePath = CT::FormUtils::getItemTexturePath(item);
+            std::string buttonText  = getSafeItemLabel(item) + " x" + std::to_string(item.mCount);
+            std::string texturePath = getSafeItemTexturePath(item);
 
             if (!texturePath.empty()) {
                 fm.appendButton(buttonText, texturePath, "path", [pos, dimId, itemNbtStr](Player& p) {
@@ -1322,7 +1338,7 @@ void showSetRecycleItemPriceForm(
     fm.appendLabel(txt.getMessage(
         "form.label_setting_commission",
         {
-            {"item", std::string(item.getName())}
+            {"item", getSafeItemName(item)}
     }
     ));
     fm.appendInput("price_input", txt.getMessage("form.input_price"), "0.0");
@@ -1455,7 +1471,7 @@ void showSetRecycleItemPriceForm(
                 auto cleanedNbt = CT::NbtUtils::cleanNbtForComparison(*itemNbt, item.isDamageableItem());
                 std::string cleanedItemNbtStr = CT::NbtUtils::toSNBT(*cleanedNbt);
 
-                logger.info("Setting recycle commission for item '{}'.", item.getName());
+                logger.info("Setting recycle commission for item '{}'.", getSafeItemName(item));
 
                 auto setCommissionResult = RecycleService::getInstance().setCommission(
                     pos,
