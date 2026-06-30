@@ -43,7 +43,8 @@
     "land_no_permission_place": "§c你没有在此领地放置方块的权限。",
     "land_no_permission_destroy": "§c你没有在此领地破坏方块的权限。",
     "land_no_permission_pack": "§c你没有在此领地打包箱子的权限。",
-    "create_trade_shop_only_in_pland": "§c当前配置仅允许在 PLand 领地内设置商店和回收商店。"
+    "create_trade_shop_only_in_pland": "§c当前配置仅允许在 PLand 领地内设置商店和回收商店。",
+    "land_create_type_disabled": "§c该领地主人已禁止其他玩家在此领地创建{type}。"
   },
   "shop": {
     "insufficient_money": "§c你的金币不足！需要 §6{price}§c 金币。",
@@ -110,6 +111,15 @@
   },
   "action": {
     "cancelled": "§c你取消了操作。"
+  },
+  "land_setting": {
+    "title": "领地箱子设置",
+    "label": "§7勾选表示允许其他玩家在此领地创建对应类型的箱子。\n§7取消勾选后，除领地主人和箱子管理员外，其他玩家将无法在此领地创建该类型箱子。\n§7（该限制遵循 PLand 的开容器权限，成员默认拥有。）",
+    "not_in_land": "§c你当前不在任何 PLand 领地内。",
+    "pland_unavailable": "§c未检测到 PLand 或其暂不可用。",
+    "no_permission": "§c只有领地主人或箱子管理员才能修改此设置。",
+    "saved": "§a领地箱子创建权限已保存。",
+    "save_fail": "§c保存领地设置失败！"
   },
   "share": {
     "add_success": "§a成功添加玩家 {player} 到分享列表！",
@@ -638,8 +648,7 @@
     "import_shop_failed_unknown": "§c导入失败：发生未知错误，请查看控制台日志。",
     "import_shop_success_merge": "§a导入完成：已合并 {imported} 个商品，跳过 {skipped} 个。文件: {path}",
     "import_shop_success_replace": "§a导入完成：已替换为 {imported} 个商品，跳过 {skipped} 个。文件: {path}",
-    "limit_reset_description": "手动重置箱子限购窗口",
-    "limit_reset_usage": "§e用法:\n§a/ctlimitreset shop <x> <y> <z> [item_id] §e- 重置购买限购窗口（可选指定商品）\n§a/ctlimitreset recycle <x> <y> <z> [item_id] §e- 重置回收限购窗口（可选指定商品）\n§a/ctlimitreset all <x> <y> <z> [item_id] §e- 同时重置购买与回收限购窗口（可选指定商品）",
+    "limit_reset_description": "手动重置箱子限购窗口",    "limit_reset_usage": "§e用法:\n§a/ctlimitreset shop <x> <y> <z> [item_id] §e- 重置购买限购窗口（可选指定商品）\n§a/ctlimitreset recycle <x> <y> <z> [item_id] §e- 重置回收限购窗口（可选指定商品）\n§a/ctlimitreset all <x> <y> <z> [item_id] §e- 同时重置购买与回收限购窗口（可选指定商品）",
     "limit_reset_chest_not_found": "§c坐标 {x},{y},{z} 处没有已配置的 ChestTrading 箱子。",
     "limit_reset_not_shop": "§c目标箱子不是商店箱子，无法重置购买限购。",
     "limit_reset_not_recycle": "§c目标箱子不是回收商店箱子，无法重置回收限购。",
@@ -650,7 +659,8 @@
     "limit_reset_success_item": "§a已重置{type}限购（商品ID: {item_id}）：维度 {dim} 坐标 [{x}, {y}, {z}]。",
     "limit_type_shop": "购买",
     "limit_type_recycle": "回收",
-    "limit_type_all": "全部"
+    "limit_type_all": "全部",
+    "land_setting_description": "设置当前所在 PLand 领地的箱子创建权限"
   },
   "sales_ranking": {
     "title": "销量榜单",

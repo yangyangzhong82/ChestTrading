@@ -20,6 +20,8 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV10,
         migrateToV11,
         migrateToV12,
+        migrateToV13,
+        migrateToV14,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -403,6 +405,35 @@ bool SchemaMigration::migrateToV12(Sqlite3Wrapper& db) {
         "ON recycle_records(dim_id, pos_x, pos_y, pos_z, recycler_uuid, timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_recycle_records_pos_item_recycler_time "
         "ON recycle_records(dim_id, pos_x, pos_y, pos_z, item_id, recycler_uuid, timestamp DESC);"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV13(Sqlite3Wrapper& db) {
+    // PLand 领地箱子设置：按领地 ID 存储"是否允许其他玩家在此领地创建新箱子"
+    const char* sql =
+        "CREATE TABLE IF NOT EXISTS land_chest_settings ("
+        "land_id INTEGER PRIMARY KEY, allow_create INTEGER NOT NULL DEFAULT 1);";
+    return db.execute(sql);
+}
+
+bool SchemaMigration::migrateToV14(Sqlite3Wrapper& db) {
+    // 领地箱子设置升级：从"整体允许/禁止"升级到"按箱子类型"位掩码。
+    // allowed_mask 第 i 位（ChestType 枚举值）为 1 表示允许其他玩家创建该类型；默认 -1（全部允许）。
+    // 旧数据：allow_create=0 -> 全部禁止(0)；allow_create=1 -> 全部允许(-1)。
+    const char* sqls[] = {
+        "CREATE TABLE IF NOT EXISTS land_chest_settings_v14 ("
+        "land_id INTEGER PRIMARY KEY, allowed_mask INTEGER NOT NULL DEFAULT -1);",
+
+        "INSERT INTO land_chest_settings_v14 (land_id, allowed_mask) "
+        "SELECT land_id, CASE WHEN allow_create = 0 THEN 0 ELSE -1 END FROM land_chest_settings;",
+
+        "DROP TABLE land_chest_settings;",
+        "ALTER TABLE land_chest_settings_v14 RENAME TO land_chest_settings;"
     };
 
     for (const char* sql : sqls) {

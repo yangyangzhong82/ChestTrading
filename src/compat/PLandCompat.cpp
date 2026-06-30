@@ -116,6 +116,7 @@ struct SymbolSet {
     using IsOperatorFn     = bool (*)(LandRegistryOpaque const*, mce::UUID const&);
     using GetPermTypeFn    = std::uint8_t (*)(LandOpaque const*, mce::UUID const&);
     using GetPermTableFn   = LandPermTableLayout const& (*)(LandOpaque const*);
+    using GetIdFn          = std::int64_t (*)(LandOpaque const*);
 
     GetInstanceFn  getInstance  = nullptr;
     GetRegistryFn  getRegistry  = nullptr;
@@ -123,9 +124,10 @@ struct SymbolSet {
     IsOperatorFn   isOperator   = nullptr;
     GetPermTypeFn  getPermType  = nullptr;
     GetPermTableFn getPermTable = nullptr;
+    GetIdFn        getId        = nullptr;
 
     [[nodiscard]] bool ready() const {
-        return getInstance && getRegistry && getLandAt && isOperator && getPermType && getPermTable;
+        return getInstance && getRegistry && getLandAt && isOperator && getPermType && getPermTable && getId;
     }
 };
 
@@ -203,6 +205,7 @@ bool resolveSymbolsLocked(ResolverState& s) {
         resolveSymbol<SymbolSet::GetPermTypeFn>(module, "?getPermType@Land@land@@QEBA?AW4LandPermType@2@AEBVUUID@mce@@@Z");
     symbols.getPermTable =
         resolveSymbol<SymbolSet::GetPermTableFn>(module, "?getPermTable@Land@land@@QEBAAEBULandPermTable@2@XZ");
+    symbols.getId = resolveSymbol<SymbolSet::GetIdFn>(module, "?getId@Land@land@@QEBA_JXZ");
 
     if (!symbols.ready()) {
         if (!s.warnedSymbol) {
@@ -352,6 +355,47 @@ std::optional<bool> PLandCompat::isOwnerLand(std::string const& playerUuid, Bloc
         return static_cast<int>(context.symbols.getPermType(context.land.get(), uuid)) == 1;
     } catch (...) {
         reportRuntimeFailureThrottled("PLand 对接失败，步骤=isOwnerLand，已回退为不匹配。");
+        return std::nullopt;
+    }
+}
+
+std::optional<int64_t> PLandCompat::getLandId(BlockPos const& pos, int dimId) const {
+    LandQueryContext context;
+    if (queryLandContext(pos, dimId, context) == LandQueryState::Unavailable) {
+        return std::nullopt;
+    }
+
+    if (!context.land) {
+        return static_cast<int64_t>(-1);
+    }
+
+    try {
+        return static_cast<int64_t>(context.symbols.getId(context.land.get()));
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=getLandId，已回退为不可用。");
+        return std::nullopt;
+    }
+}
+
+std::optional<bool> PLandCompat::isLandManager(Player const& player, BlockPos const& pos) const {
+    LandQueryContext context;
+    if (queryLandContext(pos, static_cast<int>(player.getDimensionId()), context) == LandQueryState::Unavailable) {
+        return std::nullopt;
+    }
+
+    if (!context.land) {
+        return false;
+    }
+
+    try {
+        mce::UUID const& uuid = player.getUuid();
+        if (context.symbols.isOperator(context.registryPtr, uuid)) {
+            return true;
+        }
+        // LandPermType: Owner=1
+        return static_cast<int>(context.symbols.getPermType(context.land.get(), uuid)) == 1;
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=isLandManager，已回退为不可用。");
         return std::nullopt;
     }
 }

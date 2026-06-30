@@ -5,6 +5,7 @@
 #include "chestui/demo.h"
 #include "compat/PermissionCompat.h"
 #include "form/AdminForm.h"
+#include "form/LandChestSettingForm.h"
 #include "form/PublicItemsForm.h"
 #include "form/PublicShopForm.h"
 #include "form/SalesRankingForm.h"
@@ -360,8 +361,24 @@ void registerCommand() {
         }
     );
 
-    auto& chestUiCmd = registrar.getOrCreateCommand("ctuitest", "ChestUI test command", CommandPermissionLevel::Any);
-    chestUiCmd.overload<ll::command::EmptyParam>().execute(
+    // 注册 PLand 领地箱子设置命令 - 打开当前所在领地的箱子创建设置界面
+    auto& landSettingCmd = registrar.getOrCreateCommand(
+        commands.landSettingCommand,
+        i18n.get("command.land_setting_description"),
+        CommandPermissionLevel::Any
+    );
+    landSettingCmd.overload<ll::command::EmptyParam>().execute(
+        [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
+            auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
+            if (!player) {
+                output.error(i18n.get("command.player_only"));
+                return;
+            }
+            showLandChestSettingForm(*player);
+        }
+    );
+
+    auto& chestUiCmd = registrar.getOrCreateCommand("ctuitest", "ChestUI test command", CommandPermissionLevel::Any);    chestUiCmd.overload<ll::command::EmptyParam>().execute(
         [&i18n](CommandOrigin const& origin, CommandOutput& output, ll::command::EmptyParam const&, class Command const&) {
             auto* player = static_cast<Player*>(static_cast<PlayerCommandOrigin const&>(origin).getEntity());
             if (!player) {

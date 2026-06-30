@@ -43,7 +43,8 @@
     "land_no_permission_place": "§cYou don't have permission to place blocks in this land.",
     "land_no_permission_destroy": "§cYou don't have permission to destroy blocks in this land.",
     "land_no_permission_pack": "§cYou don't have permission to pack chests in this land.",
-    "create_trade_shop_only_in_pland": "§cCurrent config only allows creating shops and recycle shops inside PLand claims."
+    "create_trade_shop_only_in_pland": "§cCurrent config only allows creating shops and recycle shops inside PLand claims.",
+    "land_create_type_disabled": "§cThe owner of this claim has disabled creating {type} by other players here."
   },
   "shop": {
     "insufficient_money": "§cInsufficient coins! Need §6{price}§c coins.",
@@ -110,6 +111,15 @@
   },
   "action": {
     "cancelled": "§cYou cancelled the action."
+  },
+  "land_setting": {
+    "title": "Land Chest Settings",
+    "label": "§7Tick a type to allow other players to create that chest type in this claim.\n§7When unticked, players other than the claim owner and chest admins cannot create that chest type here.\n§7(This restriction follows PLand's container-use permission, which members have by default.)",
+    "not_in_land": "§cYou are not inside any PLand claim.",
+    "pland_unavailable": "§cPLand was not detected or is currently unavailable.",
+    "no_permission": "§cOnly the claim owner or a chest admin can change this setting.",
+    "saved": "§aLand chest creation permissions saved.",
+    "save_fail": "§cFailed to save the land setting!"
   },
   "share": {
     "add_success": "§aSuccessfully added player {player} to share list!",
@@ -650,7 +660,8 @@
     "limit_reset_success_item": "§aReset {type} limit for item {item_id} at dim {dim}, position [{x}, {y}, {z}].",
     "limit_type_shop": "purchase",
     "limit_type_recycle": "recycle",
-    "limit_type_all": "all"
+    "limit_type_all": "all",
+    "land_setting_description": "Configure chest creation permission for your current PLand claim"
   },
   "sales_ranking": {
     "title": "Sales Ranking",

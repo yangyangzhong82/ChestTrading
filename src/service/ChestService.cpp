@@ -12,6 +12,7 @@
 #include "mc/platform/UUID.h"
 #include "mc/world/level/block/actor/ChestBlockActor.h"
 #include "repository/ChestRepository.h"
+#include "repository/LandSettingRepository.h"
 
 #include <algorithm>
 #include <cctype>
@@ -476,6 +477,31 @@ bool ChestService::canPlayerCreateChest(Player const& player, BlockPos pos, Ches
 
     if (isAdmin) {
         return true;
+    }
+
+    // PLand 领地：领地主人可在领地设置中按箱子类型禁止其他玩家创建。
+    // 仅当玩家拥有 PLand 的"使用容器"权限时该限制才生效（成员默认拥有）；领地主人可绕过。
+    {
+        auto& pland  = PLandCompat::getInstance();
+        int   dimId  = static_cast<int>(player.getDimensionId());
+        auto  landId = pland.getLandId(pos, dimId);
+        if (landId.has_value() && *landId >= 0) {
+            bool isLandOwner = pland.isLandManager(player, pos).value_or(false);
+            if (!isLandOwner) {
+                int  mask        = LandSettingRepository::getInstance().getAllowedTypesMask(*landId).value_or(~0);
+                int  typeBit     = 1 << static_cast<int>(type);
+                bool typeAllowed = (mask & typeBit) != 0;
+                if (!typeAllowed && pland.canUseContainer(player, pos)) {
+                    errorMessage = TextService::getInstance().getMessage(
+                        "chest.land_create_type_disabled",
+                        {
+                            {"type", TextService::getInstance().getChestTypeName(type)}
+                    }
+                    );
+                    return false;
+                }
+            }
+        }
     }
 
     const auto& landRestrictions = ConfigManager::getInstance().get().landRestrictionSettings;

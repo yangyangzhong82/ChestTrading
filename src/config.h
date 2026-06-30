@@ -118,6 +118,7 @@ struct CommandSettings {
     std::string packChestCommand      = "packchest";      // 箱子打包模式命令
     std::string chestUiCommand        = "ctchestui";      // ChestUI 测试命令
     std::string limitResetCommand     = "ctlimitreset";   // 限购重置命令
+    std::string landSettingCommand    = "ctland";         // PLand 领地箱子设置命令
     std::string testCommand           = "cttest";         // 自动化测试命令
 };
 
