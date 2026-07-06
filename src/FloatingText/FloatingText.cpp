@@ -30,10 +30,14 @@
 #include "service/DynamicPricingService.h"
 #include "service/TextService.h"
 
+#include <unordered_set>
+
 
 namespace CT {
 
 namespace {
+using FloatingTextKey = std::pair<int, BlockPos>;
+
 Player* findOnlinePlayerByUuidString(Level& level, const std::string& playerUuid) {
     Player* target = nullptr;
     level.forEachPlayer([&](Player& player) {
@@ -58,22 +62,40 @@ Player* findAnyOnlinePlayerInDimension(Level& level, int dimId) {
     return target;
 }
 
-bool shouldDisplayFakeItemToPlayer(const Player& player, const ChestFloatingText& ft) {
-    int maxDistance = CT::ConfigManager::getInstance().get().floatingText.fakeItemVisibleDistance;
+double getSquaredDistanceToDisplay(Player const& player, ChestFloatingText const& ft, float heightOffset) {
+    auto   playerPos = player.getPosition();
+    double dx        = playerPos.x - (static_cast<double>(ft.pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET);
+    double dy        = playerPos.y - (static_cast<double>(ft.pos.y) + static_cast<double>(heightOffset));
+    double dz        = playerPos.z - (static_cast<double>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET);
+    return dx * dx + dy * dy + dz * dz;
+}
+
+bool isWithinDistance(double distanceSq, int maxDistance) {
     if (maxDistance <= 0) {
         return true;
     }
 
-    auto   playerPos = player.getPosition();
-    double dx        = playerPos.x - (static_cast<double>(ft.pos.x) + FloatingTextConstants::HORIZONTAL_OFFSET);
-    double dy        = playerPos.y - (static_cast<double>(ft.pos.y) + FloatingTextConstants::ITEM_HEIGHT_OFFSET);
-    double dz        = playerPos.z - (static_cast<double>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET);
-    double distSq    = dx * dx + dy * dy + dz * dz;
-    double maxSq     = static_cast<double>(maxDistance) * static_cast<double>(maxDistance);
-    return distSq <= maxSq;
+    double maxSq = static_cast<double>(maxDistance) * static_cast<double>(maxDistance);
+    return distanceSq <= maxSq;
 }
 
-DimensionType toDimensionType(int dimId) { return static_cast<DimensionType>(dimId); }
+bool shouldDisplayFloatingTextToPlayer(const Player& player, const ChestFloatingText& ft) {
+    if (player.getDimensionId().id != ft.dimId) {
+        return false;
+    }
+
+    int maxDistance = CT::ConfigManager::getInstance().get().floatingText.floatingTextVisibleDistance;
+    return isWithinDistance(getSquaredDistanceToDisplay(player, ft, FloatingTextConstants::TEXT_HEIGHT_OFFSET), maxDistance);
+}
+
+bool shouldDisplayFakeItemToPlayer(const Player& player, const ChestFloatingText& ft) {
+    if (player.getDimensionId().id != ft.dimId) {
+        return false;
+    }
+
+    int maxDistance = CT::ConfigManager::getInstance().get().floatingText.fakeItemVisibleDistance;
+    return isWithinDistance(getSquaredDistanceToDisplay(player, ft, FloatingTextConstants::ITEM_HEIGHT_OFFSET), maxDistance);
+}
 
 std::unique_ptr<debug_shape::IDebugText> createFloatingTextDebugShape(const ChestFloatingText& ft) {
     return debug_shape::IDebugText::create(
@@ -86,6 +108,101 @@ std::unique_ptr<debug_shape::IDebugText> createFloatingTextDebugShape(const Ches
     );
 }
 
+FloatingTextKey getFloatingTextKey(const ChestFloatingText& ft) { return std::make_pair(ft.dimId, ft.pos); }
+
+bool isFloatingTextMarkedVisible(const std::string& playerUuid, const FloatingTextKey& key) {
+    auto&                       manager = FloatingTextManager::getInstance();
+    std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
+    auto                        playerIt = manager.mPlayerVisibleFloatingTexts.find(playerUuid);
+    return playerIt != manager.mPlayerVisibleFloatingTexts.end() && playerIt->second.count(key) > 0;
+}
+
+void setFloatingTextMarkedVisible(const std::string& playerUuid, const FloatingTextKey& key, bool visible) {
+    auto&                       manager = FloatingTextManager::getInstance();
+    std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
+
+    if (visible) {
+        manager.mPlayerVisibleFloatingTexts[playerUuid].insert(key);
+        return;
+    }
+
+    auto playerIt = manager.mPlayerVisibleFloatingTexts.find(playerUuid);
+    if (playerIt == manager.mPlayerVisibleFloatingTexts.end()) return;
+
+    playerIt->second.erase(key);
+    if (playerIt->second.empty()) {
+        manager.mPlayerVisibleFloatingTexts.erase(playerIt);
+    }
+}
+
+void clearFloatingTextVisibilityState(const FloatingTextKey& key) {
+    auto&                       manager = FloatingTextManager::getInstance();
+    std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
+
+    for (auto it = manager.mPlayerVisibleFloatingTexts.begin(); it != manager.mPlayerVisibleFloatingTexts.end();) {
+        it->second.erase(key);
+        if (it->second.empty()) {
+            it = manager.mPlayerVisibleFloatingTexts.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void clearFloatingTextVisibilityState(DimensionType dimension) {
+    auto&                       manager = FloatingTextManager::getInstance();
+    std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
+    int                         dimId = static_cast<int>(dimension);
+
+    for (auto it = manager.mPlayerVisibleFloatingTexts.begin(); it != manager.mPlayerVisibleFloatingTexts.end();) {
+        for (auto keyIt = it->second.begin(); keyIt != it->second.end();) {
+            if (keyIt->first == dimId) {
+                keyIt = it->second.erase(keyIt);
+            } else {
+                ++keyIt;
+            }
+        }
+
+        if (it->second.empty()) {
+            it = manager.mPlayerVisibleFloatingTexts.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void drawFloatingTextToPlayer(const ChestFloatingText& ft, Player& player) {
+    if (!ft.debugText || !shouldDisplayFloatingTextToPlayer(player, ft)) return;
+
+    std::string     playerUuid = player.getUuid().asString();
+    FloatingTextKey key        = getFloatingTextKey(ft);
+    if (isFloatingTextMarkedVisible(playerUuid, key)) return;
+
+    debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, player);
+    setFloatingTextMarkedVisible(playerUuid, key, true);
+}
+
+void removeFloatingTextFromPlayer(const ChestFloatingText& ft, Player& player) {
+    std::string     playerUuid = player.getUuid().asString();
+    FloatingTextKey key        = getFloatingTextKey(ft);
+    if (!isFloatingTextMarkedVisible(playerUuid, key)) return;
+
+    if (ft.debugText) {
+        debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
+    }
+    setFloatingTextMarkedVisible(playerUuid, key, false);
+}
+
+void syncFloatingTextForPlayer(const ChestFloatingText& ft, Player& player) {
+    if (!ft.debugText) return;
+
+    if (shouldDisplayFloatingTextToPlayer(player, ft)) {
+        drawFloatingTextToPlayer(ft, player);
+    } else {
+        removeFloatingTextFromPlayer(ft, player);
+    }
+}
+
 void drawFloatingTextToPlayersInSameDimension(const ChestFloatingText& ft) {
     if (!ft.debugText) return;
     auto level = ll::service::getLevel();
@@ -93,21 +210,22 @@ void drawFloatingTextToPlayersInSameDimension(const ChestFloatingText& ft) {
 
     level->forEachPlayer([&ft](Player& player) {
         if (player.getDimensionId().id == ft.dimId) {
-            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, player);
+            syncFloatingTextForPlayer(ft, player);
         }
         return true;
     });
 }
 
 void removeFloatingTextFromAllPlayers(const ChestFloatingText& ft) {
-    if (!ft.debugText) return;
+    FloatingTextKey key = getFloatingTextKey(ft);
     auto level = ll::service::getLevel();
-    if (!level) return;
-
-    level->forEachPlayer([&ft](Player& player) {
-        debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
-        return true;
-    });
+    if (level) {
+        level->forEachPlayer([&ft](Player& player) {
+            removeFloatingTextFromPlayer(ft, player);
+            return true;
+        });
+    }
+    clearFloatingTextVisibilityState(key);
 }
 
 void rebuildFloatingTextForSameDimension(ChestFloatingText& ft) {
@@ -167,9 +285,7 @@ void FloatingTextManager::removeFloatingText(BlockPos pos, int dimId) {
     auto                                key = std::make_pair(dimId, pos);
     if (mFloatingTexts.count(key)) {
         auto& ft = mFloatingTexts.at(key);
-        if (ft.debugText) {
-            removeFloatingTextFromAllPlayers(ft);
-        }
+        removeFloatingTextFromAllPlayers(ft);
         // 移除所有玩家的假物品
         if (!ft.playerFakeItemStates.empty()) {
             auto level = ll::service::getLevel();
@@ -198,10 +314,8 @@ void FloatingTextManager::setFloatingTextVisible(BlockPos pos, int dimId, bool v
 
     auto& ft = it->second;
     if (!visible) {
-        if (ft.debugText) {
-            removeFloatingTextFromAllPlayers(ft);
-            ft.debugText.reset();
-        }
+        removeFloatingTextFromAllPlayers(ft);
+        ft.debugText.reset();
         return;
     }
 
@@ -254,9 +368,11 @@ void FloatingTextManager::drawAllFloatingTexts(Player& player) {
 void FloatingTextManager::removeAllFloatingTexts(Player& player) {
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
     for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.debugText) {
-            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
-        }
+        removeFloatingTextFromPlayer(ft, player);
+    }
+    {
+        std::lock_guard<std::mutex> stateLock(mPlayerVisibleDimensionsMutex);
+        mPlayerVisibleFloatingTexts.erase(player.getUuid().asString());
     }
 }
 
@@ -264,8 +380,8 @@ void FloatingTextManager::removeAllFloatingTexts(Player& player) {
 void FloatingTextManager::removeAllFloatingTexts(Player& player, DimensionType dimension) {
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
     for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, player);
+        if (ft.dimId == static_cast<int>(dimension)) {
+            removeFloatingTextFromPlayer(ft, player);
         }
     }
 }
@@ -274,30 +390,50 @@ void FloatingTextManager::removeAllFloatingTexts(Player& player, DimensionType d
 void FloatingTextManager::drawAllFloatingTexts(Player& player, DimensionType dimension) {
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
     for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, player);
+        if (ft.dimId == static_cast<int>(dimension)) {
+            syncFloatingTextForPlayer(ft, player);
         }
     }
 }
 
 // 绘制所有悬浮字给特定维度
 void FloatingTextManager::drawAllFloatingTexts(DimensionType dimension) {
+    auto level = ll::service::getLevel();
+    if (!level) return;
+
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
-    for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            debug_shape::IDebugShapeDrawer::getInstance().drawShape(*ft.debugText, dimension);
+    level->forEachPlayer([this, dimension](Player& player) {
+        if (player.getDimensionId().id != static_cast<int>(dimension)) return true;
+
+        for (auto const& [key, ft] : mFloatingTexts) {
+            if (ft.dimId == static_cast<int>(dimension)) {
+                syncFloatingTextForPlayer(ft, player);
+            }
         }
-    }
+        return true;
+    });
 }
 
 // 移除所有悬浮字给特定维度
 void FloatingTextManager::removeAllFloatingTexts(DimensionType dimension) {
-    std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
-    for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.dimId == static_cast<int>(dimension) && ft.debugText) {
-            debug_shape::IDebugShapeDrawer::getInstance().removeShape(*ft.debugText, dimension);
-        }
+    auto level = ll::service::getLevel();
+    if (!level) {
+        clearFloatingTextVisibilityState(dimension);
+        return;
     }
+
+    std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
+    level->forEachPlayer([this, dimension](Player& player) {
+        if (player.getDimensionId().id != static_cast<int>(dimension)) return true;
+
+        for (auto const& [key, ft] : mFloatingTexts) {
+            if (ft.dimId == static_cast<int>(dimension)) {
+                removeFloatingTextFromPlayer(ft, player);
+            }
+        }
+        return true;
+    });
+    clearFloatingTextVisibilityState(dimension);
 }
 
 // 绘制所有悬浮字给所有客户端
@@ -314,11 +450,14 @@ void FloatingTextManager::drawAllFloatingTexts() {
 void FloatingTextManager::removeAllFloatingTexts() {
     std::unique_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 写锁
     for (auto const& [key, ft] : mFloatingTexts) {
-        if (ft.debugText) {
-            removeFloatingTextFromAllPlayers(ft);
-        }
+        removeFloatingTextFromAllPlayers(ft);
     }
     mFloatingTexts.clear();
+    {
+        std::lock_guard<std::mutex> stateLock(mPlayerVisibleDimensionsMutex);
+        mPlayerVisibleDimensions.clear();
+        mPlayerVisibleFloatingTexts.clear();
+    }
 }
 
 /**
@@ -1029,20 +1168,15 @@ void FloatingTextManager::syncFloatingTextsForOnlinePlayers() {
     }
 
     for (const auto& [playerUuid, currentDim] : onlinePlayers) {
+        auto* playerPtr = findOnlinePlayerByUuidString(*level, playerUuid);
+        if (!playerPtr) continue;
+
         auto previousIt = previousDimensions.find(playerUuid);
-        if (previousIt == previousDimensions.end()) {
-            if (auto* playerPtr = findOnlinePlayerByUuidString(*level, playerUuid)) {
-                drawAllFloatingTexts(*playerPtr, DimensionType(currentDim));
-            }
-            continue;
+        if (previousIt != previousDimensions.end() && previousIt->second != currentDim) {
+            removeAllFloatingTexts(*playerPtr, DimensionType(previousIt->second));
         }
 
-        if (previousIt->second != currentDim) {
-            if (auto* playerPtr = findOnlinePlayerByUuidString(*level, playerUuid)) {
-                removeAllFloatingTexts(*playerPtr, DimensionType(previousIt->second));
-                drawAllFloatingTexts(*playerPtr, DimensionType(currentDim));
-            }
-        }
+        drawAllFloatingTexts(*playerPtr, DimensionType(currentDim));
     }
 
     {
@@ -1159,6 +1293,13 @@ void registerPlayerConnectionListener() {
     ll::event::EventBus::getInstance().emplaceListener<ll::event::player::PlayerJoinEvent>(
         [](ll::event::player::PlayerJoinEvent& event) {
             auto& player = event.self();
+            {
+                auto&                       manager = FloatingTextManager::getInstance();
+                std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
+                manager.mPlayerVisibleDimensions.erase(player.getUuid().asString());
+                manager.mPlayerVisibleFloatingTexts.erase(player.getUuid().asString());
+            }
+
             // 在第一个玩家加入时加载所有悬浮字
             if (!FloatingTextManager::getInstance().mIsLoaded) {
                 FloatingTextManager::getInstance().loadAllChests();
@@ -1217,8 +1358,9 @@ void registerPlayerConnectionListener() {
                 auto&                       manager = FloatingTextManager::getInstance();
                 std::lock_guard<std::mutex> lock(manager.mPlayerVisibleDimensionsMutex);
                 manager.mPlayerVisibleDimensions.erase(playerUuid);
+                manager.mPlayerVisibleFloatingTexts.erase(playerUuid);
             }
-            logger.debug("玩家 {} 离开游戏，已清理其假物品记录。", player.getRealName());
+            logger.debug("玩家 {} 离开游戏，已清理其悬浮字和假物品记录。", player.getRealName());
         }
     );
 }

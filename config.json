@@ -101,6 +101,8 @@
     "enableRecycleShop": true,
     // 是否显示出售商店悬浮字
     "enableShopChest": true,
+    // 悬浮字对玩家可见的最大距离；<= 0 表示不限制
+    "floatingTextVisibleDistance": 36,
     // 假掉落物对玩家可见的最大距离；<= 0 表示不限制
     "fakeItemVisibleDistance": 36
   },

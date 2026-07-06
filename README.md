@@ -156,6 +156,10 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
     "publicShopCommand": "shop",
     "publicRecycleCommand": "recycle"
   },
+  "floatingText": {
+    "floatingTextVisibleDistance": 36,
+    "fakeItemVisibleDistance": 36
+  },
   "taxSettings": {
     "shopTaxRate": 0.05,
     "recycleTaxRate": 0.02
@@ -222,6 +226,11 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 表单显示配置说明：
 
 - `publicItemsPerPage`：公开商店物品列表 / 公开回收物品列表表单每页显示数量，`<= 0` 时按 `1` 处理
+
+悬浮字显示配置说明：
+
+- `floatingTextVisibleDistance`：悬浮字对玩家可见的最大距离，`<= 0` 表示不限制
+- `fakeItemVisibleDistance`：假掉落物对玩家可见的最大距离，`<= 0` 表示不限制
 
 传送配置说明：
 

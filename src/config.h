@@ -19,6 +19,7 @@ struct FloatingTextSettings {
     bool enableRecycleShop       = true; // 是否开启回收商店的悬浮字显示
     bool enableShopChest         = true; // 是否开启商店箱子的悬浮字显示
     bool enableFakeItem          = true; // 是否开启假掉落物显示
+    int  floatingTextVisibleDistance = 36; // 悬浮字对玩家可见的最大距离（格），<=0 表示不限制
     int  fakeItemVisibleDistance = 36;   // 假掉落物对玩家可见的最大距离（格），<=0 表示不限制
 };
 
