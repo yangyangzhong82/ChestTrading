@@ -154,6 +154,7 @@ bool handleOpenOrForms(
 } // namespace
 
 void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
+    logger.info("name{}",ev.item().getTypeName());
     bool wasCancelled = ev.isCancelled();
 
     auto block = ev.block();

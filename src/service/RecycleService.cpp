@@ -442,7 +442,7 @@ RecycleResult RecycleService::executeFullRecycle(
     if (isAdminRecycle) {
         for (const auto& tr : transferRecords) {
             ItemStack copy = playerInventory.getItem(tr.slot);
-            copy.setStackSize(static_cast<unsigned char>(tr.count));
+            copy.set(static_cast<int>(tr.count));
             originalItemsForRollback.push_back(std::move(copy));
         }
     }
@@ -453,7 +453,7 @@ RecycleResult RecycleService::executeFullRecycle(
             // 普通回收商店：物品转移到箱子
             const auto& originalItem  = playerInventory.getItem(tr.slot);
             ItemStack   itemToRecycle = originalItem;
-            itemToRecycle.setStackSize(static_cast<unsigned char>(tr.count));
+            itemToRecycle.set(static_cast<int>(tr.count));
 
             if (!container->addItem(itemToRecycle)) {
                 // 转移失败，精确回滚：只移除本次新增的部分
@@ -473,7 +473,7 @@ RecycleResult RecycleService::executeFullRecycle(
                     int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                     if (addedCount > 0) {
                         ItemStack returnItem = chestItem;
-                        returnItem.setStackSize(static_cast<unsigned char>(addedCount));
+                        returnItem.set(static_cast<int>(addedCount));
                         removeItemsFromSlot(container, i, addedCount);
                         if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
                     }
@@ -507,7 +507,7 @@ RecycleResult RecycleService::executeFullRecycle(
                 int addedCount = chestItem.mCount - (chestInitialCounts.count(i) ? chestInitialCounts[i] : 0);
                 if (addedCount > 0) {
                     ItemStack returnItem = chestItem;
-                    returnItem.setStackSize(static_cast<unsigned char>(addedCount));
+                    returnItem.set(static_cast<int>(addedCount));
                     removeItemsFromSlot(container, i, addedCount);
                     if (!recycler.add(returnItem)) recycler.drop(returnItem, true);
                 }

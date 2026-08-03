@@ -35,7 +35,7 @@ void BaseTransactionService::removeItemsFromSlot(Container* container, int slot,
 
     int newCount = static_cast<int>(slotItem.mCount) - count;
     if (newCount > 0) {
-        slotItem.setStackSize(static_cast<unsigned char>(newCount));
+        slotItem.set(static_cast<int>(newCount));
         container->setItem(slot, slotItem);
         return;
     }

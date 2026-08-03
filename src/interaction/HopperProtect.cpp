@@ -112,7 +112,8 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
             static_cast<int>(region.getDimensionId())
         );
     }
-    BlockPos chestPos = BlockPos(pos).above(); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
+    BlockPos basePos  = BlockPos(pos);
+    BlockPos chestPos = BlockPos(basePos.x, basePos.y + 1, basePos.z); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
     int      dimId    = static_cast<int>(region.getDimensionId());
 
     if (!validateChestBlockEntity(region, chestPos, "HopperPullInHook")) {

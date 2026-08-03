@@ -53,7 +53,7 @@ Player* findOnlinePlayerByUuidString(Level& level, const std::string& playerUuid
 Player* findAnyOnlinePlayerInDimension(Level& level, int dimId) {
     Player* target = nullptr;
     level.forEachPlayer([&](Player& player) {
-        if (player.getDimensionId().id == dimId) {
+        if (player.getDimensionId().value() == dimId) {
             target = &player;
             return false;
         }
@@ -80,7 +80,7 @@ bool isWithinDistance(double distanceSq, int maxDistance) {
 }
 
 bool shouldDisplayFloatingTextToPlayer(const Player& player, const ChestFloatingText& ft) {
-    if (player.getDimensionId().id != ft.dimId) {
+    if (player.getDimensionId().value() != ft.dimId) {
         return false;
     }
 
@@ -89,7 +89,7 @@ bool shouldDisplayFloatingTextToPlayer(const Player& player, const ChestFloating
 }
 
 bool shouldDisplayFakeItemToPlayer(const Player& player, const ChestFloatingText& ft) {
-    if (player.getDimensionId().id != ft.dimId) {
+    if (player.getDimensionId().value() != ft.dimId) {
         return false;
     }
 
@@ -209,7 +209,7 @@ void drawFloatingTextToPlayersInSameDimension(const ChestFloatingText& ft) {
     if (!level) return;
 
     level->forEachPlayer([&ft](Player& player) {
-        if (player.getDimensionId().id == ft.dimId) {
+        if (player.getDimensionId().value() == ft.dimId) {
             syncFloatingTextForPlayer(ft, player);
         }
         return true;
@@ -403,7 +403,7 @@ void FloatingTextManager::drawAllFloatingTexts(DimensionType dimension) {
 
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
     level->forEachPlayer([this, dimension](Player& player) {
-        if (player.getDimensionId().id != static_cast<int>(dimension)) return true;
+        if (player.getDimensionId().value() != static_cast<int>(dimension)) return true;
 
         for (auto const& [key, ft] : mFloatingTexts) {
             if (ft.dimId == static_cast<int>(dimension)) {
@@ -424,7 +424,7 @@ void FloatingTextManager::removeAllFloatingTexts(DimensionType dimension) {
 
     std::shared_lock<std::shared_mutex> lock(mFloatingTextsMutex); // 读锁
     level->forEachPlayer([this, dimension](Player& player) {
-        if (player.getDimensionId().id != static_cast<int>(dimension)) return true;
+        if (player.getDimensionId().value() != static_cast<int>(dimension)) return true;
 
         for (auto const& [key, ft] : mFloatingTexts) {
             if (ft.dimId == static_cast<int>(dimension)) {
@@ -1157,7 +1157,7 @@ void FloatingTextManager::syncFloatingTextsForOnlinePlayers() {
 
     std::vector<std::pair<std::string, int>> onlinePlayers;
     level->forEachPlayer([&onlinePlayers](Player& player) {
-        onlinePlayers.emplace_back(player.getUuid().asString(), player.getDimensionId().id);
+        onlinePlayers.emplace_back(player.getUuid().asString(), player.getDimensionId().value());
         return true;
     });
 
@@ -1262,7 +1262,7 @@ void FloatingTextManager::updateFakeItemsForAllPlayers() {
 
     // 遍历玩家时不再需要持锁
     level->forEachPlayer([this, &fakeItemsByDim](Player& player) {
-        int playerDimId = player.getDimensionId().id;
+        int playerDimId = player.getDimensionId().value();
 
         // 检查该维度是否有假物品需要更新
         auto dimIt = fakeItemsByDim.find(playerDimId);
@@ -1315,7 +1315,7 @@ void registerPlayerConnectionListener() {
                     if (!level) return;
                     auto* playerPtr = findOnlinePlayerByUuidString(*level, playerUuid);
                     if (!playerPtr) return;
-                    int playerDimId = playerPtr->getDimensionId().id;
+                    int playerDimId = playerPtr->getDimensionId().value();
 
                     // 优化：先收集该维度的所有动态悬浮字，减少锁持有时间
                     std::vector<std::pair<int, BlockPos>> keysToProcess;

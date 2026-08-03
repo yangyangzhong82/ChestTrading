@@ -75,7 +75,7 @@ Player* findOnlinePlayerByUuidString(Level& level, const std::string& playerUuid
 Player* findOnlinePlayerInDimension(Level& level, int dimId) {
     Player* target = nullptr;
     level.forEachPlayer([&](Player& player) {
-        if (player.getDimensionId().id == dimId) {
+        if (player.getDimensionId().value() == dimId) {
             target = &player;
             return false;
         }

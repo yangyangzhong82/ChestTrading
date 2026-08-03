@@ -264,7 +264,9 @@ void sendContainerSlots(Player& player, ContainerID containerId, std::vector<Ite
         if (items[i].isNull()) {
             continue;
         }
-        InventorySlotPacket packet(containerId, static_cast<uint>(i), items[i]);
+        InventorySlotPacket packet(
+            InventorySlotPacketPayload(containerId, static_cast<int>(i), items[i], fullName, ItemStack::EMPTY_ITEM())
+        );
         player.sendNetworkPacket(packet);
         ++sent;
     }
@@ -478,13 +480,14 @@ void runAfterTicks(int ticks, std::function<void()> task) {
     ll::thread::ServerThreadExecutor::getDefault().executeAfter(std::move(task), std::chrono::milliseconds(ticks * 50));
 }
 
-auto resolveContainerId(Player& player, int requestedContainerId) -> std::optional<ContainerID> {
+auto resolveContainerId(Player& player, int requestedContainerId, BlockPos const& ownerPos)
+    -> std::optional<ContainerID> {
     if (requestedContainerId > static_cast<int>(ContainerID::Inventory)) {
         return static_cast<ContainerID>(requestedContainerId);
     }
 
     auto& serverPlayer = static_cast<ServerPlayer&>(player);
-    auto  containerId  = serverPlayer.openUnmanagedContainer();
+    auto  containerId  = serverPlayer.openUnmanagedContainer(SharedTypes::Legacy::ContainerType::Container, ownerPos);
     if (containerId == ContainerID::None) {
         logger.warn("ChestUI: failed to allocate unmanaged container id for {}", player.getRealName());
         return std::nullopt;
@@ -497,18 +500,19 @@ auto resolveContainerId(Player& player, int requestedContainerId) -> std::option
 bool open(Player& player, OpenRequest request) {
     cleanupForReopen(player);
 
-    auto containerId = resolveContainerId(player, request.containerId);
+    Session session;
+    session.generation         = ++gSessionGeneration;
+    session.fakePos            = makeFakePos(player, session.generation);
+    session.fakePairPos        = makeFakePairPos(session.fakePos);
+
+    auto containerId = resolveContainerId(player, request.containerId, session.fakePos);
     if (!containerId.has_value()) {
         return false;
     }
 
-    Session session;
-    session.generation         = ++gSessionGeneration;
     session.containerId        = containerId.value();
     session.dynamicContainerId = static_cast<uint>(static_cast<uchar>(session.containerId));
     session.openedAt           = std::chrono::steady_clock::now();
-    session.fakePos            = makeFakePos(player, session.generation);
-    session.fakePairPos        = makeFakePairPos(session.fakePos);
     session.originalRuntimeId =
         player.getDimensionBlockSource().getBlock(session.fakePos).computeRawSerializationIdHashForNetwork();
     session.originalPairRuntimeId =
