@@ -6,6 +6,7 @@
 #include "LockForm.h"
 #include "PlayerLimitForm.h"
 #include "TradeRecordForm.h"
+#include "Utils/ChestContainerUtils.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/economy.h"
@@ -1080,11 +1081,7 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
         return;
     }
 
-    auto* chest     = static_cast<ChestBlockActor*>(blockActor);
-    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
-        chest = chest->mLargeChestPaired;
-    }
-    auto* container = chest->getContainer();
+    auto* container = CT::ChestContainerUtils::tryGetChestContainer(region, pos);
     if (!container) {
         player.sendMessage(txt.getMessage("chest.entity_fail"));
         logger.error(

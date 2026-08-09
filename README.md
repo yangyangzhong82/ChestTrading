@@ -36,6 +36,17 @@ ChestTrading 是一款面向 Minecraft Bedrock 服务器的箱子交易插件，
 - 可选权限依赖：`Bedrock-Authority`
 - 可选领地依赖：`PLand`
 
+## 构建
+
+项目使用 `clang-cl` 编译，以保持与 Windows 上 MSVC ABI 的兼容。构建前需要安装 LLVM、MSVC Build Tools 和 Windows SDK。
+
+在普通终端中执行：
+
+```bash
+xmake f -p windows -a x64 --toolchain=clang-cl
+xmake
+```
+
 ## 核心功能概览
 
 ### 店铺系统

@@ -5,6 +5,7 @@
 #include "LockForm.h"
 #include "PlayerLimitForm.h"
 #include "TradeRecordForm.h"
+#include "Utils/ChestContainerUtils.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
 #include "Utils/TimeUtils.h"
@@ -189,27 +190,13 @@ std::string buildDefaultEnchantInput(const ItemStack& item) {
     return result;
 }
 
-Container* getRecycleChestContainer(BlockSource& region, BlockPos pos) {
-    auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-        return nullptr;
-    }
-
-    auto* chest = static_cast<ChestBlockActor*>(blockActor);
-    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
-        chest = chest->mLargeChestPaired;
-    }
-
-    return chest->getContainer();
-}
-
 std::optional<int> countRecycleChestAvailableSpace(
     BlockSource&       region,
     BlockPos           pos,
     const std::string& commissionNbtStr,
     bool               damageableItem
 ) {
-    auto* container = getRecycleChestContainer(region, pos);
+    auto* container = CT::ChestContainerUtils::tryGetChestContainer(region, pos);
     if (!container) {
         return std::nullopt;
     }

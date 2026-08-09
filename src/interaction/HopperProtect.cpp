@@ -1,4 +1,4 @@
-
+#include "Utils/ChestContainerUtils.h"
 #include "Utils/ChestTypeUtils.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
@@ -55,9 +55,7 @@ bool validateChestBlockEntity(BlockSource& region, BlockPos const& pos, char con
         return false;
     }
 
-    auto* chest = static_cast<ChestBlockActor*>(blockActor);
-    chest->_validatePairedChest(region);
-    if (chest->getContainer() == nullptr) {
+    if (ChestContainerUtils::tryGetChestContainer(region, pos) == nullptr) {
         logger.warn(
             "{}: chest container is null at ({}, {}, {}), skip hopper transfer to avoid crash.",
             hookName,

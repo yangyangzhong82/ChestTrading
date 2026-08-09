@@ -1,4 +1,5 @@
 #include "BaseTransactionService.h"
+#include "Utils/ChestContainerUtils.h"
 #include "Utils/NbtUtils.h"
 #include "form/FormUtils.h"
 #include "mc/world/actor/player/Inventory.h"
@@ -8,19 +9,7 @@
 namespace CT {
 
 Container* BaseTransactionService::getChestContainer(BlockSource& region, BlockPos pos) {
-    if (!region.hasChunksAt(pos, 0, false)) {
-        return nullptr;
-    }
-
-    auto* blockActor = region.getBlockEntity(pos);
-    if (!blockActor || blockActor->mType != BlockActorType::Chest) {
-        return nullptr;
-    }
-    auto* chest = static_cast<ChestBlockActor*>(blockActor);
-    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
-        chest = chest->mLargeChestPaired;
-    }
-    return chest->getContainer();
+    return ChestContainerUtils::tryGetChestContainer(region, pos);
 }
 
 void BaseTransactionService::removeItemsFromSlot(Container* container, int slot, int count) {

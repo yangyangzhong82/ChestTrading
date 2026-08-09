@@ -1,5 +1,6 @@
 #include "FormUtils.h"
 #include "Config/ConfigManager.h"
+#include "Utils/ChestContainerUtils.h"
 #include "Utils/ItemTextureManager.h"
 #include "Utils/MoneyFormat.h"
 #include "Utils/NbtUtils.h"
@@ -349,11 +350,7 @@ std::optional<int> tryCountItemsInChest(
         return std::nullopt;
     }
 
-    auto* chest     = static_cast<ChestBlockActor*>(blockActor);
-    if (chest->mLargeChestPaired && !chest->mPairLead && chest->mLargeChestPaired) {
-        chest = chest->mLargeChestPaired;
-    }
-    auto* container = chest->getContainer();
+    auto* container = CT::ChestContainerUtils::tryGetChestContainer(region, pos);
     if (!container) {
         logger.error(
             "tryCountItemsInChest: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
