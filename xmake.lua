@@ -1,5 +1,9 @@
 add_rules("mode.debug", "mode.release")
 
+if is_plat("windows") then
+    set_toolchains("clang-cl")
+end
+
 add_repositories("levimc-repo https://github.com/LiteLDev/xmake-repo.git")
 add_repositories("yyz-repo https://github.com/yangyangzhong82/xmake-repo.git")
 
@@ -28,6 +32,7 @@ option("target_type")
 option_end()
 
 target("ChestTrading")
+
     set_default(true)
     add_rules("@levibuildscript/linkrule")
 

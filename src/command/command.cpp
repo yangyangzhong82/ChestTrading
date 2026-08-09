@@ -49,6 +49,26 @@ void setPackChestMode(const std::string& uuid, bool enabled) {
 using ll::command::CommandHandle;
 using ll::command::CommandRegistrar;
 
+struct ImportOfficialShopParam {
+    int         x;
+    int         y;
+    int         z;
+    std::string file_path;
+};
+
+struct LimitResetPosParam {
+    int x;
+    int y;
+    int z;
+};
+
+struct LimitResetItemParam {
+    int x;
+    int y;
+    int z;
+    int item_id;
+};
+
 void registerCommand() {
     auto& registrar = CommandRegistrar::getInstance(false);
     auto& i18n      = I18nService::getInstance();
@@ -119,13 +139,6 @@ void registerCommand() {
         i18n.get("command.import_shop_description"),
         CommandPermissionLevel::Any
     );
-
-    struct ImportOfficialShopParam {
-        int         x;
-        int         y;
-        int         z;
-        std::string file_path;
-    };
 
     auto executeImportOfficialShop = [&i18n](
                                          CommandOrigin const&           origin,
@@ -399,18 +412,6 @@ void registerCommand() {
         i18n.get("command.limit_reset_description"),
         CommandPermissionLevel::Any
     );
-
-    struct LimitResetPosParam {
-        int x;
-        int y;
-        int z;
-    };
-    struct LimitResetItemParam {
-        int x;
-        int y;
-        int z;
-        int item_id;
-    };
 
     auto executeLimitReset = [&i18n](
                                  CommandOrigin const&      origin,

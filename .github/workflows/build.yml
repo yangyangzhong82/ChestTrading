@@ -12,6 +12,9 @@ jobs:
       - uses: xmake-io/github-action-setup-xmake@v1
         # with:
         #   xmake-version: branch@master
+
+      - name: Install LLVM
+        run: choco install llvm -y
       
       - uses: actions/cache@v4
         with:
@@ -25,7 +28,7 @@ jobs:
           xmake repo -u
 
       - run: |
-          xmake f -a x64 -m release -p windows -v -y
+          xmake f -a x64 -m release -p windows --toolchain=clang-cl -v -y
 
       - run: |
           xmake -v -y
