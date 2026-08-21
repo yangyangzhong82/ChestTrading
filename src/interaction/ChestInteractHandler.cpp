@@ -1,10 +1,10 @@
 #include "interaction/ChestInteractHandler.h"
 
-#include "compat/PermissionCompat.h"
 #include "Config/ConfigManager.h"
 #include "Utils/ChestTypeUtils.h"
 #include "command/command.h"
 #include "compat/PLandCompat.h"
+#include "compat/PermissionCompat.h"
 #include "form/LockForm.h"
 #include "form/RecycleForm.h"
 #include "form/ShopForm.h"
@@ -13,6 +13,7 @@
 #include "service/ChestPackService.h"
 #include "service/ChestService.h"
 #include "service/TextService.h"
+
 
 
 #include <array>
@@ -154,7 +155,7 @@ bool handleOpenOrForms(
 } // namespace
 
 void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
-    logger.info("name{}",ev.item().getTypeName());
+
     bool wasCancelled = ev.isCancelled();
 
     auto block = ev.block();
@@ -191,8 +192,8 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
     bool isAdmin = PermissionCompat::hasPermission(playerUuid, "chest.admin");
     bool isOwner = (ownerUuid == playerUuid) || isAdmin;
 
-    bool isTradeChest = chestType == ChestType::Shop || chestType == ChestType::RecycleShop
-                     || chestType == ChestType::AdminShop || chestType == ChestType::AdminRecycle;
+    bool isTradeChest     = chestType == ChestType::Shop || chestType == ChestType::RecycleShop
+                         || chestType == ChestType::AdminShop || chestType == ChestType::AdminRecycle;
     bool allowTradeBypass = isTradeChest && !isOwner;
 
     // If another plugin already cancelled this interaction, only trade forms may bypass.
@@ -207,10 +208,9 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
     }
 
     const auto& interactionSettings = ConfigManager::getInstance().get().interactionSettings;
-    bool        isManageTool        = !interactionSettings.manageToolItem.empty()
-                               && item.getTypeName() == interactionSettings.manageToolItem;
-    bool canTriggerManage = isManageTool
-                         && (!interactionSettings.requireSneakingForManage || player.isSneaking());
+    bool        isManageTool =
+        !interactionSettings.manageToolItem.empty() && item.getTypeName() == interactionSettings.manageToolItem;
+    bool canTriggerManage = isManageTool && (!interactionSettings.requireSneakingForManage || player.isSneaking());
     if (canTriggerManage) {
         handleStickManage(player, playerUuid, pos, dimId, isLocked, ownerUuid, chestType, region);
         ev.cancel();
@@ -225,4 +225,3 @@ void handlePlayerInteractBlock(ll::event::PlayerInteractBlockEvent& ev) {
 }
 
 } // namespace CT
-

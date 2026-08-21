@@ -102,7 +102,7 @@ void showShareForm(
     }
 
     fm.appendButton(textService.getMessage("form.button_cancel"), [](Player& p) {
-        logger.info("玩家 {} 取消了箱子分享管理。", p.getUuid().asString());
+        logger.debug("玩家 {} 取消了箱子分享管理。", p.getUuid().asString());
     });
 
     fm.sendTo(player);
@@ -147,18 +147,20 @@ void showAddOfflineShareForm(
                                         {"player", offlinePlayerName}
                                 }
                                 ));
-                                logger.info("玩家 {} 成功将箱子分享给离线玩家 {}.", ownerUuid, offlinePlayerName);
+                                logger.debug("玩家 {} 成功将箱子分享给离线玩家 {}.", ownerUuid, offlinePlayerName);
                             } else {
                                 p.sendMessage(textService.getMessage("share.add_fail"));
                                 logger.error("玩家 {} 分享给离线玩家 {} 失败。", ownerUuid, offlinePlayerName);
                             }
                         } else {
-                            p.sendMessage(TextService::getInstance().getMessage(
-                                "share.player_not_found",
-                                {
-                                    {"player", offlinePlayerName}
+                            p.sendMessage(
+                                TextService::getInstance().getMessage(
+                                    "share.player_not_found",
+                                    {
+                                        {"player", offlinePlayerName}
                             }
-                            ));
+                                )
+                            );
                             logger.warn("玩家 {} 尝试分享给不存在的玩家 {}.", ownerUuid, offlinePlayerName);
                         }
                     } else {
@@ -233,7 +235,7 @@ void showAddShareForm(
         ) {
             auto& region = p.getDimensionBlockSource();
             if (!res) {
-                logger.info("玩家 {} 取消了添加分享玩家。", p.getUuid().asString());
+                logger.debug("玩家 {} 取消了添加分享玩家。", p.getUuid().asString());
                 showShareForm(p, pos, dimId, ownerUuid, region, currentPage); // 返回主菜单
                 return;
             }
@@ -374,7 +376,7 @@ void showRemoveShareForm(
                                     {"player", sharedPlayerName}
                             }
                             ));
-                            logger.info("玩家 {} 成功移除分享玩家 {}.", ownerUuid, sharedPlayerName);
+                            logger.debug("玩家 {} 成功移除分享玩家 {}.", ownerUuid, sharedPlayerName);
                         } else {
                             p.sendMessage(textService.getMessage("share.remove_fail"));
                             logger.error("玩家 {} 移除分享玩家 {} 失败。", ownerUuid, sharedPlayerUuid);
