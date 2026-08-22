@@ -27,6 +27,8 @@ struct ChestConfigData {
     bool enableFloatingText = true;
     bool enableFakeItem     = true;
     bool isPublic           = true;
+    bool allowHopperPull    = false;
+    bool allowHopperPush    = false;
 };
 
 // 箱子信息缓存结构
@@ -34,13 +36,17 @@ struct ChestCacheEntry {
     bool                                  isLocked;
     std::string                           ownerUuid;
     ChestType                             chestType;
+    bool                                  allowHopperPull;
+    bool                                  allowHopperPush;
     std::chrono::steady_clock::time_point timestamp;
 
-    ChestCacheEntry() : isLocked(false), chestType(ChestType::Invalid) {}
-    ChestCacheEntry(bool locked, std::string uuid, ChestType type)
+    ChestCacheEntry() : isLocked(false), chestType(ChestType::Invalid), allowHopperPull(false), allowHopperPush(false) {}
+    ChestCacheEntry(bool locked, std::string uuid, ChestType type, bool hopperPull = false, bool hopperPush = false)
     : isLocked(locked),
       ownerUuid(std::move(uuid)),
       chestType(type),
+      allowHopperPull(hopperPull),
+      allowHopperPush(hopperPush),
       timestamp(std::chrono::steady_clock::now()) {}
 };
 
@@ -119,6 +125,8 @@ public:
      */
     bool isChestProtected(BlockPos pos, int dimId, BlockSource& region);
     bool shouldBlockAutomatedTransfer(BlockPos pos, int dimId, BlockSource& region);
+    bool shouldBlockAutomatedPull(BlockPos pos, int dimId, BlockSource& region);
+    bool shouldBlockAutomatedPush(BlockPos pos, int dimId, BlockSource& region);
 
     /**
      * @brief [已废弃] 请使用 hasChestConfig() 或 isChestProtected()

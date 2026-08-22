@@ -23,6 +23,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV13,
         migrateToV14,
         migrateToV15,
+        migrateToV16,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -450,6 +451,22 @@ bool SchemaMigration::migrateToV15(Sqlite3Wrapper& db) {
     const char* sqls[] = {
         "ALTER TABLE chests ADD COLUMN last_restock_time INTEGER NOT NULL DEFAULT 0;",
         "UPDATE chests SET last_restock_time = CAST(strftime('%s', 'now') AS INTEGER) WHERE last_restock_time = 0;"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV16(Sqlite3Wrapper& db) {
+    // 箱子个性化漏斗权限：分别控制漏斗吸出和向箱子输入。
+    // 默认关闭，保持旧版本已登记箱子的保护行为。
+    const char* sqls[] = {
+        "ALTER TABLE chests ADD COLUMN allow_hopper_pull INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE chests ADD COLUMN allow_hopper_push INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE packed_chests ADD COLUMN allow_hopper_pull INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE packed_chests ADD COLUMN allow_hopper_push INTEGER NOT NULL DEFAULT 0;"
     };
 
     for (const char* sql : sqls) {

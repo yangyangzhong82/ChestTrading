@@ -376,6 +376,8 @@ std::optional<ChestData> ChestService::getChestInfo(BlockPos pos, int dimId, Blo
         data.pos       = mainPos;
         data.ownerUuid = cacheEntry.ownerUuid;
         data.type      = cacheEntry.chestType;
+        data.allowHopperPull = cacheEntry.allowHopperPull;
+        data.allowHopperPush = cacheEntry.allowHopperPush;
         return data;
     }
 
@@ -384,7 +386,13 @@ std::optional<ChestData> ChestService::getChestInfo(BlockPos pos, int dimId, Blo
 
     // 更新缓存
     if (result) {
-        ChestCacheEntry entry(true, result->ownerUuid, result->type);
+        ChestCacheEntry entry(
+            true,
+            result->ownerUuid,
+            result->type,
+            result->allowHopperPull,
+            result->allowHopperPush
+        );
         ChestCacheManager::getInstance().setCachedChestInfo(mainPos, dimId, entry);
         if (pos != mainPos) {
             ChestCacheManager::getInstance().setCachedChestInfo(pos, dimId, entry);
@@ -420,17 +428,47 @@ bool ChestService::shouldBlockAutomatedTransfer(BlockPos pos, int dimId, BlockSo
         return false;
     }
 
+    BlockPos mainPos = getMainChestPos(pos, region);
+    auto     landId  = PLandCompat::getInstance().getLandId(mainPos, dimId);
+
+    // PLand 不可用或箱子位于领地外时，箱子自身的自动化开关独立生效。
+    if (!landId.has_value() || *landId < 0) {
+        return false;
+    }
+
     const auto& landRestrictions = ConfigManager::getInstance().get().landRestrictionSettings;
     if (!landRestrictions.allowAutomationTransferInOwnerPland) {
         return true;
     }
 
-    auto ownerLand = PLandCompat::getInstance().isOwnerLand(info->ownerUuid, getMainChestPos(pos, region), dimId);
-    if (ownerLand.has_value() && *ownerLand) {
+    auto ownerLand = PLandCompat::getInstance().isOwnerLand(info->ownerUuid, mainPos, dimId);
+    return !(ownerLand.has_value() && *ownerLand);
+}
+
+bool ChestService::shouldBlockAutomatedPull(BlockPos pos, int dimId, BlockSource& region) {
+    auto info = getChestInfo(pos, dimId, region);
+    if (!info) {
         return false;
     }
 
-    return true;
+    if (!info->allowHopperPull) {
+        return true;
+    }
+
+    return shouldBlockAutomatedTransfer(pos, dimId, region);
+}
+
+bool ChestService::shouldBlockAutomatedPush(BlockPos pos, int dimId, BlockSource& region) {
+    auto info = getChestInfo(pos, dimId, region);
+    if (!info) {
+        return false;
+    }
+
+    if (!info->allowHopperPush) {
+        return true;
+    }
+
+    return shouldBlockAutomatedTransfer(pos, dimId, region);
 }
 
 bool ChestService::isChestLocked(BlockPos pos, int dimId, BlockSource& region) {
@@ -662,8 +700,15 @@ std::vector<std::string> ChestService::getSharedPlayers(BlockPos pos, int dimId,
 
 bool ChestService::updateChestConfig(BlockPos pos, int dimId, BlockSource& region, const ChestConfigData& config) {
     BlockPos mainPos = getMainChestPos(pos, region);
-    bool     success = ChestRepository::getInstance()
-                       .updateConfig(mainPos, dimId, config.enableFloatingText, config.enableFakeItem, config.isPublic);
+    bool     success = ChestRepository::getInstance().updateConfig(
+        mainPos,
+        dimId,
+        config.enableFloatingText,
+        config.enableFakeItem,
+        config.isPublic,
+        config.allowHopperPull,
+        config.allowHopperPush
+    );
 
     if (!success) {
         logger.error("更新箱子配置失败: pos=({},{},{}), dimId={}", mainPos.x, mainPos.y, mainPos.z, dimId);
@@ -707,6 +752,8 @@ ChestConfigData ChestService::getChestConfig(BlockPos pos, int dimId, BlockSourc
         config.enableFloatingText = data->enableFloatingText;
         config.enableFakeItem     = data->enableFakeItem;
         config.isPublic           = data->isPublic;
+        config.allowHopperPull    = data->allowHopperPull;
+        config.allowHopperPush    = data->allowHopperPush;
     }
     return config;
 }

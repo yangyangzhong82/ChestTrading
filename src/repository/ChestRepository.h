@@ -19,6 +19,8 @@ struct ChestData {
     bool        enableFloatingText = true;
     bool        enableFakeItem     = true;
     bool        isPublic           = true;
+    bool        allowHopperPull    = false;
+    bool        allowHopperPush    = false;
 };
 
 // 分享数据结构
@@ -68,7 +70,15 @@ public:
     bool                         isPlayerShared(const std::string& playerUuid, BlockPos pos, int dimId);
 
     // === 配置更新 ===
-    bool updateConfig(BlockPos pos, int dimId, bool enableFloatingText, bool enableFakeItem, bool isPublic);
+    bool updateConfig(
+        BlockPos pos,
+        int dimId,
+        bool enableFloatingText,
+        bool enableFakeItem,
+        bool isPublic,
+        bool allowHopperPull,
+        bool allowHopperPush
+    );
     bool updateShopName(BlockPos pos, int dimId, const std::string& shopName);
 
     // === 打包/恢复 ===

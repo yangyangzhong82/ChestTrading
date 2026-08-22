@@ -1,5 +1,6 @@
 #include "Utils/ChestContainerUtils.h"
 #include "Utils/ChestTypeUtils.h"
+#include "compat/PLandCompat.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
 #include "mc/world/actor/Hopper.h"
@@ -102,14 +103,6 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
     Container&   toContainer,
     Vec3 const&  pos
 ) {
-    if (this->mIsEntity) {
-        return callOriginWithSehGuard(
-            [&]() { return origin(region, toContainer, pos); },
-            "HopperPullInHook",
-            BlockPos(pos),
-            static_cast<int>(region.getDimensionId())
-        );
-    }
     BlockPos basePos  = BlockPos(pos);
     BlockPos chestPos = BlockPos(basePos.x, basePos.y + 1, basePos.z); // 漏斗从上方吸取物品，所以目标箱子在漏斗上方
     int      dimId    = static_cast<int>(region.getDimensionId());
@@ -118,7 +111,18 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return false;
     }
 
-    if (ChestService::getInstance().shouldBlockAutomatedTransfer(chestPos, dimId, region)) {
+    if (!PLandCompat::getInstance().canHopperPullItems(chestPos, dimId)) {
+        logger.debug(
+            "PLand 领地禁止漏斗从箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
+            chestPos.x,
+            chestPos.y,
+            chestPos.z,
+            dimId
+        );
+        return false;
+    }
+
+    if (ChestService::getInstance().shouldBlockAutomatedPull(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试从受保护的箱子 ({}, {}, {}) in dim {} 吸取物品，已阻止。",
             chestPos.x,
@@ -188,7 +192,7 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return false;
     }
 
-    if (ChestService::getInstance().shouldBlockAutomatedTransfer(chestPos, dimId, region)) {
+    if (ChestService::getInstance().shouldBlockAutomatedPush(chestPos, dimId, region)) {
         logger.debug(
             "漏斗尝试向受保护的箱子 ({}, {}, {}) in dim {} 推送物品，已阻止。",
             chestPos.x,

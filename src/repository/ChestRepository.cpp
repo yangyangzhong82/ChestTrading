@@ -16,8 +16,8 @@ bool ChestRepository::insert(const ChestData& chest) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(
         "INSERT OR REPLACE INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
-        "enable_floating_text, enable_fake_item, is_public, last_restock_time) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
+        "enable_floating_text, enable_fake_item, is_public, allow_hopper_pull, allow_hopper_push, last_restock_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
         chest.ownerUuid,
         chest.dimId,
         chest.pos.x,
@@ -27,7 +27,9 @@ bool ChestRepository::insert(const ChestData& chest) {
         chest.shopName,
         chest.enableFloatingText ? 1 : 0,
         chest.enableFakeItem ? 1 : 0,
-        chest.isPublic ? 1 : 0
+        chest.isPublic ? 1 : 0,
+        chest.allowHopperPull ? 1 : 0,
+        chest.allowHopperPush ? 1 : 0
     );
 }
 
@@ -35,13 +37,16 @@ bool ChestRepository::update(const ChestData& chest) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(
         "UPDATE chests SET player_uuid = ?, type = ?, shop_name = ?, enable_floating_text = ?, "
-        "enable_fake_item = ?, is_public = ? WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
+        "enable_fake_item = ?, is_public = ?, allow_hopper_pull = ?, allow_hopper_push = ? "
+        "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         chest.ownerUuid,
         static_cast<int>(chest.type),
         chest.shopName,
         chest.enableFloatingText ? 1 : 0,
         chest.enableFakeItem ? 1 : 0,
         chest.isPublic ? 1 : 0,
+        chest.allowHopperPull ? 1 : 0,
+        chest.allowHopperPush ? 1 : 0,
         chest.dimId,
         chest.pos.x,
         chest.pos.y,
@@ -63,7 +68,8 @@ bool ChestRepository::remove(BlockPos pos, int dimId) {
 std::optional<ChestData> ChestRepository::findByPosition(BlockPos pos, int dimId) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
-        "SELECT player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public "
+        "SELECT player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public, "
+        "allow_hopper_pull, allow_hopper_push "
          "FROM chests WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         dimId,
         pos.x,
@@ -71,7 +77,7 @@ std::optional<ChestData> ChestRepository::findByPosition(BlockPos pos, int dimId
         pos.z
     );
 
-    return parseSingleRow<ChestData>(results, 6, [&](DbRowParser r) {
+    return parseSingleRow<ChestData>(results, 8, [&](DbRowParser r) {
         return ChestData{
             dimId,
             pos,
@@ -80,7 +86,9 @@ std::optional<ChestData> ChestRepository::findByPosition(BlockPos pos, int dimId
             r.getString(2),
             r.getBool(3),
             r.getBool(4),
-            r.getBool(5)
+            r.getBool(5),
+            r.getBool(6),
+            r.getBool(7)
         };
     });
 }
@@ -88,12 +96,13 @@ std::optional<ChestData> ChestRepository::findByPosition(BlockPos pos, int dimId
 std::vector<ChestData> ChestRepository::findByOwner(const std::string& ownerUuid) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
-        "SELECT dim_id, pos_x, pos_y, pos_z, type, shop_name, enable_floating_text, enable_fake_item, is_public "
+        "SELECT dim_id, pos_x, pos_y, pos_z, type, shop_name, enable_floating_text, enable_fake_item, is_public, "
+        "allow_hopper_pull, allow_hopper_push "
          "FROM chests WHERE player_uuid = ?;",
         ownerUuid
     );
 
-    return parseRows<ChestData>(results, 9, [&](DbRowParser r) {
+    return parseRows<ChestData>(results, 11, [&](DbRowParser r) {
         return ChestData{
             r.getInt(0),
             BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
@@ -102,7 +111,9 @@ std::vector<ChestData> ChestRepository::findByOwner(const std::string& ownerUuid
             r.getString(5),
             r.getBool(6),
             r.getBool(7),
-            r.getBool(8)
+            r.getBool(8),
+            r.getBool(9),
+            r.getBool(10)
         };
     });
 }
@@ -110,9 +121,10 @@ std::vector<ChestData> ChestRepository::findByOwner(const std::string& ownerUuid
 std::vector<ChestData> ChestRepository::findAll() {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query("SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, "
-                             "enable_fake_item, is_public FROM chests ORDER BY player_uuid, dim_id;");
+                             "enable_fake_item, is_public, allow_hopper_pull, allow_hopper_push "
+                             "FROM chests ORDER BY player_uuid, dim_id;");
 
-    return parseRows<ChestData>(results, 10, [](DbRowParser r) {
+    return parseRows<ChestData>(results, 12, [](DbRowParser r) {
         return ChestData{
             r.getInt(0),
             BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
@@ -121,7 +133,9 @@ std::vector<ChestData> ChestRepository::findAll() {
             r.getString(6),
             r.getBool(7),
             r.getBool(8),
-            r.getBool(9)
+            r.getBool(9),
+            r.getBool(10),
+            r.getBool(11)
         };
     });
 }
@@ -130,11 +144,11 @@ std::vector<ChestData> ChestRepository::findAllPublicShops() {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
         "SELECT dim_id, pos_x, pos_y, pos_z, player_uuid, type, shop_name, enable_floating_text, "
-        "enable_fake_item, is_public FROM chests "
+        "enable_fake_item, is_public, allow_hopper_pull, allow_hopper_push FROM chests "
         "WHERE is_public = 1 AND type IN (2, 3, 5, 6) ORDER BY player_uuid, dim_id;"
     );
 
-    return parseRows<ChestData>(results, 10, [](DbRowParser r) {
+    return parseRows<ChestData>(results, 12, [](DbRowParser r) {
         return ChestData{
             r.getInt(0),
             BlockPos{r.getInt(1), r.getInt(2), r.getInt(3)},
@@ -143,7 +157,9 @@ std::vector<ChestData> ChestRepository::findAllPublicShops() {
             r.getString(6),
             r.getBool(7),
             r.getBool(8),
-            r.getBool(9)
+            r.getBool(9),
+            r.getBool(10),
+            r.getBool(11)
         };
     });
 }
@@ -311,15 +327,20 @@ bool ChestRepository::updateConfig(
     int      dimId,
     bool     enableFloatingText,
     bool     enableFakeItem,
-    bool     isPublic
+    bool     isPublic,
+    bool     allowHopperPull,
+    bool     allowHopperPush
 ) {
     auto& db = Sqlite3Wrapper::getInstance();
     return db.execute(
-        "UPDATE chests SET enable_floating_text = ?, enable_fake_item = ?, is_public = ? "
+        "UPDATE chests SET enable_floating_text = ?, enable_fake_item = ?, is_public = ?, "
+        "allow_hopper_pull = ?, allow_hopper_push = ? "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         enableFloatingText ? 1 : 0,
         enableFakeItem ? 1 : 0,
         isPublic ? 1 : 0,
+        allowHopperPull ? 1 : 0,
+        allowHopperPush ? 1 : 0,
         dimId,
         pos.x,
         pos.y,
@@ -357,8 +378,9 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
     // 插入到 packed_chests
     if (!db.execute(
             "INSERT INTO packed_chests (player_uuid, orig_dim_id, orig_pos_x, orig_pos_y, orig_pos_z, "
-            "type, shop_name, enable_floating_text, enable_fake_item, is_public, packed_time) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
+            "type, shop_name, enable_floating_text, enable_fake_item, is_public, allow_hopper_pull, "
+            "allow_hopper_push, packed_time) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);",
             chestInfo->ownerUuid,
             dimId,
             pos.x,
@@ -369,6 +391,8 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
             chestInfo->enableFloatingText ? 1 : 0,
             chestInfo->enableFakeItem ? 1 : 0,
             chestInfo->isPublic ? 1 : 0,
+            chestInfo->allowHopperPull ? 1 : 0,
+            chestInfo->allowHopperPush ? 1 : 0,
             packedTime
         )) {
         return -1;
@@ -470,7 +494,8 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
 
     // 获取打包的箱子信息
     auto result = db.query(
-        "SELECT player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public "
+        "SELECT player_uuid, type, shop_name, enable_floating_text, enable_fake_item, is_public, "
+        "allow_hopper_pull, allow_hopper_push "
         "FROM packed_chests WHERE packed_id = ?;",
         packedId
     );
@@ -495,8 +520,9 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     // 恢复箱子主表
     if (!db.execute(
             "INSERT INTO chests (player_uuid, dim_id, pos_x, pos_y, pos_z, type, shop_name, "
-            "enable_floating_text, enable_fake_item, is_public, last_restock_time) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
+            "enable_floating_text, enable_fake_item, is_public, allow_hopper_pull, allow_hopper_push, "
+            "last_restock_time) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER));",
             result[0][0], // player_uuid
             newDimId,
             newPos.x,
@@ -506,7 +532,9 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
             result[0][2],            // shop_name
             std::stoi(result[0][3]), // enable_floating_text
             std::stoi(result[0][4]), // enable_fake_item
-            std::stoi(result[0][5])  // is_public
+            std::stoi(result[0][5]), // is_public
+            std::stoi(result[0][6]), // allow_hopper_pull
+            std::stoi(result[0][7])  // allow_hopper_push
         )) {
         return false;
     }

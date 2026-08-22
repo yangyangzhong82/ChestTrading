@@ -518,6 +518,8 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
         textService.getMessage("form.toggle_floating_text"),
         config.enableFloatingText
     );
+    fm.appendToggle("allow_hopper_pull", textService.getMessage("form.toggle_hopper_pull"), config.allowHopperPull);
+    fm.appendToggle("allow_hopper_push", textService.getMessage("form.toggle_hopper_push"), config.allowHopperPush);
 
     bool isShopType =
         (chestType == ChestType::Shop || chestType == ChestType::RecycleShop || chestType == ChestType::AdminShop
@@ -557,6 +559,15 @@ void showChestSettingsForm(Player& player, BlockPos pos, int dimId, BlockSource&
             auto ftIt = result->find("enable_floating_text");
             if (ftIt != result->end() && std::holds_alternative<uint64>(ftIt->second)) {
                 newConfig.enableFloatingText = (std::get<uint64>(ftIt->second) != 0);
+            }
+
+            auto hpIt = result->find("allow_hopper_pull");
+            if (hpIt != result->end() && std::holds_alternative<uint64>(hpIt->second)) {
+                newConfig.allowHopperPull = (std::get<uint64>(hpIt->second) != 0);
+            }
+            auto hiIt = result->find("allow_hopper_push");
+            if (hiIt != result->end() && std::holds_alternative<uint64>(hiIt->second)) {
+                newConfig.allowHopperPush = (std::get<uint64>(hiIt->second) != 0);
             }
 
             if (isShopType) {

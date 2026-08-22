@@ -343,6 +343,8 @@
     "toggle_floating_text": "显示悬浮字",
     "toggle_fake_item": "显示假物品",
     "toggle_public": "公开到商店列表",
+    "toggle_hopper_pull": "允许漏斗吸出物品",
+    "toggle_hopper_push": "允许漏斗输入物品",
     "record_entry": "§f{time} - {buyer} 购买了 {item} x{count}，花费 {price} 金币"
   },
   "dimension": {

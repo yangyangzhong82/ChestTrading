@@ -359,6 +359,25 @@ std::optional<bool> PLandCompat::isOwnerLand(std::string const& playerUuid, Bloc
     }
 }
 
+bool PLandCompat::canHopperPullItems(BlockPos const& pos, int dimId) const {
+    LandQueryContext context;
+    if (queryLandContext(pos, dimId, context) == LandQueryState::Unavailable) {
+        return true;
+    }
+
+    // 领地外没有环境限制；PLand 的环境权限只对领地内生效。
+    if (!context.land) {
+        return true;
+    }
+
+    try {
+        return context.symbols.getPermTable(context.land.get()).environment.allowMinecartHopperPullItems;
+    } catch (...) {
+        reportRuntimeFailureThrottled("PLand 对接失败，步骤=readHopperPullPermission，已回退为放行。");
+        return true;
+    }
+}
+
 std::optional<int64_t> PLandCompat::getLandId(BlockPos const& pos, int dimId) const {
     LandQueryContext context;
     if (queryLandContext(pos, dimId, context) == LandQueryState::Unavailable) {

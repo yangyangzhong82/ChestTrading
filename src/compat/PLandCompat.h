@@ -17,6 +17,10 @@ public:
     std::optional<bool> isInLand(Player const& player, BlockPos const& pos) const;
     std::optional<bool> isOwnerLand(std::string const& playerUuid, BlockPos const& pos, int dimId) const;
 
+    // 判断领地环境是否允许漏斗（含漏斗矿车）从容器中吸取物品。
+    // PLand 不可用或位置不在领地内时返回 true，不影响未接入 PLand 的服务器。
+    bool canHopperPullItems(BlockPos const& pos, int dimId) const;
+
     /**
      * @brief 获取指定位置所在领地的 ID。
      * @return std::nullopt 表示 PLand 不可用；-1 表示该位置不在任何领地内；否则为领地 ID。

@@ -343,6 +343,8 @@
     "toggle_floating_text": "Show Floating Text",
     "toggle_fake_item": "Show Fake Item",
     "toggle_public": "Public in Shop List",
+    "toggle_hopper_pull": "Allow Hopper Extract",
+    "toggle_hopper_push": "Allow Hopper Insert",
     "record_entry": "§f{time} - {buyer} purchased {item} x{count}, spent {price} coins"
   },
   "dimension": {
