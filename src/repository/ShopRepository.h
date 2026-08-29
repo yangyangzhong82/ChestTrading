@@ -99,6 +99,7 @@ struct PublicShopItemData {
     double      price;
     int         dbCount;
     bool        isOfficial; // 是否官方商店
+    long long   lastActiveTime; // 最后动态时间（上架/改价/补货/成交，Unix 秒）
 };
 
 // 公开回收商店物品数据
@@ -113,6 +114,7 @@ struct PublicRecycleItemData {
     int         maxRecycleCount;
     int         currentRecycledCount;
     bool        isOfficial;
+    long long   lastActiveTime; // 最后动态时间（委托/改价/成交，Unix 秒）
 };
 
 // 箱子销量统计数据
@@ -158,6 +160,11 @@ public:
     // === 库存管理 ===
     bool updateDbCount(BlockPos pos, int dimId, int itemId, int newCount);
     bool decrementDbCount(BlockPos pos, int dimId, int itemId, int amount);
+
+    // 刷新商品的"最近动态"时间（用于公开列表排序）。
+    // 上架/改价/补货已在各自写入路径内联刷新；成交（购买、回收）需显式调用。
+    // 注意：这与 chests.last_restock_time（箱子过期判定）是两个独立字段，互不影响。
+    bool touchItemActiveTime(BlockPos pos, int dimId, int itemId, bool isRecycle = false);
 
     // === 购买记录 ===
     bool                            addPurchaseRecord(const PurchaseRecordData& record);

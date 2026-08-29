@@ -20,6 +20,7 @@ public:
     bool hasColumns(size_t count) const { return row_.size() >= count; }
 
     int         getInt(size_t index) const { return std::stoi(row_.at(index)); }
+    long long   getInt64(size_t index) const { return std::stoll(row_.at(index)); }
     double      getDouble(size_t index) const { return std::stod(row_.at(index)); }
     bool        getBool(size_t index) const { return std::stoi(row_.at(index)) != 0; }
     std::string getString(size_t index) const { return row_.at(index); }

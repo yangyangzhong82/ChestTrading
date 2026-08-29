@@ -135,11 +135,13 @@ ShopRepository& ShopRepository::getInstance() {
 
 bool ShopRepository::upsertItem(const ShopItemData& item) {
     auto& db = Sqlite3Wrapper::getInstance();
+    // 上新品与修改价格走同一路径，都视为一次"动态"，刷新 last_active_time
     bool  ok = db.execute(
-        "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, slot, item_id, price, db_count, last_active_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(strftime('%s', 'now') AS INTEGER)) "
         "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET "
-        "price = excluded.price, db_count = excluded.db_count, slot = excluded.slot;",
+        "price = excluded.price, db_count = excluded.db_count, slot = excluded.slot, "
+        "last_active_time = excluded.last_active_time;",
         item.dimId,
         item.pos.x,
         item.pos.y,
@@ -245,11 +247,27 @@ bool ShopRepository::updateDbCount(BlockPos pos, int dimId, int itemId, int newC
         itemId
     );
 
-    // 库存增加视为补货，刷新过期计时
+    // 库存增加视为补货，刷新过期计时与最近动态时间
     if (ok && oldCount >= 0 && newCount > oldCount) {
         ChestRepository::getInstance().touchRestockTime(pos, dimId);
+        touchItemActiveTime(pos, dimId, itemId);
     }
     return ok;
+}
+
+bool ShopRepository::touchItemActiveTime(BlockPos pos, int dimId, int itemId, bool isRecycle) {
+    auto& db = Sqlite3Wrapper::getInstance();
+    return db.execute(
+        isRecycle ? "UPDATE recycle_shop_items SET last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
+                    "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;"
+                  : "UPDATE shop_items SET last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
+                    "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
+        dimId,
+        pos.x,
+        pos.y,
+        pos.z,
+        itemId
+    );
 }
 
 bool ShopRepository::decrementDbCount(BlockPos pos, int dimId, int itemId, int amount) {
@@ -650,12 +668,13 @@ bool ShopRepository::upsertRecycleItem(const RecycleItemData& item) {
     auto& db = Sqlite3Wrapper::getInstance();
     bool  ok = db.execute(
         "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, "
-        "min_durability, required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?) "
+        "min_durability, required_enchants, max_recycle_count, current_recycled_count, required_aux_value, "
+        "last_active_time) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, CAST(strftime('%s', 'now') AS INTEGER)) "
         "ON CONFLICT(dim_id, pos_x, pos_y, pos_z, item_id) DO UPDATE SET price = "
         "excluded.price, min_durability = excluded.min_durability, required_enchants = "
         "excluded.required_enchants, max_recycle_count = excluded.max_recycle_count, "
-        "required_aux_value = excluded.required_aux_value;",
+        "required_aux_value = excluded.required_aux_value, last_active_time = excluded.last_active_time;",
         item.dimId,
         item.pos.x,
         item.pos.y,
@@ -688,7 +707,8 @@ bool ShopRepository::removeRecycleItem(BlockPos pos, int dimId, int itemId) {
 bool ShopRepository::updateRecycleItem(BlockPos pos, int dimId, int itemId, double price, int maxCount) {
     auto& db = Sqlite3Wrapper::getInstance();
     bool  ok = db.execute(
-        "UPDATE recycle_shop_items SET price = ?, max_recycle_count = ? "
+        "UPDATE recycle_shop_items SET price = ?, max_recycle_count = ?, "
+        "last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
         price,
         maxCount,
@@ -706,8 +726,10 @@ bool ShopRepository::updateRecycleItem(BlockPos pos, int dimId, int itemId, doub
 
 bool ShopRepository::incrementRecycledCount(BlockPos pos, int dimId, int itemId, int amount) {
     auto& db = Sqlite3Wrapper::getInstance();
+    // 回收成交同样计为一次"动态"，刷新 last_active_time
     return db.execute(
-        "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ? "
+        "UPDATE recycle_shop_items SET current_recycled_count = current_recycled_count + ?, "
+        "last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ? AND item_id = ?;",
         amount,
         dimId,
@@ -768,15 +790,17 @@ std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query(
         "SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, c.type, "
-         "s.item_id, s.price, s.db_count, d.item_nbt "
+         "s.item_id, s.price, s.db_count, d.item_nbt, s.last_active_time "
          "FROM chests c "
          "JOIN shop_items s ON c.dim_id = s.dim_id AND c.pos_x = s.pos_x AND c.pos_y = s.pos_y AND c.pos_z = s.pos_z "
          "JOIN item_definitions d ON s.item_id = d.item_id "
          "WHERE c.is_public = 1 AND c.type IN (2, 5) AND s.db_count > 0 "
-         "ORDER BY c.shop_name, c.player_uuid;"
+         // 最近有动态（上架/改价/补货/成交）的商品排在最前；
+         // 店铺名/UUID 作次级键保证同一时刻顺序稳定，避免分页时跳行
+         "ORDER BY s.last_active_time DESC, c.shop_name, c.player_uuid;"
     );
 
-    return parseRows<PublicShopItemData>(results, 11, [](DbRowParser r) {
+    return parseRows<PublicShopItemData>(results, 12, [](DbRowParser r) {
         int chestType = r.getInt(6);
         return PublicShopItemData{
             r.getInt(0),
@@ -787,7 +811,8 @@ std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
             r.getString(10),
             r.getDouble(8),
             r.getInt(9),
-            chestType == 5  // AdminShop = 5
+            chestType == 5,  // AdminShop = 5
+            r.getInt64(11)
         };
     });
 }
@@ -795,16 +820,18 @@ std::vector<PublicShopItemData> ShopRepository::findAllPublicShopItems() {
 std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query("SELECT c.dim_id, c.pos_x, c.pos_y, c.pos_z, c.player_uuid, c.shop_name, c.type, "
-                             "r.item_id, r.price, d.item_nbt, r.max_recycle_count, r.current_recycled_count "
+                             "r.item_id, r.price, d.item_nbt, r.max_recycle_count, r.current_recycled_count, "
+                             "r.last_active_time "
                              "FROM chests c "
                              "JOIN recycle_shop_items r ON c.dim_id = r.dim_id AND c.pos_x = r.pos_x AND c.pos_y = "
                              "r.pos_y AND c.pos_z = r.pos_z "
                              "JOIN item_definitions d ON r.item_id = d.item_id "
                              "WHERE c.is_public = 1 AND c.type IN (3, 6) "
                              "AND (r.max_recycle_count <= 0 OR r.current_recycled_count < r.max_recycle_count) "
-                             "ORDER BY c.shop_name, c.player_uuid;");
+                             // 与普通商店列表一致：最近有动态的排最前，店铺名/UUID 作次级键保证顺序稳定
+                             "ORDER BY r.last_active_time DESC, c.shop_name, c.player_uuid;");
 
-    return parseRows<PublicRecycleItemData>(results, 12, [](DbRowParser r) {
+    return parseRows<PublicRecycleItemData>(results, 13, [](DbRowParser r) {
         int chestType = r.getInt(6);
         return PublicRecycleItemData{
             r.getInt(0),
@@ -816,7 +843,8 @@ std::vector<PublicRecycleItemData> ShopRepository::findAllPublicRecycleItems() {
             r.getDouble(8),
             r.getInt(10),
             r.getInt(11),
-            chestType == 6  // AdminRecycle = 6
+            chestType == 6,  // AdminRecycle = 6
+            r.getInt64(12)
         };
     });
 }

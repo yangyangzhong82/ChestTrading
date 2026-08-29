@@ -403,6 +403,21 @@ PurchaseResult ShopService::purchaseItem(
         // rollbackGuard 析构时会自动退钱和放回物品
     }
 
+    // 近期购买计为一次"动态"，用于公开商店物品列表排序。
+    // 购买使库存下降，走不到 updateDbCount 里的补货分支；官方商店更是完全不更新库存，
+    // 所以这里必须显式刷新（放在事务内，购买回滚时时间戳不残留）。
+    // 该字段仅影响列表排序，失败不影响交易本身，因此只告警不回滚。
+    if (!ShopRepository::getInstance().touchItemActiveTime(mainPos, dimId, itemId)) {
+        logger.warn(
+            "purchaseItem: 刷新商品动态时间失败（不影响交易） ({}, {}, {}) dim {} item {}",
+            mainPos.x,
+            mainPos.y,
+            mainPos.z,
+            dimId,
+            itemId
+        );
+    }
+
     // 提交事务
     if (!txn.commit()) {
         return {false, txt.getMessage("shop.purchase_db_fail")};

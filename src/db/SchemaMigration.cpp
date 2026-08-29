@@ -24,6 +24,7 @@ bool SchemaMigration::run(Sqlite3Wrapper& db) {
         migrateToV14,
         migrateToV15,
         migrateToV16,
+        migrateToV17,
     };
 
     for (int v = currentVersion; v < static_cast<int>(migrations.size()); ++v) {
@@ -467,6 +468,55 @@ bool SchemaMigration::migrateToV16(Sqlite3Wrapper& db) {
         "ALTER TABLE chests ADD COLUMN allow_hopper_push INTEGER NOT NULL DEFAULT 0;",
         "ALTER TABLE packed_chests ADD COLUMN allow_hopper_pull INTEGER NOT NULL DEFAULT 0;",
         "ALTER TABLE packed_chests ADD COLUMN allow_hopper_push INTEGER NOT NULL DEFAULT 0;"
+    };
+
+    for (const char* sql : sqls) {
+        if (!db.execute(sql)) return false;
+    }
+    return true;
+}
+
+bool SchemaMigration::migrateToV17(Sqlite3Wrapper& db) {
+    // 公开商店物品列表按"最近动态"排序：为商品添加 last_active_time（Unix 秒）。
+    // 上新品 / 修改价格 / 补货 / 成交（购买、回收）都会刷新该字段。
+    // 注意：这里必须是独立的按商品字段，不能复用 chests.last_restock_time，
+    // 因为后者是箱子过期判定的依据，成交时刷新它会导致商店永不过期。
+    // 旧数据继承所在箱子的最后补货时间，迁移后仍有大致合理的先后顺序。
+    const char* sqls[] = {
+        "ALTER TABLE shop_items ADD COLUMN last_active_time INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE recycle_shop_items ADD COLUMN last_active_time INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE packed_shop_items ADD COLUMN last_active_time INTEGER NOT NULL DEFAULT 0;",
+        "ALTER TABLE packed_recycle_items ADD COLUMN last_active_time INTEGER NOT NULL DEFAULT 0;",
+
+        "UPDATE shop_items SET last_active_time = COALESCE((SELECT c.last_restock_time FROM chests c "
+        "WHERE c.dim_id = shop_items.dim_id AND c.pos_x = shop_items.pos_x "
+        "AND c.pos_y = shop_items.pos_y AND c.pos_z = shop_items.pos_z), 0) "
+        "WHERE last_active_time = 0;",
+
+        "UPDATE recycle_shop_items SET last_active_time = COALESCE((SELECT c.last_restock_time FROM chests c "
+        "WHERE c.dim_id = recycle_shop_items.dim_id AND c.pos_x = recycle_shop_items.pos_x "
+        "AND c.pos_y = recycle_shop_items.pos_y AND c.pos_z = recycle_shop_items.pos_z), 0) "
+        "WHERE last_active_time = 0;",
+
+        // 兜底：找不到对应箱子的孤立行设为当前时间，避免恒排末尾
+        "UPDATE shop_items SET last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
+        "WHERE last_active_time = 0;",
+
+        "UPDATE recycle_shop_items SET last_active_time = CAST(strftime('%s', 'now') AS INTEGER) "
+        "WHERE last_active_time = 0;",
+
+        "CREATE INDEX IF NOT EXISTS idx_shop_items_last_active ON shop_items(last_active_time);",
+
+        "CREATE INDEX IF NOT EXISTS idx_recycle_shop_items_last_active ON recycle_shop_items(last_active_time);",
+
+        // 迁移前已打包的箱子：继承打包时间，避免放回后 last_active_time 为 0 而恒排末尾
+        "UPDATE packed_shop_items SET last_active_time = COALESCE((SELECT p.packed_time FROM packed_chests p "
+        "WHERE p.packed_id = packed_shop_items.packed_id), CAST(strftime('%s', 'now') AS INTEGER)) "
+        "WHERE last_active_time = 0;",
+
+        "UPDATE packed_recycle_items SET last_active_time = COALESCE((SELECT p.packed_time FROM packed_chests p "
+        "WHERE p.packed_id = packed_recycle_items.packed_id), CAST(strftime('%s', 'now') AS INTEGER)) "
+        "WHERE last_active_time = 0;"
     };
 
     for (const char* sql : sqls) {

@@ -404,8 +404,8 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
 
     // 复制商店商品
     if (!db.execute(
-        "INSERT INTO packed_shop_items (packed_id, item_id, price, db_count, slot) "
-        "SELECT ?, item_id, price, db_count, slot FROM shop_items "
+        "INSERT INTO packed_shop_items (packed_id, item_id, price, db_count, slot, last_active_time) "
+        "SELECT ?, item_id, price, db_count, slot, last_active_time FROM shop_items "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         packedId,
         dimId,
@@ -419,9 +419,9 @@ int64_t ChestRepository::packChest(BlockPos pos, int dimId) {
     // 复制回收商店商品
     if (!db.execute(
         "INSERT INTO packed_recycle_items (packed_id, item_id, price, min_durability, required_enchants, "
-        "max_recycle_count, current_recycled_count, required_aux_value) "
+        "max_recycle_count, current_recycled_count, required_aux_value, last_active_time) "
         "SELECT ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
-        "current_recycled_count, required_aux_value FROM recycle_shop_items "
+        "current_recycled_count, required_aux_value, last_active_time FROM recycle_shop_items "
         "WHERE dim_id = ? AND pos_x = ? AND pos_y = ? AND pos_z = ?;",
         packedId,
         dimId,
@@ -541,8 +541,9 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
 
     // 恢复商店商品
     if (!db.execute(
-        "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, db_count, slot) "
-        "SELECT ?, ?, ?, ?, item_id, price, db_count, slot FROM packed_shop_items WHERE packed_id = ?;",
+        "INSERT INTO shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, db_count, slot, last_active_time) "
+        "SELECT ?, ?, ?, ?, item_id, price, db_count, slot, last_active_time FROM packed_shop_items "
+        "WHERE packed_id = ?;",
         newDimId,
         newPos.x,
         newPos.y,
@@ -584,9 +585,10 @@ bool ChestRepository::unpackChest(int64_t packedId, BlockPos newPos, int newDimI
     // 恢复回收商店商品
     if (!db.execute(
         "INSERT INTO recycle_shop_items (dim_id, pos_x, pos_y, pos_z, item_id, price, min_durability, "
-        "required_enchants, max_recycle_count, current_recycled_count, required_aux_value) "
+        "required_enchants, max_recycle_count, current_recycled_count, required_aux_value, last_active_time) "
         "SELECT ?, ?, ?, ?, item_id, price, min_durability, required_enchants, max_recycle_count, "
-        "current_recycled_count, required_aux_value FROM packed_recycle_items WHERE packed_id = ?;",
+        "current_recycled_count, required_aux_value, last_active_time FROM packed_recycle_items "
+        "WHERE packed_id = ?;",
         newDimId,
         newPos.x,
         newPos.y,
