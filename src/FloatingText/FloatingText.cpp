@@ -38,6 +38,50 @@ namespace CT {
 namespace {
 using FloatingTextKey = std::pair<int, BlockPos>;
 
+// item_id -> 显示名 缓存。
+// item_definitions 的行是不可变的（item_nbt 是 UNIQUE 且从不被更新），所以按 item_id 缓存名字是安全的。
+// 没有这层缓存的话，悬浮字每轮刷新都要对每个商品重新 parseSNBT + createItemFromNbt + getName()，
+// 对带大 NBT 的物品（装了蜜蜂的蜂巢等）这是主线程上最贵的一笔开销之一。
+std::mutex                           gItemNameCacheMutex;
+std::unordered_map<int, std::string> gItemNameCache;
+
+constexpr size_t kItemNameCacheMaxEntries = 20000;
+
+// 返回 nullopt 表示 NBT 无法解析成有效物品（调用方应跳过该商品）。
+std::optional<std::string> resolveItemDisplayName(int itemId, const std::string& itemNbt) {
+    if (itemId > 0) {
+        std::lock_guard<std::mutex> lock(gItemNameCacheMutex);
+        auto                        it = gItemNameCache.find(itemId);
+        if (it != gItemNameCache.end()) return it->second;
+    }
+
+    auto nbt = CT::NbtUtils::parseSNBT(itemNbt);
+    if (!nbt) {
+        logger.warn("resolveItemDisplayName: 无法从 NBT 字符串解析物品: {}", itemNbt);
+        return std::nullopt;
+    }
+    CT::NbtUtils::ensureItemCount(*nbt);
+    auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
+    if (!itemPtr || itemPtr->isNull()) {
+        logger.warn("resolveItemDisplayName: 无法从 NBT 创建有效物品: {}", itemNbt);
+        return std::nullopt;
+    }
+
+    std::string itemName = itemPtr->getName();
+    if (itemName.empty()) {
+        itemName = itemPtr->getTypeName();
+        logger.debug("resolveItemDisplayName: getName() 返回空，使用 getTypeName() 作为备用: {}", itemName);
+    }
+
+    if (itemId > 0) {
+        std::lock_guard<std::mutex> lock(gItemNameCacheMutex);
+        // 简单的无界增长保护：带 NBT 的物品每个都是独立的 item_id，长期运行可能积累很多。
+        if (gItemNameCache.size() >= kItemNameCacheMaxEntries) gItemNameCache.clear();
+        gItemNameCache[itemId] = itemName;
+    }
+    return itemName;
+}
+
 Player* findOnlinePlayerByUuidString(Level& level, const std::string& playerUuid) {
     Player* target = nullptr;
     level.forEachPlayer([&](Player& player) {
@@ -656,6 +700,7 @@ void FloatingTextManager::loadAllChests() {
                         }
                     }
                 }
+                ft.rebuildItemNbtHashes();
 
                 if (!ft.itemNames.empty()) {
                     ft.text = TextService::getInstance().generateDynamicShopText(chestType, ft.itemNames[0]);
@@ -880,6 +925,7 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
     // 锁外执行 DB 查询和 NBT 解析，避免长时间占用写锁导致卡顿。
     std::vector<std::string> newItemNames;
     std::vector<std::string> newItemNbts;
+    std::vector<size_t>      newItemNbtHashes;
 
     {
         Sqlite3Wrapper&                       db = Sqlite3Wrapper::getInstance();
@@ -901,8 +947,10 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                 pos.z
             );
         } else { // RecycleShop or AdminRecycle
+            // 同时取出 item_id，让下面的显示名缓存对回收商店也能生效。
             itemResults = db.query(
-                "SELECT id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = id.item_id "
+                "SELECT rsi.item_id, id.item_nbt FROM recycle_shop_items rsi JOIN item_definitions id ON rsi.item_id = "
+                "id.item_id "
                 "WHERE rsi.dim_id = ? AND rsi.pos_x = ? AND rsi.pos_y = ? AND rsi.pos_z = ? "
                 "AND (rsi.max_recycle_count <= 0 OR rsi.current_recycled_count < rsi.max_recycle_count);",
                 dimId,
@@ -914,6 +962,7 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 
         newItemNames.reserve(itemResults.size());
         newItemNbts.reserve(itemResults.size());
+        newItemNbtHashes.reserve(itemResults.size());
 
         int          rawCount          = static_cast<int>(itemResults.size());
         int          filteredByStock   = 0;
@@ -923,31 +972,54 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
             region = &dimPlayer->getDimensionBlockSource();
         }
 
+        // ---- 第一遍：解析行 ----
+        // 两种查询都是 [0]=item_id, [1]=item_nbt，商店类型额外有 [2]=db_count。
+        struct PendingItem {
+            int         itemId  = -1;
+            int         dbStock = 0;
+            std::string nbt;
+        };
+        std::vector<PendingItem> pending;
+        pending.reserve(itemResults.size());
+
         for (const auto& itemRow : itemResults) {
-            if (isShopType) {
-                if (itemRow.size() < 3) continue;
-            } else if (itemRow.empty()) {
+            if (itemRow.size() < (isShopType ? 3u : 2u)) continue;
+
+            PendingItem item;
+            try {
+                item.itemId = std::stoi(itemRow[0]);
+                if (isShopType) item.dbStock = std::stoi(itemRow[2]);
+            } catch (...) {
+                logger.warn("updateShopFloatingText: 解析商品行失败，跳过。");
                 continue;
             }
+            item.nbt = itemRow[1];
+            pending.push_back(std::move(item));
+        }
 
-            int                itemId  = -1;
-            int                dbStock = 0;
-            std::string        itemNbt = isShopType ? itemRow[1] : itemRow[0];
+        // ---- 一次容器遍历统计所有商品的真实库存 ----
+        // 过去是每个商品各扫一遍整个箱子（O(商品数 × 格子数) 次全量 NBT 序列化），
+        // 对带大 NBT 的物品会在主线程上炸开。
+        std::optional<std::vector<int>> realStocks;
+        if (region && !pending.empty()) {
+            std::vector<std::string> nbtList;
+            nbtList.reserve(pending.size());
+            for (const auto& item : pending) {
+                nbtList.push_back(item.nbt);
+            }
+            realStocks = CT::FormUtils::tryCountItemsInChestBatch(*region, pos, dimId, nbtList);
+        }
+
+        // ---- 第二遍：库存过滤 + 取显示名 ----
+        for (size_t i = 0; i < pending.size(); ++i) {
+            auto&              item = pending[i];
             std::optional<int> realStock;
+            if (realStocks && i < realStocks->size()) realStock = (*realStocks)[i];
 
             if (isShopType) {
-                try {
-                    itemId  = std::stoi(itemRow[0]);
-                    dbStock = std::stoi(itemRow[2]);
-                } catch (...) {
-                    logger.warn("updateShopFloatingText: 解析 shop_items 行失败，跳过。");
-                    continue;
-                }
-
                 if (region) {
-                    realStock = CT::FormUtils::tryCountItemsInChest(*region, pos, dimId, itemNbt);
-                    if (type == ChestType::Shop && realStock && *realStock != dbStock) {
-                        if (ShopRepository::getInstance().updateDbCount(pos, dimId, itemId, *realStock)) {
+                    if (type == ChestType::Shop && realStock && *realStock != item.dbStock) {
+                        if (ShopRepository::getInstance().updateDbCount(pos, dimId, item.itemId, *realStock)) {
                             ++syncedDbCountRows;
                         } else {
                             logger.warn(
@@ -956,7 +1028,7 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                                 pos.y,
                                 pos.z,
                                 dimId,
-                                itemId
+                                item.itemId
                             );
                         }
                     }
@@ -964,41 +1036,24 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
                         ++filteredByStock;
                         continue;
                     }
-                    if (!realStock && type == ChestType::Shop && dbStock <= 0) {
+                    if (!realStock && type == ChestType::Shop && item.dbStock <= 0) {
                         ++filteredByStock;
                         continue;
                     }
-                } else if (type == ChestType::Shop && dbStock <= 0) {
+                } else if (type == ChestType::Shop && item.dbStock <= 0) {
                     // 无法读取箱子时，普通商店退化为使用 db_count 过滤。
                     ++filteredByStock;
                     continue;
                 }
             }
 
-            auto nbt = CT::NbtUtils::parseSNBT(itemNbt);
-            if (!nbt) {
-                logger.warn("updateShopFloatingText: 无法从 NBT 字符串解析物品: {}", itemNbt);
-                continue;
-            }
+            // 显示名按 item_id 缓存，避免每轮重新 parseSNBT + 构造 ItemStack。
+            auto itemName = resolveItemDisplayName(item.itemId, item.nbt);
+            if (!itemName) continue;
 
-            CT::NbtUtils::ensureItemCount(*nbt);
-            auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
-            if (!itemPtr || itemPtr->isNull()) {
-                logger.warn("updateShopFloatingText: 无法从 NBT 创建有效物品: {}", itemNbt);
-                continue;
-            }
-
-            std::string itemName = itemPtr->getName();
-            if (itemName.empty()) {
-                itemName = itemPtr->getTypeName();
-                logger.debug(
-                    "updateShopFloatingText: item.getName() 返回空，使用 item.getTypeName() 作为备用: {}",
-                    itemName
-                );
-            }
-
-            newItemNames.push_back(std::move(itemName));
-            newItemNbts.push_back(std::move(itemNbt));
+            newItemNames.push_back(std::move(*itemName));
+            newItemNbtHashes.push_back(std::hash<std::string>{}(item.nbt));
+            newItemNbts.push_back(std::move(item.nbt));
         }
 
         if (isShopType && dimPlayer) {
@@ -1046,14 +1101,16 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
 
         auto& ft = it->second;
 
-        auto oldItemNames = ft.itemNames;
-        auto oldItemNbts  = ft.itemNbts;
+        // 比较用预先算好的哈希，而不是深拷贝整份 SNBT 再逐串比对。
+        // 旧写法每轮都要复制并比较全部 NBT 字符串，对数 KB 的物品是白扔的开销。
+        bool itemsChanged = (ft.itemNbtHashes != newItemNbtHashes) || (ft.itemNames != newItemNames);
         auto oldText      = ft.text;
 
         std::string newText;
-        ft.itemNames = std::move(newItemNames);
-        ft.itemNbts  = std::move(newItemNbts);
-        ft.isDynamic = true;
+        ft.itemNames     = std::move(newItemNames);
+        ft.itemNbts      = std::move(newItemNbts);
+        ft.itemNbtHashes = std::move(newItemNbtHashes);
+        ft.isDynamic     = true;
 
         if (!ft.itemNames.empty()) {
             if (ft.currentItemIndex >= ft.itemNames.size()) {
@@ -1074,7 +1131,7 @@ bool FloatingTextManager::updateShopFloatingText(BlockPos pos, int dimId, ChestT
         }
         ft.text = newText;
 
-        changed = (oldItemNames != ft.itemNames) || (oldItemNbts != ft.itemNbts) || (oldText != ft.text);
+        changed = itemsChanged || (oldText != ft.text);
 
         if (changed && ft.debugText) {
             rebuildFloatingTextForSameDimension(ft);
@@ -1108,10 +1165,14 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         ft.currentFakeItemIndex = 0;
     }
 
-    const auto& currentNbt     = ft.itemNbts[ft.currentFakeItemIndex];
-    size_t      currentNbtHash = std::hash<std::string>{}(currentNbt);
-    std::string playerUuid     = player.getUuid().asString();
-    auto        existing       = ft.playerFakeItemStates.find(playerUuid);
+    const auto& currentNbt = ft.itemNbts[ft.currentFakeItemIndex];
+    // 用预先算好的哈希。旧写法每个玩家每个箱子每轮都要重新哈希整串 SNBT，
+    // 而带蜜蜂的蜂巢这类物品单串就有数 KB。
+    size_t currentNbtHash = (ft.currentFakeItemIndex < ft.itemNbtHashes.size())
+                              ? ft.itemNbtHashes[ft.currentFakeItemIndex]
+                              : std::hash<std::string>{}(currentNbt);
+    std::string playerUuid = player.getUuid().asString();
+    auto        existing   = ft.playerFakeItemStates.find(playerUuid);
     if (existing != ft.playerFakeItemStates.end() && existing->second.itemHash == currentNbtHash) {
         return;
     }
@@ -1123,21 +1184,26 @@ void FloatingTextManager::sendFakeItemToPlayer(Player& player, ChestFloatingText
         static_cast<float>(ft.pos.z) + FloatingTextConstants::HORIZONTAL_OFFSET
     );
 
-    auto nbt = CT::NbtUtils::parseSNBT(currentNbt);
-    if (!nbt) {
-        logger.warn("sendFakeItemToPlayer: failed to parse item nbt: {}", currentNbt);
-        return;
-    }
-    CT::NbtUtils::ensureItemCount(*nbt);
-    auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
-    if (!itemPtr || itemPtr->isNull()) {
-        logger.warn("sendFakeItemToPlayer: failed to create item from nbt: {}", currentNbt);
-        return;
+    // 解析结果按轮播项缓存：同一轮里所有在线玩家共用一次解析，而不是各解析一遍。
+    if (!ft.fakeItemCache || ft.fakeItemCacheHash != currentNbtHash) {
+        auto nbt = CT::NbtUtils::parseSNBT(currentNbt);
+        if (!nbt) {
+            logger.warn("sendFakeItemToPlayer: failed to parse item nbt: {}", currentNbt);
+            return;
+        }
+        CT::NbtUtils::ensureItemCount(*nbt);
+        auto itemPtr = CT::NbtUtils::createItemFromNbt(*nbt);
+        if (!itemPtr || itemPtr->isNull()) {
+            logger.warn("sendFakeItemToPlayer: failed to create item from nbt: {}", currentNbt);
+            return;
+        }
+        ft.fakeItemCache     = std::move(itemPtr);
+        ft.fakeItemCacheHash = currentNbtHash;
     }
 
     removeFakeItemFromPlayer(player, ft);
 
-    auto id                             = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), *itemPtr);
+    auto id = AddFakeitem(itemPos, player, player.getDimensionBlockSource(), *ft.fakeItemCache);
     ft.playerFakeItemStates[playerUuid] = {id, currentNbtHash};
 }
 

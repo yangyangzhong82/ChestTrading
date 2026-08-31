@@ -140,21 +140,31 @@ bool shouldKeepExpiredShopAfterInventoryCheck(const ChestData& chest, Level* lev
     auto& repo   = ShopRepository::getInstance();
     auto& region = dimPlayer->getDimensionBlockSource();
 
+    // 一次容器遍历统计所有商品，避免每个商品各扫一遍整个箱子。
+    // 箱子可读性是整箱属性，所以这里读不到就和原来一样整体跳过。
+    std::vector<std::string> nbtList;
+    nbtList.reserve(items.size());
     for (const auto& item : items) {
-        auto realStock = FormUtils::tryCountItemsInChest(region, chest.pos, chest.dimId, item.itemNbt);
-        if (!realStock.has_value()) {
-            logger.debug(
-                "箱子过期检查：实体库存不可读，跳过本次普通商店清理 dim={} pos=({},{},{}) item={}",
-                chest.dimId,
-                chest.pos.x,
-                chest.pos.y,
-                chest.pos.z,
-                item.itemId
-            );
-            return true;
-        }
+        nbtList.push_back(item.itemNbt);
+    }
 
-        if (*realStock != item.dbCount && !repo.updateDbCount(chest.pos, chest.dimId, item.itemId, *realStock)) {
+    auto realStocks = FormUtils::tryCountItemsInChestBatch(region, chest.pos, chest.dimId, nbtList);
+    if (!realStocks) {
+        logger.debug(
+            "箱子过期检查：实体库存不可读，跳过本次普通商店清理 dim={} pos=({},{},{})",
+            chest.dimId,
+            chest.pos.x,
+            chest.pos.y,
+            chest.pos.z
+        );
+        return true;
+    }
+
+    for (size_t i = 0; i < items.size() && i < realStocks->size(); ++i) {
+        const auto& item      = items[i];
+        const int   realStock = (*realStocks)[i];
+
+        if (realStock != item.dbCount && !repo.updateDbCount(chest.pos, chest.dimId, item.itemId, realStock)) {
             logger.warn(
                 "箱子过期检查：库存同步失败，跳过本次普通商店清理 dim={} pos=({},{},{}) item={} realStock={}",
                 chest.dimId,
@@ -162,12 +172,12 @@ bool shouldKeepExpiredShopAfterInventoryCheck(const ChestData& chest, Level* lev
                 chest.pos.y,
                 chest.pos.z,
                 item.itemId,
-                *realStock
+                realStock
             );
             return true;
         }
 
-        if (*realStock > 0) {
+        if (realStock > 0) {
             logger.info(
                 "箱子过期检查：商店已有真实库存，跳过清理 dim={} pos=({},{},{}) item={} stock={}",
                 chest.dimId,
@@ -175,7 +185,7 @@ bool shouldKeepExpiredShopAfterInventoryCheck(const ChestData& chest, Level* lev
                 chest.pos.y,
                 chest.pos.z,
                 item.itemId,
-                *realStock
+                realStock
             );
             return true;
         }

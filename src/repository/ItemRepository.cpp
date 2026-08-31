@@ -27,6 +27,12 @@ int ItemRepository::getOrCreateItemId(const std::string& itemNbt) {
     return -1;
 }
 
+std::optional<int> ItemRepository::findItemIdByNbt(const std::string& itemNbt) {
+    auto& db      = Sqlite3Wrapper::getInstance();
+    auto  results = db.query("SELECT item_id FROM item_definitions WHERE item_nbt = ?;", itemNbt);
+    return parseSingleRow<int>(results, 1, [](DbRowParser r) { return r.getInt(0); });
+}
+
 std::optional<std::string> ItemRepository::getItemNbtById(int itemId) {
     auto& db      = Sqlite3Wrapper::getInstance();
     auto  results = db.query("SELECT item_nbt FROM item_definitions WHERE item_id = ?;", itemId);

@@ -64,6 +64,24 @@ struct ChestFloatingText {
     std::vector<std::string>                    itemNbts;             // 存储物品NBT字符串
     std::map<std::string, FakeItemDisplayState> playerFakeItemStates; // 玩家UUID -> 假物品显示状态
 
+    // itemNbts 每一项的哈希，与 itemNbts 一一对应。
+    // 带大 NBT 的物品（装了蜜蜂的蜂巢等）SNBT 可达数 KB，过去每个玩家每个箱子每 tick 都要
+    // 重新哈希一整串，这里预先算好复用。
+    std::vector<size_t> itemNbtHashes;
+
+    // 当前轮播项解析出来的 ItemStack 缓存，避免每个在线玩家各 parseSNBT + 构造一次。
+    std::unique_ptr<ItemStack> fakeItemCache;
+    size_t                     fakeItemCacheHash = 0;
+
+    // 重建 itemNbtHashes，任何改动 itemNbts 的地方都要调一次。
+    void rebuildItemNbtHashes() {
+        itemNbtHashes.clear();
+        itemNbtHashes.reserve(itemNbts.size());
+        for (const auto& nbt : itemNbts) {
+            itemNbtHashes.push_back(std::hash<std::string>{}(nbt));
+        }
+    }
+
     // 构造函数
     ChestFloatingText(BlockPos p, int d, std::string uuid, std::string t, ChestType ct, bool fakeItem = true)
     : pos(p),

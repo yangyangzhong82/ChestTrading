@@ -64,6 +64,30 @@ std::optional<int>
 tryCountItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr);
 
 /**
+ * @brief 一次容器遍历统计多个目标物品的数量。
+ *
+ * 逐个调用 tryCountItemsInChest 是 O(商品数 × 格子数) 次全量 NBT 序列化：
+ * 每个商品都要把整个箱子重新 save + clone + toSNBT 一遍。对带大 NBT 的物品
+ * （例如装了蜜蜂的蜂巢，单个 SNBT 可达数 KB，且因为每只蜂 UniqueID 不同而彼此都不相等）
+ * 这会在主线程上产生巨量的字符串构造。
+ *
+ * 本函数把复杂度降到 O(格子数 + 商品数)：每个格子只序列化一次，用二进制 NBT
+ * 作比较键（比 SNBT 便宜得多）并通过哈希表 O(1) 定位命中的商品。
+ *
+ * @param region 区块源。
+ * @param pos 箱子的位置。
+ * @param dimId 箱子所在的维度ID。
+ * @param targetItemNbtStrs 目标物品的SNBT字符串列表（已清理）。
+ * @return 与入参等长的数量数组；若箱子当前不可读则返回 std::nullopt。
+ */
+std::optional<std::vector<int>> tryCountItemsInChestBatch(
+    BlockSource&                    region,
+    BlockPos                        pos,
+    int                             dimId,
+    const std::vector<std::string>& targetItemNbtStrs
+);
+
+/**
  * @brief 迭代箱子内容，根据提供的NBT字符串计算匹配物品的总数量。
  * @param region 区块源。
  * @param pos 箱子的位置。

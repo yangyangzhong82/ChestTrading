@@ -962,14 +962,13 @@ void showShopItemManageForm(
     BlockPos  mainPos = ChestService::getInstance().getMainChestPos(pos, region);
 
     int totalCount = ShopService::getInstance().countItemsInChest(region, pos, dimId, itemNbtStr);
-    int itemId     = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
-    if (itemId < 0) {
-        player.sendMessage(txt.getMessage("shop.item_id_fail"));
-        showShopChestManageForm(player, pos, dimId, region);
-        return;
-    }
+    // 只查不建：物品可能还没上架过，此时没有 item_id 是正常情况，不是错误。
+    int itemId     = ItemRepository::getInstance().findItemIdByNbt(itemNbtStr).value_or(-1);
 
-    auto itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
+    std::optional<ShopItemData> itemOpt;
+    if (itemId > 0) {
+        itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
+    }
 
     std::string content = txt.getMessage(
                               "form.label_managing_item",
@@ -1015,24 +1014,37 @@ void showShopItemManageForm(
 
     fm.appendButton(
         txt.getMessage("form.button_item_limit"),
-        [pos, dimId, itemId, itemName = std::string(item.getName())](Player& p) {
+        [pos, dimId, itemNbtStr, itemName = std::string(item.getName())](Player& p) {
             auto& region = p.getDimensionBlockSource();
-            showPlayerItemLimitForm(p, pos, dimId, region, true, itemId, itemName);
+            // 打开界面时只查不建，真正要用 item_id 了才按需创建。
+            int id = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
+            if (id < 0) {
+                p.sendMessage(TextService::getInstance().getMessage("shop.item_id_fail"));
+                return;
+            }
+            showPlayerItemLimitForm(p, pos, dimId, region, true, id, itemName);
         }
     );
 
     // 官方商店显示动态价格设置按钮
     auto chestInfo = ChestService::getInstance().getChestInfo(pos, dimId, region);
     if (chestInfo && chestInfo->type == ChestType::AdminShop) {
-        fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [pos, dimId, itemId](Player& p) {
-            showDynamicPricingForm(p, pos, dimId, itemId, true);
+        fm.appendButton(txt.getMessage("form.button_dynamic_pricing"), [pos, dimId, itemNbtStr](Player& p) {
+            int id = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
+            if (id < 0) {
+                p.sendMessage(TextService::getInstance().getMessage("shop.item_id_fail"));
+                return;
+            }
+            showDynamicPricingForm(p, pos, dimId, id, true);
         });
     }
 
-    fm.appendButton(txt.getMessage("form.button_remove_item"), [pos, dimId, itemId](Player& p) {
+    fm.appendButton(txt.getMessage("form.button_remove_item"), [pos, dimId, itemNbtStr](Player& p) {
         auto& region = p.getDimensionBlockSource();
         auto& txt    = TextService::getInstance();
-        if (ShopService::getInstance().removeItem(pos, dimId, itemId, region)) {
+        // 没上架过的物品本来就没什么可移除的，这里不需要为它新建 item_id。
+        int id = ItemRepository::getInstance().findItemIdByNbt(itemNbtStr).value_or(-1);
+        if (id > 0 && ShopService::getInstance().removeItem(pos, dimId, id, region)) {
             p.sendMessage(txt.getMessage("shop.item_removed"));
         } else {
             p.sendMessage(txt.getMessage("shop.item_remove_fail"));
@@ -1056,7 +1068,6 @@ void showSetShopNameForm(Player& player, BlockPos pos, int dimId, BlockSource& r
 void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSource& region) {
     ll::form::SimpleForm fm;
     auto&                txt = TextService::getInstance();
-    BlockPos             mainPos = ChestService::getInstance().getMainChestPos(pos, region);
     fm.setTitle(txt.getMessage("form.shop_manage_title"));
 
     logger.debug(
@@ -1117,25 +1128,27 @@ void showShopChestManageForm(Player& player, BlockPos pos, int dimId, BlockSourc
                 CT::NbtUtils::toSNBT(*CT::NbtUtils::cleanNbtForComparison(*itemNbt, itemInSlot.isDamageableItem()));
             logger.debug("showShopChestManageForm: 槽位 {} 的物品比较用 NBT: {}", i, itemNbtStr);
 
-            if (aggregatedItems.count(itemNbtStr)) {
-                aggregatedItems[itemNbtStr].totalCount += itemInSlot.mCount;
+            auto existing = aggregatedItems.find(itemNbtStr);
+            if (existing != aggregatedItems.end()) {
+                existing->second.totalCount += itemInSlot.mCount;
                 logger.debug(
                     "showShopChestManageForm: 物品 '{}' 已聚合，更新后的总数量为 {}。",
                     itemInSlot.getName(),
-                    aggregatedItems[itemNbtStr].totalCount
+                    existing->second.totalCount
                 );
             } else {
-                int         itemId   = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
-                bool        soldOut  = false;
-                std::string priceStr = buildManagePriceLabel(txt, std::nullopt, false);
-                if (itemId > 0) {
-                    auto itemOpt = ShopRepository::getInstance().findItem(mainPos, dimId, itemId);
-                    if (itemOpt) {
-                        soldOut  = itemOpt->dbCount <= 0;
-                        priceStr = buildManagePriceLabel(txt, itemOpt->price, soldOut);
+                // 价格/售罄状态由下面的 listedItems 循环统一填充，那里的数据还更新鲜
+                // （getShopItems 会先和箱子同步库存）。所以这里不再逐个物品查库——
+                // 那是每个物品两条 SQL 的纯浪费，而且带大 NBT 的物品每个都是独立行，条数会很多。
+                aggregatedItems.emplace(
+                    std::move(itemNbtStr),
+                    ManageShopItemEntry{
+                        itemInSlot,
+                        static_cast<int>(itemInSlot.mCount),
+                        buildManagePriceLabel(txt, std::nullopt, false),
+                        false
                     }
-                }
-                aggregatedItems[itemNbtStr] = ManageShopItemEntry{itemInSlot, (int)itemInSlot.mCount, priceStr, soldOut};
+                );
             }
         } else {
             logger.debug("showShopChestManageForm: 槽位 {} 为空。", i);
@@ -1294,7 +1307,8 @@ void showShopItemBuyForm(
     }
     ));
 
-    int itemId = ItemRepository::getInstance().getOrCreateItemId(itemNbtStr);
+    // 只查不建：纯展示路径，不应该往 item_definitions 里写行。
+    int itemId = ItemRepository::getInstance().findItemIdByNbt(itemNbtStr).value_or(-1);
     if (itemId > 0) {
         auto itemOpt = ShopRepository::getInstance().findItem(pos, dimId, itemId);
         if (itemOpt) {

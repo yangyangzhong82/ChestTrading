@@ -8,6 +8,7 @@
 #include "compat/PermissionCompat.h"
 #include "ll/api/form/CustomForm.h"
 #include "ll/api/service/PlayerInfo.h"
+#include "mc/deps/nbt/StringTag.h"
 #include "mc/platform/UUID.h"
 #include "mc/world/Container.h"
 #include "mc/world/item/Item.h"
@@ -22,6 +23,9 @@
 #include <limits>
 #include <optional>
 #include <set>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 
 namespace CT::FormUtils {
@@ -319,9 +323,22 @@ std::optional<int> tryCountItemsInChest(
     int                dimId,
     const std::string& targetItemNbtStr
 ) {
+    auto counts = tryCountItemsInChestBatch(region, pos, dimId, std::vector<std::string>{targetItemNbtStr});
+    if (!counts) return std::nullopt;
+    return counts->empty() ? 0 : counts->front();
+}
+
+std::optional<std::vector<int>> tryCountItemsInChestBatch(
+    BlockSource&                    region,
+    BlockPos                        pos,
+    int                             dimId,
+    const std::vector<std::string>& targetItemNbtStrs
+) {
+    if (targetItemNbtStrs.empty()) return std::vector<int>{};
+
     if (!region.hasChunksAt(pos, 0, false)) {
         logger.debug(
-            "tryCountItemsInChest: 箱子所在区块未加载，跳过库存统计 ({}, {}, {}) in dim {}",
+            "tryCountItemsInChestBatch: 箱子所在区块未加载，跳过库存统计 ({}, {}, {}) in dim {}",
             pos.x,
             pos.y,
             pos.z,
@@ -331,16 +348,15 @@ std::optional<int> tryCountItemsInChest(
     }
 
     auto* blockActor = region.getBlockEntity(pos);
-    int   totalCount = 0;
     if (!blockActor) {
-        logger.debug("tryCountItemsInChest: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
+        logger.debug("tryCountItemsInChestBatch: 无法获取箱子实体在 ({}, {}, {}) in dim {}", pos.x, pos.y, pos.z, dimId);
         return std::nullopt;
     }
 
     // 使用 mType 成员变量进行类型检查
     if (blockActor->mType != BlockActorType::Chest) {
         logger.error(
-            "tryCountItemsInChest: BlockActor 不是箱子类型在 ({}, {}, {}) in dim {}，实际类型: {}",
+            "tryCountItemsInChestBatch: BlockActor 不是箱子类型在 ({}, {}, {}) in dim {}，实际类型: {}",
             pos.x,
             pos.y,
             pos.z,
@@ -353,7 +369,7 @@ std::optional<int> tryCountItemsInChest(
     auto* container = CT::ChestContainerUtils::tryGetChestContainer(region, pos);
     if (!container) {
         logger.error(
-            "tryCountItemsInChest: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
+            "tryCountItemsInChestBatch: 无法获取箱子容器在 ({}, {}, {}) in dim {}",
             pos.x,
             pos.y,
             pos.z,
@@ -362,21 +378,84 @@ std::optional<int> tryCountItemsInChest(
         return std::nullopt;
     }
 
+    std::vector<int> counts(targetItemNbtStrs.size(), 0);
+
+    // ---- 预处理目标物品 ----
+    // binKeys 预先定容，后面 binKeyToIndices 里的 string_view 才能安全地指向其元素。
+    std::vector<std::string>                                  binKeys(targetItemNbtStrs.size());
+    std::unordered_map<std::string_view, std::vector<size_t>> binKeyToIndices;
+    std::unordered_set<std::string>                           targetTypeNames;
+    std::vector<size_t>                                       snbtFallbackIndices;
+    bool                                                      typeFilterUsable = true;
+
+    for (size_t i = 0; i < targetItemNbtStrs.size(); ++i) {
+        auto tag = CT::NbtUtils::parseSNBT(targetItemNbtStrs[i]);
+        if (!tag) {
+            // 解析失败（例如历史遗留的畸形数据）：退回旧的 SNBT 字符串比较，保持行为不变。
+            snbtFallbackIndices.push_back(i);
+            typeFilterUsable = false;
+            continue;
+        }
+        // 库里存的已经是"清理过"的 NBT；这里只保证 Count 不参与比较。
+        // Damage 不能动：可损坏物品在入库前就已经去掉了，非可损坏物品的 Damage 是变体值必须保留。
+        if (tag->contains("Count")) tag->erase("Count");
+
+        binKeys[i] = CT::NbtUtils::toBinaryNBT(*tag);
+        if (binKeys[i].empty()) {
+            // 理论上不会发生；万一发生，空键会"匹配所有格子"，所以宁可退回字符串比较。
+            snbtFallbackIndices.push_back(i);
+            typeFilterUsable = false;
+            continue;
+        }
+        binKeyToIndices[binKeys[i]].push_back(i);
+
+        if (typeFilterUsable) {
+            if (tag->contains("Name") && tag->at("Name").is_string()) {
+                targetTypeNames.insert(tag->at("Name").get<StringTag>());
+            } else {
+                typeFilterUsable = false;
+            }
+        }
+    }
+
+    const bool useTypeFilter = typeFilterUsable && !targetTypeNames.empty();
+
+    // ---- 单次容器遍历 ----
     for (int i = 0; i < container->getContainerSize(); ++i) {
-        const auto& chestItemInSlot = container->getItem(i);
-        if (!chestItemInSlot.isNull()) {
-            auto chestItemNbt = CT::NbtUtils::getItemNbt(chestItemInSlot);
-            if (chestItemNbt) {
-                auto        cleanedChestItemNbt =
-                    CT::NbtUtils::cleanNbtForComparison(*chestItemNbt, chestItemInSlot.isDamageableItem());
-                std::string currentItemNbtStr   = CT::NbtUtils::toSNBT(*cleanedChestItemNbt);
-                if (currentItemNbtStr == targetItemNbtStr) {
-                    totalCount += chestItemInSlot.mCount;
+        const auto& slotItem = container->getItem(i);
+        if (slotItem.isNull()) continue;
+
+        // 粗筛：类型名对不上就完全不用碰 NBT。序列化是这里最贵的一步，能跳过就跳过。
+        // 目标的 Name 和 getTypeName() 都来自同一个 ItemStack::save 路径，所以不会误杀：
+        // 名字不同的话，完整 NBT 比较本来也不可能相等。
+        if (useTypeFilter && targetTypeNames.find(slotItem.getTypeName()) == targetTypeNames.end()) continue;
+
+        auto slotNbt = CT::NbtUtils::getItemNbt(slotItem);
+        if (!slotNbt) continue;
+        auto cleaned = CT::NbtUtils::cleanNbtForComparison(*slotNbt, slotItem.isDamageableItem());
+
+        // 每个格子只序列化一次，之后是 O(1) 哈希查找，而不是对每个商品各比一遍。
+        std::string slotBinKey = CT::NbtUtils::toBinaryNBT(*cleaned);
+        auto        hit        = binKeyToIndices.find(slotBinKey);
+        if (hit != binKeyToIndices.end()) {
+            for (size_t idx : hit->second) {
+                counts[idx] += slotItem.mCount;
+            }
+            continue;
+        }
+
+        if (!snbtFallbackIndices.empty()) {
+            std::string slotSnbt = CT::NbtUtils::toSNBT(*cleaned);
+            for (size_t idx : snbtFallbackIndices) {
+                if (slotSnbt == targetItemNbtStrs[idx]) {
+                    counts[idx] += slotItem.mCount;
+                    break;
                 }
             }
         }
     }
-    return totalCount;
+
+    return counts;
 }
 
 int countItemsInChest(BlockSource& region, BlockPos pos, int dimId, const std::string& targetItemNbtStr) {
