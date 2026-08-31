@@ -1,3 +1,4 @@
+#include "Seh.h"
 #include "Utils/ChestTypeUtils.h"
 #include "ll/api/memory/Hook.h"
 #include "logger.h"
@@ -107,8 +108,23 @@ LL_AUTO_TYPE_INSTANCE_HOOK(
         return;
     }
 
-    // 如果两个箱子都未被锁定，则执行原始逻辑
-    origin(region, position);
+    // 如果两个箱子都未被锁定，则执行原始逻辑。
+    // 原始配对逻辑可能经过其他模组的发包 hook，因此在这里隔离异常，避免传播到主线程。
+    try {
+        CT::Util::SehTranslatorGuard sehGuard;
+        origin(region, position);
+    } catch (const CT::Util::SehException& e) {
+        logger.error(
+            "ChestPairPreventHook 捕获 SEH 异常: code=0x{:08X}, address={}, {}",
+            e.code(),
+            e.address(),
+            e.what()
+        );
+    } catch (const std::exception& e) {
+        logger.error("ChestPairPreventHook 捕获 C++ 异常: {}", e.what());
+    } catch (...) {
+        logger.error("ChestPairPreventHook 捕获未知 C++ 异常");
+    }
 }
 
 LL_AUTO_TYPE_INSTANCE_HOOK(
